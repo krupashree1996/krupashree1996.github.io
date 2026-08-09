@@ -7,48 +7,61 @@
     <meta name="description" content="A birthday timeline with a Hogwarts-inspired theme" />
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
     <style>
-      /* Parchment / Harry Potter-inspired theme (no copyrighted imagery) */
-      :root{--paper:#f7ecd6;--ink:#2b2118;--gold:#c59d46;--accent:#2a4b3a}
-      html,body{height:100%;margin:0;background:linear-gradient(180deg,#efe3c9 0%,#fdfaf6 100%);font-family: 'Georgia', serif;color:var(--ink)}
-      .page{max-width:940px;margin:3rem auto;padding:2rem;background:linear-gradient(180deg,rgba(255,255,255,0.6),rgba(255,255,255,0.4));box-shadow:0 10px 40px rgba(0,0,0,0.08);border-radius:12px}
+      /* Harry Potter-inspired parchment theme (no copyrighted imagery) */
+      :root{--paper:#efe6cf;--ink:#2b2118;--gold:#c59d46;--accent:#2a4b3a;--maroon:#5b2d2d}
+      html,body{height:100%;margin:0;background:linear-gradient(180deg,#f3e9d1 0%,#efe6cf 100%);font-family: 'Cardo', 'Georgia', serif;color:var(--ink)}
+      .page{max-width:960px;margin:2.5rem auto;padding:2.25rem;background:radial-gradient(circle at 10% 10%, rgba(255,255,255,0.65), rgba(255,255,255,0.5));box-shadow:0 12px 40px rgba(0,0,0,0.08);border-radius:14px;border:1px solid rgba(0,0,0,0.04)}
       header{display:flex;align-items:center;gap:1rem}
-      .crest{width:72px;height:72px;border-radius:12px;background:linear-gradient(135deg,var(--gold),#f3e0a6);display:grid;place-items:center;font-weight:700;color:var(--ink);box-shadow:inset 0 -6px 12px rgba(0,0,0,0.06)}
-      h1{margin:0;font-family: 'Palatino Linotype','Times New Roman',serif;font-size:2.1rem;letter-spacing:0.5px}
-      p.lead{margin:0.4rem 0 0;color:#4a3f37}
+      .crest{width:84px;height:84px;border-radius:12px;background:linear-gradient(135deg,var(--gold),#f3e0a6);display:grid;place-items:center;font-weight:800;color:var(--ink);box-shadow:inset 0 -6px 12px rgba(0,0,0,0.06);font-family: 'Trajan Pro', serif}
+      h1{margin:0;font-family: 'Cinzel', 'Palatino Linotype','Times New Roman',serif;font-size:2.4rem;letter-spacing:1px;color:var(--maroon)}
+      p.lead{margin:0.35rem 0 0;color:#4a3f37;font-style:italic}
 
       .timeline{position:relative;margin-top:2rem;padding:1rem 0}
-      .line{position:absolute;left:50%;width:4px;background:linear-gradient(var(--gold),#b07e2f);top:0;bottom:0;margin-left:-2px;border-radius:2px}
-      .entry{position:relative;width:48%;padding:1rem 1.25rem;border-radius:8px;background:rgba(255,255,255,0.75);box-shadow:0 4px 20px rgba(0,0,0,0.04);margin:1rem 0}
-      .entry .date{font-weight:700;color:var(--accent);margin-bottom:.35rem}
-      .left{left:0;margin-right:2%}
-      .right{left:52%}
-      .entry img{max-width:100%;border-radius:6px;margin-top:.5rem}
-      .entry iframe{width:100%;height:300px;border-radius:6px;margin-top:.5rem}
-      .meta{font-size:.95rem;color:#3f352e}
+      .line{position:absolute;left:50%;width:6px;background:linear-gradient(var(--gold),#b07e2f);top:0;bottom:0;margin-left:-3px;border-radius:3px;box-shadow:0 2px 6px rgba(0,0,0,0.06)}
+      .entry{position:relative;width:46%;padding:1.1rem 1.5rem;border-radius:10px;background:linear-gradient(180deg,rgba(255,250,240,0.92),rgba(255,250,240,0.85));box-shadow:0 6px 26px rgba(0,0,0,0.08);margin:1rem 0;border-left:6px solid rgba(0,0,0,0.02)}
+      .entry .date{font-weight:700;color:var(--accent);margin-bottom:.4rem;font-family:'Georgia',serif}
+      .left{left:0;margin-right:4%}
+      .right{left:54%}
+      .entry img{max-width:100%;border-radius:8px;margin-top:.6rem;display:block}
+      .entry iframe{width:100%;height:340px;border-radius:8px;margin-top:.6rem}
+      .meta{font-size:.98rem;color:#3f352e;margin-top:.4rem}
 
       .controls{margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap}
-      .btn{background:var(--accent);color:white;padding:.45rem .7rem;border-radius:8px;border:0;cursor:pointer;font-weight:600}
+      .btn{background:var(--maroon);color:white;padding:.5rem .8rem;border-radius:10px;border:0;cursor:pointer;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,0.08)}
       .muted{background:#fff;border:1px solid #eee;color:#444}
 
-      footer{margin-top:2rem;color:#6b5b4a;font-size:.95rem}
+      footer{margin-top:2rem;color:#6b5b4a;font-size:.98rem}
 
       @media (max-width:900px){
-        .line{left:8px}
+        .line{left:12px}
         .entry{width:100%;left:24px}
         .right{left:24px}
       }
 
-      /* small ornament */
-      .ornament{position:absolute;right:12px;top:12px;color:var(--gold);font-size:20px;opacity:.9}
+      /* ornament */
+      .ornament{position:absolute;right:16px;top:16px;color:var(--gold);font-size:22px;opacity:.95}
+
+      /* Lightbox styles */
+      .lightbox { position: fixed; inset: 0; z-index: 10000; display: none; align-items: center; justify-content: center; }
+      .lightbox-backdrop { position: absolute; inset: 0; background: rgba(10,8,6,0.85); backdrop-filter: blur(3px); }
+      .lightbox-content { position: relative; z-index: 10001; max-width: 92%; max-height: 92%; border-radius: 12px; overflow: auto; box-shadow: 0 30px 80px rgba(0,0,0,0.7); background: #fff; padding: 0.6rem; }
+      .lightbox-content img, .lightbox-content iframe { display:block; width:100%; height:auto; max-height: 85vh; border-radius: 10px; }
+      .lightbox-close { position: absolute; right: 18px; top: 18px; z-index: 10002; background: transparent; border: none; color: #111; font-size: 34px; cursor: pointer; padding: 6px 10px; }
+
     </style>
   </head>
   <body>
     <div class="page">
+      <div id="lightbox" class="lightbox" aria-hidden="true">
+        <div class="lightbox-backdrop" id="lightboxBackdrop"></div>
+        <div class="lightbox-content" id="lightboxContent" role="dialog" aria-modal="true"></div>
+        <button id="lightboxClose" class="lightbox-close" aria-label="Close">&times;</button>
+      </div>
+
       <header>
         <div class="crest">K</div>
         <div>
           <h1>Happy Birthday — Timeline</h1>
-          <p class="lead">A timeline of memories. Click an item to expand media. This page uses public image/video links or local assets in <code>assets/</code>.</p>
         </div>
       </header>
 
@@ -60,12 +73,8 @@
 
       <div class="controls">
         <button class="btn" id="confettiBtn">Throw Confetti</button>
-        <button class="btn muted" id="editInstructions">How to add entries</button>
       </div>
 
-      <footer>
-        Tip: To add or update entries, edit <code>data/timeline.json</code> in the repo. Use image URLs, YouTube/Vimeo links, or local files under <code>assets/images/</code> and <code>assets/videos/</code>.
-      </footer>
     </div>
 
     <script>
@@ -78,7 +87,7 @@
           renderTimeline(data.items || []);
         }catch(err){
           const el = document.getElementById('timeline');
-          el.insertAdjacentHTML('beforeend', `<p style="padding:1rem;color:#8a7260">Could not load timeline data: ${err.message}. Check <code>data/timeline.json</code>.</p>`);
+          el.insertAdjacentHTML('beforeend', `<p style="padding:1rem;color:#8a7260">Could not load timeline data: ${err.message}. Check the repository data/timeline.json.</p>`);
         }
       }
 
@@ -112,10 +121,23 @@
             ${mediaHTML}
           `;
 
-          // Simple expand on click
-          entry.addEventListener('click', ()=>{
-            entry.style.transform = 'scale(1.01)';
-            setTimeout(()=>entry.style.transform = '', 400);
+          // Lightbox/open media on click
+          entry.addEventListener('click', (ev) => {
+            if (ev.target.tagName === 'A') return;
+            if (it.image) {
+              openLightbox(`<img src="${it.image}" alt="${escapeHTML(it.title)}">`);
+            } else if (it.video) {
+              if (isYouTube(it.video)) {
+                openLightbox(`<iframe src="${youtubeEmbed(it.video)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`);
+              } else if (isVimeo(it.video)) {
+                openLightbox(`<iframe src="${it.video}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`);
+              } else {
+                openLightbox(`<div class="meta">Video: <a href="${it.video}" target="_blank" rel="noopener">Open video</a></div>`);
+              }
+            } else {
+              entry.style.transform = 'scale(1.01)';
+              setTimeout(()=>entry.style.transform = '', 300);
+            }
           });
 
           container.appendChild(entry);
@@ -126,14 +148,35 @@
 
       function isYouTube(url){ return /youtube|youtu.be/.test(url); }
       function youtubeEmbed(url){
-        // Accept youtu.be/<id> or youtube.com/watch?v=<id>
         const idMatch = url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
         const id = idMatch ? idMatch[1] : '';
         return `https://www.youtube.com/embed/${id}`;
       }
       function isVimeo(url){ return /vimeo/.test(url); }
 
-      // Confetti (emoji) reused from earlier page
+      // Lightbox open/close
+      function openLightbox(html) {
+        const lb = document.getElementById('lightbox');
+        const content = document.getElementById('lightboxContent');
+        content.innerHTML = html;
+        lb.style.display = 'flex';
+        lb.setAttribute('aria-hidden','false');
+        document.body.style.overflow = 'hidden';
+        document.getElementById('lightboxClose').focus();
+      }
+      function closeLightbox() {
+        const lb = document.getElementById('lightbox');
+        const content = document.getElementById('lightboxContent');
+        content.innerHTML = '';
+        lb.style.display = 'none';
+        lb.setAttribute('aria-hidden','true');
+        document.body.style.overflow = '';
+      }
+      document.getElementById('lightboxClose').addEventListener('click', closeLightbox);
+      document.getElementById('lightboxBackdrop').addEventListener('click', closeLightbox);
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
+
+      // Confetti
       function throwConfetti(times=60){
         const container = document.createElement('div');
         Object.assign(container.style,{position:'fixed',inset:0,pointerEvents:'none',zIndex:9999});
@@ -150,9 +193,6 @@
       }
 
       document.getElementById('confettiBtn').addEventListener('click', ()=>throwConfetti(100));
-      document.getElementById('editInstructions').addEventListener('click', ()=>{
-        alert('To add entries: edit data/timeline.json in the repository. Each item: date (YYYY-MM-DD), title, caption, optional image (URL or assets/images/...), optional video (YouTube/Vimeo URL).');
-      });
 
       loadTimeline();
     </script>
