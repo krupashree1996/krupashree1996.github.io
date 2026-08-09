@@ -5,70 +5,68 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Happy Birthday — Timeline</title>
     <meta name="description" content="A birthday timeline with a Hogwarts-inspired theme" />
-    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
     <style>
-      /* Harry Potter-inspired parchment theme (no copyrighted imagery) */
-      :root{--paper:#efe6cf;--ink:#2b2118;--gold:#c59d46;--accent:#2a4b3a;--maroon:#5b2d2d}
-      html,body{height:100%;margin:0;background:linear-gradient(180deg,#f3e9d1 0%,#efe6cf 100%);font-family: 'Cardo', 'Georgia', serif;color:var(--ink)}
-      .page{max-width:960px;margin:2.5rem auto;padding:2.25rem;background:radial-gradient(circle at 10% 10%, rgba(255,255,255,0.65), rgba(255,255,255,0.5));box-shadow:0 12px 40px rgba(0,0,0,0.08);border-radius:14px;border:1px solid rgba(0,0,0,0.04)}
-      header{display:flex;align-items:center;gap:1rem}
-      .crest{width:84px;height:84px;border-radius:12px;background:linear-gradient(135deg,var(--gold),#f3e0a6);display:grid;place-items:center;font-weight:800;color:var(--ink);box-shadow:inset 0 -6px 12px rgba(0,0,0,0.06);font-family: 'Trajan Pro', serif}
-      h1{margin:0;font-family: 'Cinzel', 'Palatino Linotype','Times New Roman',serif;font-size:2.4rem;letter-spacing:1px;color:var(--maroon)}
-      p.lead{margin:0.35rem 0 0;color:#4a3f37;font-style:italic}
-
-      .timeline{position:relative;margin-top:2rem;padding:1rem 0}
-      .line{position:absolute;left:50%;width:6px;background:linear-gradient(var(--gold),#b07e2f);top:0;bottom:0;margin-left:-3px;border-radius:3px;box-shadow:0 2px 6px rgba(0,0,0,0.06)}
-      .entry{position:relative;width:46%;padding:1.1rem 1.5rem;border-radius:10px;background:linear-gradient(180deg,rgba(255,250,240,0.92),rgba(255,250,240,0.85));box-shadow:0 6px 26px rgba(0,0,0,0.08);margin:1rem 0;border-left:6px solid rgba(0,0,0,0.02)}
-      .entry .date{font-weight:700;color:var(--accent);margin-bottom:.4rem;font-family:'Georgia',serif}
-      .left{left:0;margin-right:4%}
-      .right{left:54%}
-      .entry img{max-width:100%;border-radius:8px;margin-top:.6rem;display:block}
-      .entry iframe{width:100%;height:340px;border-radius:8px;margin-top:.6rem}
-      .meta{font-size:.98rem;color:#3f352e;margin-top:.4rem}
-
-      .controls{margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap}
-      .btn{background:var(--maroon);color:white;padding:.5rem .8rem;border-radius:10px;border:0;cursor:pointer;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,0.08)}
-      .muted{background:#fff;border:1px solid #eee;color:#444}
-
-      footer{margin-top:2rem;color:#6b5b4a;font-size:.98rem}
-
-      @media (max-width:900px){
-        .line{left:12px}
-        .entry{width:100%;left:24px}
-        .right{left:24px}
-      }
-
-      /* ornament */
-      .ornament{position:absolute;right:16px;top:16px;color:var(--gold);font-size:22px;opacity:.95}
-
-      /* Lightbox styles */
-      .lightbox { position: fixed; inset: 0; z-index: 10000; display: none; align-items: center; justify-content: center; }
-      .lightbox-backdrop { position: absolute; inset: 0; background: rgba(10,8,6,0.85); backdrop-filter: blur(3px); }
-      .lightbox-content { position: relative; z-index: 10001; max-width: 92%; max-height: 92%; border-radius: 12px; overflow: auto; box-shadow: 0 30px 80px rgba(0,0,0,0.7); background: #fff; padding: 0.6rem; }
-      .lightbox-content img, .lightbox-content iframe { display:block; width:100%; height:auto; max-height: 85vh; border-radius: 10px; }
-      .lightbox-caption{margin-top:.5rem;color:#3c2f23;font-style:italic;font-size:0.95rem}
-      .lightbox-close { position: absolute; right: 18px; top: 18px; z-index: 10002; background: transparent; border: none; color: #111; font-size: 34px; cursor: pointer; padding: 6px 10px; }
-
+:root{
+  --hp-bg:#0e0b0a;
+  --hp-paper:#efe6cf;
+  --hp-accent:#c9a634;
+  --hp-text:#f3eee6;
+  --hp-muted:#bda98f;
+  --max-content-width: 960px;
+}
+html,body{height:100%;margin:0;background:linear-gradient(180deg,#080606 0%,#161212 100%);font-family:'Cardo','Georgia','Garamond',serif;color:var(--hp-text)}
+.page{max-width:960px;margin:2.5rem auto;padding:2.25rem;background:rgba(255,255,255,0.02);border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
+.header-accent{color:var(--hp-accent);font-weight:700;text-shadow:0 1px 0 rgba(0,0,0,0.6)}
+.hp-caption{background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.1));border-left:4px solid var(--hp-accent);padding:.75rem 1rem;color:var(--hp-muted);margin-top:.75rem;border-radius:6px}
+.hp-hero{display:block;width:100%;max-width:100%;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.04)}
+    /* existing styles (kept) */
+    :root{--paper:#efe6cf;--ink:#2b2118;--gold:#c59d46;--accent:#2a4b3a}
+    html,body{height:100%;margin:0}
+    .page{max-width:96Opx;margin:2.5rem auto;padding:2.25rem;background:linear-gradient(180deg,#121212 0%,#0b0b0b 100%);box-shadow:0 10px 40px rgba(0,0,0,.08);}
+    .crest{width:84px;height:84px;display:grid;place-items:center;font-weight:800;color:var(--ink);box-shadow:inset 0 -6px 12px rgba(0,0,0,0.06);font-family:'Trajan Pro',serif}
+    h1{margin:0;font-family:'Cinzel','Palatino Linotype','Times New Roman',serif;font-size:2.4rem;letter-spacing:.5px}
+    p.lead{margin:0.35rem 0 0;color:#4a3f37;font-style:italic}
+    .timeline{position:relative;margin-top:2rem;padding:1rem 0}
+    .line{position:absolute;left:50%;width:6px;background:linear-gradient(var(--gold),#b07e2f);top:0;bottom:0;margin-left:-3px;border-radius:3px;box-shadow:0 2px 6px rgba(0,0,0,0.06)}
+    .entry{position:relative;width:46%;padding:1.1rem 1.25rem;border-radius:10px;background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.06));box-shadow:0 6px 26px rgba(0,0,0,0.08);margin:1rem 0}
+    .entry .date{font-weight:700;color:var(--hp-accent)}
+    .left{left:0;margin-right:4%}.right{left:52%}
+    .entry img{max-width:100%;border-radius:8px}
+    iframe{width:100%;height:340px;border-radius:8px;margin-top:.6rem}
+    .meta{font-size:.98rem;color:#3f352e;margin-top:.4rem}
     </style>
   </head>
   <body>
     <div class="page">
       <div id="lightbox" class="lightbox" aria-hidden="true">
-        <div class="lightbox-backdrop" id="lightboxBackdrop"></div>
-        <div class="lightbox-content" id="lightboxContent" role="dialog" aria-modal="true"></div>
+        <div id="lightboxBackdrop" class="lightbox-backdrop"></div>
+        <div id="lightboxContent" class="lightbox-content" role="dialog" aria-modal="true"></div>
         <button id="lightboxClose" class="lightbox-close" aria-label="Close">&times;</button>
       </div>
 
       <header>
         <div class="crest">K</div>
         <div>
-          <h1>Happy Birthday — Timeline</h1>
+          <h1 class="header-accent">Happy Birthday — Timeline</h1>
         </div>
       </header>
 
-      <div class="timeline" id="timeline">
+      <div id="timeline" class="timeline">
         <div class="line"></div>
-        <div class="ornament">✦</div>
+        <div class="line"></div>
+
+        <div class="entry left" id="entry-hero">
+          <!-- Responsive optimized image (falls back to existing jpeg until optimized files exist) -->
+          <picture>
+            <source type="image/webp" srcset="assets/images/karate_master-opt.webp">
+            <source type="image/jpeg" srcset="assets/images/karate_master-opt.jpg">
+            <img src="assets/images/karate_master.jpeg" alt="Karate master" class="hp-hero" loading="lazy" width="1200" style="height:auto;">
+          </picture>
+
+          <div class="hp-caption">A heroic stance — captured and styled for a magical, parchment-like page.</div>
+        </div>
+
         <!-- Entries are inserted here -->
       </div>
 
@@ -79,133 +77,81 @@
     </div>
 
     <script>
-      // Fetch timeline JSON and render entries
-      async function loadTimeline(){
-        try{
-          const res = await fetch('data/timeline.json', {cache: 'no-store'});
-          if(!res.ok) throw new Error('Timeline data not found');
-          const data = await res.json();
-          renderTimeline(data.items || []);
-        }catch(err){
-          const el = document.getElementById('timeline');
-          el.insertAdjacentHTML('beforeend', `<p style="padding:1rem;color:#8a7260">Could not load timeline data: ${err.message}. Check the repository data/timeline.json.</p>`);
-        }
+    // Fetch timeline JSON and render entries
+    async function loadTimeline(){
+      try{
+        const res = await fetch('data/timeline.json',{cache: 'no-store'});
+        if(!res.ok) throw new Error('Timeline data not found');
+        const data = await res.json();
+        renderTimeline(data.items || []);
+      }catch(err){
+        const el = document.getElementById('timeline');
+        el.insertAdjacentHTML('beforeend', `<p style="padding:1rem;color:#8a7260">Could not load timeline data: ${err.message}. Check the repository data/timeline.json.</p>`);
       }
+    }
 
-      function renderTimeline(items){
-        const container = document.getElementById('timeline');
-        items.sort((a,b)=> new Date(b.date) - new Date(a.date));
-        items.forEach((it, idx)=>{
-          const side = (idx % 2 === 0) ? 'left' : 'right';
-          const entry = document.createElement('article');
-          entry.className = `entry ${side}`;
-          entry.tabIndex = 0;
-          let mediaHTML = '';
-          if(it.image){
-            mediaHTML += `<img src="${it.image}" alt="${escapeHTML(it.title)} image" loading="lazy">`;
+    function renderTimeline(items){
+      const container = document.getElementById('timeline');
+      items.sort((a,b)=> new Date(b.date) - new Date(a.date));
+      items.forEach((it, idx)=>{
+        const side = (idx % 2 === 0) ? 'left' : 'right';
+        const entry = document.createElement('article');
+        entry.className = `entry ${side}`;
+        entry.tabIndex = 0;
+        let mediaHTML = '';
+        if(it.image){
+          mediaHTML += `<img src="${it.image}" alt="${escapeHTML(it.title || '')}" loading="lazy">`;
+        }
+        if(it.video){
+          if(isYouTube(it.video)){
+            const v = youTubeEmbed(it.video);
+            mediaHTML += `<iframe src="${v}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+          } else if(isVimeo(it.video)){
+            mediaHTML += `<iframe src="${it.video}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
+          } else {
+            mediaHTML += `<p class="meta">Video: <a href="${it.video}" target="_blank">Open video</a></p>`;
           }
-          if(it.video){
-            if(isYouTube(it.video)){
-              const v = youtubeEmbed(it.video);
-              mediaHTML += `<iframe src="${v}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
-            } else if(isVimeo(it.video)){
-              mediaHTML += `<iframe src="${it.video}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
-            } else {
-              mediaHTML += `<p class="meta">Video: <a href="${it.video}" target="_blank">Open video</a></p>`;
-            }
-          }
+        }
+        entry.innerHTML = `
+          <div class="date">${escapeHTML(it.date)}</div>
+          <h3>${escapeHTML(it.title)}</h3>
+          <div class="meta">${escapeHTML(it.caption || '')}</div>
+          <div class="media">${mediaHTML}</div>
+        `;
+        container.appendChild(entry);
 
-          entry.innerHTML = `
-            <div class="date">${escapeHTML(it.date)}</div>
-            <h3>${escapeHTML(it.title)}</h3>
-            <div class="meta">${escapeHTML(it.caption || '')}</div>
-            ${mediaHTML}
-          `;
-
-          // Lightbox/open media on click
-          entry.addEventListener('click', (ev) => {
-            if (ev.target.tagName === 'A') return;
-            if (it.image) {
-              openLightbox(`<img src="${it.image}" alt="${escapeHTML(it.title)}">`, it.caption);
-            } else if (it.video) {
-              if (isYouTube(it.video)) {
-                // autoplay in lightbox only
-                const embed = youtubeEmbed(it.video) + (youtubeEmbed(it.video).includes('?') ? '&' : '?') + 'rel=0&autoplay=1';
-                openLightbox(`<iframe src="${embed}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; autoplay" allowfullscreen></iframe>`, it.caption);
-              } else if (isVimeo(it.video)) {
-                const embed = it.video + (it.video.includes('?') ? '&' : '?') + 'autoplay=1';
-                openLightbox(`<iframe src="${embed}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`, it.caption);
-              } else {
-                openLightbox(`<div class="meta">Video: <a href="${it.video}" target="_blank" rel="noopener">Open video</a></div>`, it.caption);
-              }
-            } else {
-              entry.style.transform = 'scale(1.01)';
-              setTimeout(()=>entry.style.transform = '', 300);
-            }
-          });
-
-          container.appendChild(entry);
+        // Simple expand on click
+        entry.addEventListener('click', ()=>{
+          entry.style.transform = 'scale(1.01)';
+          setTimeout(()=>entry.style.transform='');
         });
+      });
+    }
+
+    function escapeHTML(s){ if(!s) return ''; return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+    function isYouTube(url){ return /youtube|youtu.be/.test(url); }
+    function youTubeEmbed(v){ const idMatch = v.match(/(?:v=|v\/|embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/); const id = idMatch? idMatch[1] : ''; return `https://www.youtube.com/embed/${id}`; }
+    function isVimeo(url){ return /vimeo/.test(url); }
+
+    // Confetti (emoji) reused from earlier page
+    function throwConfetti(times=60){
+      const container = document.createElement('div');
+      Object.assign(container.style,{position:'fixed',inset:0,pointerEvents:'none',zIndex:9999});
+      document.body.appendChild(container);
+      for(let i=0;i<times;i++){
+        const el = document.createElement('div');
+        el.textContent = ['🎉','✨','🪄','🧹','⚡'][Math.floor(Math.random()*5)];
+        Object.assign(el.style,{position:'absolute',left:Math.random()*100+'%',top:(-10 - Math.random()*20)+'px',fontSize:(12+Math.random()*36)+'px',opacity:0,transform:`translateY(0)`});
+        container.appendChild(el);
+        requestAnimationFrame(()=>{ el.style.opacity=1; el.style.transform = `translateY(${600 + Math.random()*600}px) rotate(${Math.random()*720-360}deg)`; el.style.transition='transform 2.6s cubic-bezier(.2,.8,.2,1), opacity .8s'; });
       }
+      setTimeout(()=>container.remove(),3300 + Math.random()*1200);
+    }
 
-      function escapeHTML(s){ if(!s) return ''; return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+    document.getElementById('confettiBtn').addEventListener('click', ()=>throwConfetti(100));
 
-      function isYouTube(url){ return /youtube|youtu.be/.test(url); }
-      function youtubeEmbed(url){
-        const idMatch = url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
-        const id = idMatch ? idMatch[1] : '';
-        return `https://www.youtube.com/embed/${id}`;
-      }
-      function isVimeo(url){ return /vimeo/.test(url); }
-
-      // Lightbox open/close (caption + focus)
-      let _prevFocus = null;
-      function openLightbox(html, caption){
-        const lb = document.getElementById('lightbox');
-        const content = document.getElementById('lightboxContent');
-        let inner = html;
-        if(caption){
-          inner += `<div class="lightbox-caption">${escapeHTML(caption)}</div>`;
-        }
-        content.innerHTML = inner;
-        lb.style.display = 'flex';
-        lb.setAttribute('aria-hidden','false');
-        _prevFocus = document.activeElement;
-        document.body.style.overflow = 'hidden';
-        document.getElementById('lightboxClose').focus();
-      }
-      function closeLightbox(){
-        const lb = document.getElementById('lightbox');
-        const content = document.getElementById('lightboxContent');
-        content.innerHTML = '';
-        lb.style.display = 'none';
-        lb.setAttribute('aria-hidden','true');
-        document.body.style.overflow = '';
-        if(_prevFocus && typeof _prevFocus.focus === 'function') _prevFocus.focus();
-      }
-      document.getElementById('lightboxClose').addEventListener('click', closeLightbox);
-      document.getElementById('lightboxBackdrop').addEventListener('click', closeLightbox);
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
-
-      // Confetti
-      function throwConfetti(times=60){
-        const container = document.createElement('div');
-        Object.assign(container.style,{position:'fixed',inset:0,pointerEvents:'none',zIndex:9999});
-        document.body.appendChild(container);
-        for(let i=0;i<times;i++){
-          const el = document.createElement('div');
-          el.textContent = ['🎉','🎂','🎈','✨'][Math.floor(Math.random()*4)];
-          Object.assign(el.style,{position:'absolute',left:Math.random()*100+'%',top:(-10 - Math.random()*20)+'px',fontSize:(12+Math.random()*36)+'px',opacity:0,transform:'translateY(0)',transition:'transform 2.6s cubic-bezier(.2,.8,.2,1),opacity .8s'});
-          container.appendChild(el);
-          requestAnimationFrame(()=>{ el.style.opacity = 1; el.style.transform = `translateY(${80 + Math.random()*160}vh) rotate(${Math.random()*720}deg)`; });
-          setTimeout(()=>el.remove(),3300 + Math.random()*600);
-        }
-        setTimeout(()=>container.remove(),4000);
-      }
-
-      document.getElementById('confettiBtn').addEventListener('click', ()=>throwConfetti(100));
-
-      loadTimeline();
+    loadTimeline();
     </script>
   </body>
 </html>
