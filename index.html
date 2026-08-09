@@ -6,74 +6,89 @@
     <title>Happy Birthday — Timeline</title>
     <meta name="description" content="A birthday timeline with a Hogwarts-inspired theme" />
     <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
+
+    <!-- Fonts + theme CSS -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Cardo:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <style>
 :root{
   --hp-bg:#0e0b0a;
   --hp-paper:#efe6cf;
   --hp-accent:#c9a634;
-  --hp-text:#f3eee6;
-  --hp-muted:#bda98f;
-  --max-content-width: 960px;
+  --hp-text:#efeae3;
+  --hp-muted:#c0a988;
+  --max-content-width:1100px;
 }
-html,body{height:100%;margin:0;background:linear-gradient(180deg,#080606 0%,#161212 100%);font-family:'Cardo','Georgia','Garamond',serif;color:var(--hp-text)}
-.page{max-width:960px;margin:2.5rem auto;padding:2.25rem;background:rgba(255,255,255,0.02);border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
-.header-accent{color:var(--hp-accent);font-weight:700;text-shadow:0 1px 0 rgba(0,0,0,0.6)}
-.hp-caption{background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.1));border-left:4px solid var(--hp-accent);padding:.75rem 1rem;color:var(--hp-muted);margin-top:.75rem;border-radius:6px}
-.hp-hero{display:block;width:100%;max-width:100%;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.04)}
-    /* existing styles (kept) */
-    :root{--paper:#efe6cf;--ink:#2b2118;--gold:#c59d46;--accent:#2a4b3a}
-    html,body{height:100%;margin:0}
-    .page{max-width:96Opx;margin:2.5rem auto;padding:2.25rem;background:linear-gradient(180deg,#121212 0%,#0b0b0b 100%);box-shadow:0 10px 40px rgba(0,0,0,.08);}
-    .crest{width:84px;height:84px;display:grid;place-items:center;font-weight:800;color:var(--ink);box-shadow:inset 0 -6px 12px rgba(0,0,0,0.06);font-family:'Trajan Pro',serif}
-    h1{margin:0;font-family:'Cinzel','Palatino Linotype','Times New Roman',serif;font-size:2.4rem;letter-spacing:.5px}
-    p.lead{margin:0.35rem 0 0;color:#4a3f37;font-style:italic}
-    .timeline{position:relative;margin-top:2rem;padding:1rem 0}
-    .line{position:absolute;left:50%;width:6px;background:linear-gradient(var(--gold),#b07e2f);top:0;bottom:0;margin-left:-3px;border-radius:3px;box-shadow:0 2px 6px rgba(0,0,0,0.06)}
-    .entry{position:relative;width:46%;padding:1.1rem 1.25rem;border-radius:10px;background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0.06));box-shadow:0 6px 26px rgba(0,0,0,0.08);margin:1rem 0}
-    .entry .date{font-weight:700;color:var(--hp-accent)}
-    .left{left:0;margin-right:4%}.right{left:52%}
-    .entry img{max-width:100%;border-radius:8px}
-    iframe{width:100%;height:340px;border-radius:8px;margin-top:.6rem}
-    .meta{font-size:.98rem;color:#3f352e;margin-top:.4rem}
+html,body{height:100%;margin:0;background:linear-gradient(180deg,#090707 0%,#141212 100%);font-family:Cardo,Georgia,serif;color:var(--hp-text)}
+.page{max-width:var(--max-content-width);margin:2.25rem auto;padding:2rem;background:rgba(255,255,255,0.02);border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
+.header{display:flex;align-items:center;gap:1rem;margin-bottom:1rem}
+.crest{width:60px;height:60px;display:grid;place-items:center;font-weight:800;color:rgba(255,255,255,0.06);font-family:'Cinzel',serif}
+.header-accent{color:var(--hp-accent);font-weight:700;text-shadow:0 1px 0 rgba(0,0,0,0.6);font-size:1.9rem}
+.lead{margin:0;color:var(--hp-muted);font-style:italic}
+
+/* Timeline layout */
+.timeline{position:relative;margin-top:1.5rem;padding:1rem 0}
+.line{position:absolute;left:50%;width:6px;background:linear-gradient(#c9a634,#b07e2f);top:0;bottom:0;margin-left:-3px;border-radius:3px;box-shadow:0 2px 6px rgba(0,0,0,0.15)}
+.entry{position:relative;width:44%;padding:1rem 1.25rem;border-radius:10px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.06));box-shadow:0 6px 26px rgba(0,0,0,0.3);margin:1rem 0}
+.entry .date{font-weight:700;color:var(--hp-accent);margin-bottom:.35rem}
+.entry h3{margin:.2rem 0;color:var(--hp-text)}
+.entry .meta{font-size:.95rem;color:var(--hp-muted);margin-top:.5rem;line-height:1.45}
+.left{left:0;margin-right:6%}
+.right{left:56%}
+.entry .media{margin-top:.6rem}
+.entry img{display:block;width:100%;height:auto;border-radius:8px;object-fit:cover}
+
+/* Hero specific */
+#entry-hero{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08));}
+.hp-caption{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.06));border-left:4px solid var(--hp-accent);padding:.75rem 1rem;color:var(--hp-muted);margin-top:.75rem;border-radius:6px}
+
+/* Controls */
+.controls{margin-top:1.5rem}
+.btn{padding:.45rem .6rem;border-radius:4px;border:1px solid rgba(255,255,255,0.06);background:#fff;color:#111;cursor:pointer}
+
+/* Responsive: single column on narrow screens */
+@media (max-width:900px){
+  .entry{width:100%;left:0 !important;margin-right:0}
+  .right{left:0}
+  .line{left:4px;width:4px;margin-left:0}
+  .page{padding:1rem}
+  .header-accent{font-size:1.5rem}
+}
+
+/* Small accessibility contrast tweak */
+.entry .meta a{color:var(--hp-accent)}
     </style>
   </head>
   <body>
     <div class="page">
-      <div id="lightbox" class="lightbox" aria-hidden="true">
-        <div id="lightboxBackdrop" class="lightbox-backdrop"></div>
-        <div id="lightboxContent" class="lightbox-content" role="dialog" aria-modal="true"></div>
-        <button id="lightboxClose" class="lightbox-close" aria-label="Close">&times;</button>
-      </div>
-
-      <header>
+      <header class="header">
         <div class="crest">K</div>
         <div>
-          <h1 class="header-accent">Happy Birthday — Timeline</h1>
+          <div class="header-accent">Happy Birthday — Timeline</div>
+          <div class="lead">A magical timeline of moments</div>
         </div>
       </header>
 
       <div id="timeline" class="timeline">
         <div class="line"></div>
-        <div class="line"></div>
 
         <div class="entry left" id="entry-hero">
-          <!-- Responsive optimized image (falls back to existing jpeg until optimized files exist) -->
-          <picture>
-            <source type="image/webp" srcset="assets/images/karate_master-opt.webp">
-            <source type="image/jpeg" srcset="assets/images/karate_master-opt.jpg">
-            <img src="assets/images/karate_master.jpeg" alt="Karate master" class="hp-hero" loading="lazy" width="1200" style="height:auto;">
-          </picture>
-
+          <div class="media">
+            <!-- Responsive image: use existing jpeg until optimizer produces -opt versions -->
+            <picture>
+              <source type="image/webp" srcset="assets/images/karate_master-opt.webp">
+              <source type="image/jpeg" srcset="assets/images/karate_master-opt.jpg">
+              <img src="assets/images/karate_master.jpeg" alt="Karate master" loading="lazy" class="hp-hero">
+            </picture>
+          </div>
           <div class="hp-caption">A heroic stance — captured and styled for a magical, parchment-like page.</div>
         </div>
 
-        <!-- Entries are inserted here -->
+        <!-- Entries will be appended here by the script -->
       </div>
 
       <div class="controls">
         <button class="btn" id="confettiBtn">Throw Confetti</button>
       </div>
-
     </div>
 
     <script>
@@ -86,55 +101,47 @@ html,body{height:100%;margin:0;background:linear-gradient(180deg,#080606 0%,#161
         renderTimeline(data.items || []);
       }catch(err){
         const el = document.getElementById('timeline');
-        el.insertAdjacentHTML('beforeend', `<p style="padding:1rem;color:#8a7260">Could not load timeline data: ${err.message}. Check the repository data/timeline.json.</p>`);
+        el.insertAdjacentHTML('beforeend', `<p style="padding:1rem;color:var(--hp-muted)">Could not load timeline data: ${err.message}. Check the repository data/timeline.json.</p>`);
       }
     }
 
     function renderTimeline(items){
       const container = document.getElementById('timeline');
-      items.sort((a,b)=> new Date(b.date) - new Date(a.date));
+      items.sort((a,b)=> new Date(a.date) - new Date(b.date)); // chronological order
       items.forEach((it, idx)=>{
         const side = (idx % 2 === 0) ? 'left' : 'right';
         const entry = document.createElement('article');
         entry.className = `entry ${side}`;
         entry.tabIndex = 0;
+
         let mediaHTML = '';
         if(it.image){
-          mediaHTML += `<img src="${it.image}" alt="${escapeHTML(it.title || '')}" loading="lazy">`;
+          // If image path is relative, keep as-is; else show link
+          mediaHTML += `<div class="media"><img src="${it.image}" alt="${escapeHTML(it.title||'')}"></div>`;
         }
         if(it.video){
           if(isYouTube(it.video)){
             const v = youTubeEmbed(it.video);
-            mediaHTML += `<iframe src="${v}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+            mediaHTML += `<iframe src="${v}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="width:100%;height:280px;border-radius:8px;margin-top:.6rem"></iframe>`;
           } else if(isVimeo(it.video)){
-            mediaHTML += `<iframe src="${it.video}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
+            mediaHTML += `<iframe src="${it.video}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen style="width:100%;height:280px;border-radius:8px;margin-top:.6rem"></iframe>`;
           } else {
             mediaHTML += `<p class="meta">Video: <a href="${it.video}" target="_blank">Open video</a></p>`;
           }
         }
-        entry.innerHTML = `
-          <div class="date">${escapeHTML(it.date)}</div>
-          <h3>${escapeHTML(it.title)}</h3>
-          <div class="meta">${escapeHTML(it.caption || '')}</div>
-          <div class="media">${mediaHTML}</div>
-        `;
+
+        entry.innerHTML = `\n          <div class="date">${escapeHTML(it.date)}</div>\n          <h3>${escapeHTML(it.title)}</h3>\n          <div class="meta">${escapeHTML(it.caption || '')}</div>\n          ${mediaHTML}\n        `;
         container.appendChild(entry);
 
-        // Simple expand on click
-        entry.addEventListener('click', ()=>{
-          entry.style.transform = 'scale(1.01)';
-          setTimeout(()=>entry.style.transform='');
-        });
+        entry.addEventListener('click', ()=>{ entry.style.transform = 'scale(1.01)'; setTimeout(()=>entry.style.transform=''); });
       });
     }
 
-    function escapeHTML(s){ if(!s) return ''; return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
-
+    function escapeHTML(s){ if(!s) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
     function isYouTube(url){ return /youtube|youtu.be/.test(url); }
     function youTubeEmbed(v){ const idMatch = v.match(/(?:v=|v\/|embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/); const id = idMatch? idMatch[1] : ''; return `https://www.youtube.com/embed/${id}`; }
     function isVimeo(url){ return /vimeo/.test(url); }
 
-    // Confetti (emoji) reused from earlier page
     function throwConfetti(times=60){
       const container = document.createElement('div');
       Object.assign(container.style,{position:'fixed',inset:0,pointerEvents:'none',zIndex:9999});
@@ -150,7 +157,6 @@ html,body{height:100%;margin:0;background:linear-gradient(180deg,#080606 0%,#161
     }
 
     document.getElementById('confettiBtn').addEventListener('click', ()=>throwConfetti(100));
-
     loadTimeline();
     </script>
   </body>
