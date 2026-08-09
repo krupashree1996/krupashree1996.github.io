@@ -1,1 +1,16 @@
-{ "items": [ { "date": "1996-08-12", "title": "Born", "caption": "Born on August 12, 1996 — the beginning of a wonderful story.", "image": "https://via.placeholder.com/800x500.png?text=Born+Aug+12+1996" } ] }
+{
+  "items": [
+    {
+      "date": "1996-08-12",
+      "title": "Born",
+      "caption": "Born on August 12, 1996 — the beginning of a wonderful story.",
+      "image": "https://via.placeholder.com/800x500.png?text=Born+Aug+12+1996"
+    },
+    {
+      "date": "2004-03-11",
+      "title": "Earned eighth kyu in karate",
+      "caption": "She achieved her eighth kyu in karate on March 11, 2004.",
+      "image": "https://via.placeholder.com/800x500.png?text=8th+Kyu+Karate+Mar+11+2004"
+    }
+  ]
+}
