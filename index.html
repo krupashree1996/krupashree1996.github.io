@@ -46,6 +46,7 @@
       .lightbox-backdrop { position: absolute; inset: 0; background: rgba(10,8,6,0.85); backdrop-filter: blur(3px); }
       .lightbox-content { position: relative; z-index: 10001; max-width: 92%; max-height: 92%; border-radius: 12px; overflow: auto; box-shadow: 0 30px 80px rgba(0,0,0,0.7); background: #fff; padding: 0.6rem; }
       .lightbox-content img, .lightbox-content iframe { display:block; width:100%; height:auto; max-height: 85vh; border-radius: 10px; }
+      .lightbox-caption{margin-top:.5rem;color:#3c2f23;font-style:italic;font-size:0.95rem}
       .lightbox-close { position: absolute; right: 18px; top: 18px; z-index: 10002; background: transparent; border: none; color: #111; font-size: 34px; cursor: pointer; padding: 6px 10px; }
 
     </style>
@@ -125,14 +126,17 @@
           entry.addEventListener('click', (ev) => {
             if (ev.target.tagName === 'A') return;
             if (it.image) {
-              openLightbox(`<img src="${it.image}" alt="${escapeHTML(it.title)}">`);
+              openLightbox(`<img src="${it.image}" alt="${escapeHTML(it.title)}">`, it.caption);
             } else if (it.video) {
               if (isYouTube(it.video)) {
-                openLightbox(`<iframe src="${youtubeEmbed(it.video)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`);
+                // autoplay in lightbox only
+                const embed = youtubeEmbed(it.video) + (youtubeEmbed(it.video).includes('?') ? '&' : '?') + 'rel=0&autoplay=1';
+                openLightbox(`<iframe src="${embed}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; autoplay" allowfullscreen></iframe>`, it.caption);
               } else if (isVimeo(it.video)) {
-                openLightbox(`<iframe src="${it.video}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`);
+                const embed = it.video + (it.video.includes('?') ? '&' : '?') + 'autoplay=1';
+                openLightbox(`<iframe src="${embed}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`, it.caption);
               } else {
-                openLightbox(`<div class="meta">Video: <a href="${it.video}" target="_blank" rel="noopener">Open video</a></div>`);
+                openLightbox(`<div class="meta">Video: <a href="${it.video}" target="_blank" rel="noopener">Open video</a></div>`, it.caption);
               }
             } else {
               entry.style.transform = 'scale(1.01)';
@@ -154,23 +158,30 @@
       }
       function isVimeo(url){ return /vimeo/.test(url); }
 
-      // Lightbox open/close
-      function openLightbox(html) {
+      // Lightbox open/close (caption + focus)
+      let _prevFocus = null;
+      function openLightbox(html, caption){
         const lb = document.getElementById('lightbox');
         const content = document.getElementById('lightboxContent');
-        content.innerHTML = html;
+        let inner = html;
+        if(caption){
+          inner += `<div class="lightbox-caption">${escapeHTML(caption)}</div>`;
+        }
+        content.innerHTML = inner;
         lb.style.display = 'flex';
         lb.setAttribute('aria-hidden','false');
+        _prevFocus = document.activeElement;
         document.body.style.overflow = 'hidden';
         document.getElementById('lightboxClose').focus();
       }
-      function closeLightbox() {
+      function closeLightbox(){
         const lb = document.getElementById('lightbox');
         const content = document.getElementById('lightboxContent');
         content.innerHTML = '';
         lb.style.display = 'none';
         lb.setAttribute('aria-hidden','true');
         document.body.style.overflow = '';
+        if(_prevFocus && typeof _prevFocus.focus === 'function') _prevFocus.focus();
       }
       document.getElementById('lightboxClose').addEventListener('click', closeLightbox);
       document.getElementById('lightboxBackdrop').addEventListener('click', closeLightbox);
