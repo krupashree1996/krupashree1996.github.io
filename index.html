@@ -3,84 +3,158 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Happy Birthday — Krupashree</title>
-    <meta name="description" content="A cheerful birthday page" />
+    <title>Happy Birthday — Timeline</title>
+    <meta name="description" content="A birthday timeline with a Hogwarts-inspired theme" />
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
     <style>
-      :root{--bg:#fff8f0;--accent:#ff6b6b;--accent2:#ffb86b}
-      html,body{height:100%;margin:0}
-      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;display:grid;place-items:center;background:linear-gradient(180deg,var(--bg),#fff);padding:2rem}
-      .card{width:min(900px,96vw);background:white;border-radius:16px;box-shadow:0 8px 30px rgba(12,12,12,0.08);padding:2rem;position:relative;overflow:hidden}
-      h1{margin:.2rem 0;font-size:2.25rem;color:#222}
-      p{color:#444;margin:.6rem 0}
-      .big{font-size:1.1rem}
-      .confetti{position:absolute;inset:0;pointer-events:none}
-      .controls{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1rem}
-      button{background:var(--accent);color:white;border:0;padding:.6rem 1rem;border-radius:8px;cursor:pointer;font-weight:600}
-      input[type=text]{padding:.5rem .6rem;border-radius:8px;border:1px solid #e6e6e6}
-      footer{margin-top:1.25rem;color:#666;font-size:.9rem}
-      @media (max-width:520px){h1{font-size:1.6rem}}
+      /* Parchment / Harry Potter-inspired theme (no copyrighted imagery) */
+      :root{--paper:#f7ecd6;--ink:#2b2118;--gold:#c59d46;--accent:#2a4b3a}
+      html,body{height:100%;margin:0;background:linear-gradient(180deg,#efe3c9 0%,#fdfaf6 100%);font-family: 'Georgia', serif;color:var(--ink)}
+      .page{max-width:940px;margin:3rem auto;padding:2rem;background:linear-gradient(180deg,rgba(255,255,255,0.6),rgba(255,255,255,0.4));box-shadow:0 10px 40px rgba(0,0,0,0.08);border-radius:12px}
+      header{display:flex;align-items:center;gap:1rem}
+      .crest{width:72px;height:72px;border-radius:12px;background:linear-gradient(135deg,var(--gold),#f3e0a6);display:grid;place-items:center;font-weight:700;color:var(--ink);box-shadow:inset 0 -6px 12px rgba(0,0,0,0.06)}
+      h1{margin:0;font-family: 'Palatino Linotype','Times New Roman',serif;font-size:2.1rem;letter-spacing:0.5px}
+      p.lead{margin:0.4rem 0 0;color:#4a3f37}
+
+      .timeline{position:relative;margin-top:2rem;padding:1rem 0}
+      .line{position:absolute;left:50%;width:4px;background:linear-gradient(var(--gold),#b07e2f);top:0;bottom:0;margin-left:-2px;border-radius:2px}
+      .entry{position:relative;width:48%;padding:1rem 1.25rem;border-radius:8px;background:rgba(255,255,255,0.75);box-shadow:0 4px 20px rgba(0,0,0,0.04);margin:1rem 0}
+      .entry .date{font-weight:700;color:var(--accent);margin-bottom:.35rem}
+      .left{left:0;margin-right:2%}
+      .right{left:52%}
+      .entry img{max-width:100%;border-radius:6px;margin-top:.5rem}
+      .entry iframe{width:100%;height:300px;border-radius:6px;margin-top:.5rem}
+      .meta{font-size:.95rem;color:#3f352e}
+
+      .controls{margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap}
+      .btn{background:var(--accent);color:white;padding:.45rem .7rem;border-radius:8px;border:0;cursor:pointer;font-weight:600}
+      .muted{background:#fff;border:1px solid #eee;color:#444}
+
+      footer{margin-top:2rem;color:#6b5b4a;font-size:.95rem}
+
+      @media (max-width:900px){
+        .line{left:8px}
+        .entry{width:100%;left:24px}
+        .right{left:24px}
+      }
+
+      /* small ornament */
+      .ornament{position:absolute;right:12px;top:12px;color:var(--gold);font-size:20px;opacity:.9}
     </style>
   </head>
   <body>
-    <div class="card">
-      <div class="confetti" id="confetti"></div>
+    <div class="page">
       <header>
-        <h1 id="title">Happy Birthday!</h1>
-        <p class="big" id="subtitle">Wishing you a day filled with joy, cake, and surprises 🎂</p>
+        <div class="crest">K</div>
+        <div>
+          <h1>Happy Birthday — Timeline</h1>
+          <p class="lead">A timeline of memories. Click an item to expand media. This page uses public image/video links or local assets in <code>assets/</code>.</p>
+        </div>
       </header>
 
-      <main>
-        <p id="message">This site is a simple birthday page you can personalize — change the name and message below, then commit to the repo to update the live site.</p>
+      <div class="timeline" id="timeline">
+        <div class="line"></div>
+        <div class="ornament">✦</div>
+        <!-- Entries are inserted here -->
+      </div>
 
-        <div class="controls">
-          <label>
-            Name: <input id="nameInput" type="text" placeholder="Friend's name" />
-          </label>
-          <label>
-            Message: <input id="msgInput" type="text" placeholder="A short birthday wish" style="width:320px" />
-          </label>
-          <button id="applyBtn">Apply</button>
-          <button id="partyBtn">Throw Confetti</button>
-        </div>
+      <div class="controls">
+        <button class="btn" id="confettiBtn">Throw Confetti</button>
+        <button class="btn muted" id="editInstructions">How to add entries</button>
+      </div>
 
-        <footer>
-          Tip: Add a CNAME file for a custom domain or edit this file in the repo to customize permanently.
-        </footer>
-      </main>
+      <footer>
+        Tip: To add or update entries, edit <code>data/timeline.json</code> in the repo. Use image URLs, YouTube/Vimeo links, or local files under <code>assets/images/</code> and <code>assets/videos/</code>.
+      </footer>
     </div>
 
     <script>
-      // Simple confetti generator (emoji-based)
-      function throwConfetti(times=50){
-        const container = document.getElementById('confetti');
-        for(let i=0;i<times;i++){
-          const el = document.createElement('div');
-          el.textContent = ['🎉','🎂','🎈','✨'][Math.floor(Math.random()*4)];
-          Object.assign(el.style,{position:'absolute',left:Math.random()*100+'%',top:(-10 - Math.random()*20)+'px',fontSize:(12+Math.random()*28)+'px',opacity:0,transform:'translateY(0)',transition:'transform 2.5s cubic-bezier(.2,.8,.2,1),opacity .8s'});
-          container.appendChild(el);
-          requestAnimationFrame(()=>{
-            el.style.opacity = 1;
-            el.style.transform = `translateY(${80 + Math.random()*120}vh) rotate(${Math.random()*720}deg)`;
-          });
-          setTimeout(()=>el.remove(),3000 + Math.random()*1000);
+      // Fetch timeline JSON and render entries
+      async function loadTimeline(){
+        try{
+          const res = await fetch('data/timeline.json', {cache: 'no-store'});
+          if(!res.ok) throw new Error('Timeline data not found');
+          const data = await res.json();
+          renderTimeline(data.items || []);
+        }catch(err){
+          const el = document.getElementById('timeline');
+          el.insertAdjacentHTML('beforeend', `<p style="padding:1rem;color:#8a7260">Could not load timeline data: ${err.message}. Check <code>data/timeline.json</code>.</p>`);
         }
       }
 
-      document.getElementById('partyBtn').addEventListener('click',()=>throwConfetti(90));
-      document.getElementById('applyBtn').addEventListener('click',()=>{
-        const name = document.getElementById('nameInput').value.trim();
-        const msg = document.getElementById('msgInput').value.trim();
-        const title = name ? `Happy Birthday, ${name}!` : 'Happy Birthday!';
-        document.getElementById('title').textContent = title;
-        document.getElementById('subtitle').textContent = msg || 'Wishing you a day filled with joy, cake, and surprises 🎂';
+      function renderTimeline(items){
+        const container = document.getElementById('timeline');
+        items.sort((a,b)=> new Date(b.date) - new Date(a.date));
+        items.forEach((it, idx)=>{
+          const side = (idx % 2 === 0) ? 'left' : 'right';
+          const entry = document.createElement('article');
+          entry.className = `entry ${side}`;
+          entry.tabIndex = 0;
+          let mediaHTML = '';
+          if(it.image){
+            mediaHTML += `<img src="${it.image}" alt="${escapeHTML(it.title)} image" loading="lazy">`;
+          }
+          if(it.video){
+            if(isYouTube(it.video)){
+              const v = youtubeEmbed(it.video);
+              mediaHTML += `<iframe src="${v}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+            } else if(isVimeo(it.video)){
+              mediaHTML += `<iframe src="${it.video}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
+            } else {
+              mediaHTML += `<p class="meta">Video: <a href="${it.video}" target="_blank">Open video</a></p>`;
+            }
+          }
+
+          entry.innerHTML = `
+            <div class="date">${escapeHTML(it.date)}</div>
+            <h3>${escapeHTML(it.title)}</h3>
+            <div class="meta">${escapeHTML(it.caption || '')}</div>
+            ${mediaHTML}
+          `;
+
+          // Simple expand on click
+          entry.addEventListener('click', ()=>{
+            entry.style.transform = 'scale(1.01)';
+            setTimeout(()=>entry.style.transform = '', 400);
+          });
+
+          container.appendChild(entry);
+        });
+      }
+
+      function escapeHTML(s){ if(!s) return ''; return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+      function isYouTube(url){ return /youtube|youtu.be/.test(url); }
+      function youtubeEmbed(url){
+        // Accept youtu.be/<id> or youtube.com/watch?v=<id>
+        const idMatch = url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+        const id = idMatch ? idMatch[1] : '';
+        return `https://www.youtube.com/embed/${id}`;
+      }
+      function isVimeo(url){ return /vimeo/.test(url); }
+
+      // Confetti (emoji) reused from earlier page
+      function throwConfetti(times=60){
+        const container = document.createElement('div');
+        Object.assign(container.style,{position:'fixed',inset:0,pointerEvents:'none',zIndex:9999});
+        document.body.appendChild(container);
+        for(let i=0;i<times;i++){
+          const el = document.createElement('div');
+          el.textContent = ['🎉','🎂','🎈','✨'][Math.floor(Math.random()*4)];
+          Object.assign(el.style,{position:'absolute',left:Math.random()*100+'%',top:(-10 - Math.random()*20)+'px',fontSize:(12+Math.random()*36)+'px',opacity:0,transform:'translateY(0)',transition:'transform 2.6s cubic-bezier(.2,.8,.2,1),opacity .8s'});
+          container.appendChild(el);
+          requestAnimationFrame(()=>{ el.style.opacity = 1; el.style.transform = `translateY(${80 + Math.random()*160}vh) rotate(${Math.random()*720}deg)`; });
+          setTimeout(()=>el.remove(),3300 + Math.random()*600);
+        }
+        setTimeout(()=>container.remove(),4000);
+      }
+
+      document.getElementById('confettiBtn').addEventListener('click', ()=>throwConfetti(100));
+      document.getElementById('editInstructions').addEventListener('click', ()=>{
+        alert('To add entries: edit data/timeline.json in the repository. Each item: date (YYYY-MM-DD), title, caption, optional image (URL or assets/images/...), optional video (YouTube/Vimeo URL).');
       });
 
-      // Small accessibility: allow Enter to apply
-      document.getElementById('msgInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('applyBtn').click()});
-      document.getElementById('nameInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('applyBtn').click()});
-
-      // Auto throw a few confetti on load
-      setTimeout(()=>throwConfetti(30),700);
+      loadTimeline();
     </script>
   </body>
 </html>
