@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <!-- Ensure relative paths resolve correctly when served via GitHub Pages -->
+    <base href="/" />
     <title>Happy Birthday — Timeline</title>
     <meta name="description" content="A birthday timeline with a Hogwarts-inspired theme" />
     <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
@@ -88,11 +90,11 @@ html,body{height:100%;margin:0;background:linear-gradient(180deg,#090707 0%,#141
 
         <div class="entry left" id="entry-hero">
           <div class="media">
-            <!-- Responsive image: use absolute raw URLs to ensure image loads -->
+            <!-- Responsive image: use repo-relative paths so Pages serves them correctly -->
             <picture>
-              <source type="image/webp" srcset="https://raw.githubusercontent.com/krupashree1996/krupashree.github.io/main/assets/images/karate_master-opt.webp">
-              <source type="image/jpeg" srcset="https://raw.githubusercontent.com/krupashree1996/krupashree.github.io/main/assets/images/karate_master-opt.jpg">
-              <img src="https://raw.githubusercontent.com/krupashree1996/krupashree.github.io/main/assets/images/karate_master.jpeg" alt="Karate master" loading="lazy" class="hp-hero">
+              <source type="image/webp" srcset="assets/images/karate_master-opt.webp">
+              <source type="image/jpeg" srcset="assets/images/karate_master-opt.jpg">
+              <img src="assets/images/karate_master.jpeg" alt="Karate master" loading="lazy" class="hp-hero">
             </picture>
           </div>
           <div class="hp-caption">A heroic stance — captured and styled for a magical, parchment-like page.</div>
