@@ -2,15 +2,93 @@
   "items": [
     {
       "date": "1996-08-12",
-      "title": "Born",
-      "caption": "Born on August 12, 1996 — the beginning of a wonderful story.",
-      "image": "https://via.placeholder.com/800x500.png?text=Born+Aug+12+1996"
+      "title": "A Healer Is Born",
+      "caption": "Born beneath starlight on August 12, 1996 — the opening verse of a fearless healer's song and a budding emergency medicine sorcerer.",
+      "image": ""
+    },
+    {
+      "date": "1999-06-01",
+      "title": "Starts Schooling at Girton",
+      "caption": "June 1999: Krupa’s magical journey began at Girton, where her first lessons were sprinkled with stardust and curiosity.",
+      "image": ""
     },
     {
       "date": "2004-03-11",
-      "title": "Earned eighth kyu in karate",
-      "caption": "She achieved her eighth kyu in karate on March 11, 2004.",
-      "image": "https://via.placeholder.com/800x500.png?text=8th+Kyu+Karate+Mar+11+2004"
+      "title": "Eighth Kyu — Courage in Practice",
+      "caption": "On March 11, 2004 she earned her eighth kyu — a brave, starlit stance that reads like a bridge in a fearless anthem.",
+      "image": "assets/images/karate_master.jpeg"
+    },
+    {
+      "date": "2004-06-01",
+      "title": "Starts 3rd Standard at J B Vaccha",
+      "caption": "June 2004: she moved to J B Vaccha for 3rd standard, carrying her courage like a spellbook full of new chapters.",
+      "image": ""
+    },
+    {
+      "date": "2005-06-01",
+      "title": "Starts Schooling at SBOA Model",
+      "caption": "Early 2005: Krupa began at SBOA Model, continuing her story with bright ambition and a fearless heart.",
+      "image": ""
+    },
+    {
+      "date": "2012-06-01",
+      "title": "Top of the Class — 10th Triumph",
+      "caption": "June 2012: Krupa aced her 10th like a chart-topping chorus — bright, bold, and unafraid to shimmer.",
+      "image": ""
+    },
+    {
+      "date": "2014-06-01",
+      "title": "Graduation — The Junior College Verse",
+      "caption": "June 2014: she finished 12th with poise, a gentle refrain before the louder anthems of medicine.",
+      "image": ""
+    },
+    {
+      "date": "2020-02-01",
+      "title": "MBBS Complete — White Coat Moment",
+      "caption": "February 2020 marked the day she completed MBBS — a white-coat crescendo, diploma in hand and a brave new chorus of clinical nights ahead.",
+      "image": ""
+    },
+    {
+      "date": "2020-08-01",
+      "title": "Joined Apollo — The Hospital Chapter",
+      "caption": "In August 2020 she joined Apollo, stepping into bustling wards and heroic shifts that read like verses from a resilient anthem.",
+      "image": ""
+    },
+    {
+      "date": "2023-03-01",
+      "title": "MRCEM — Senior Residency",
+      "caption": "2023 saw Krupa claim MRCEM and rise to senior residency — equal parts grit, glory, and midnight shifts that read like verses from a brave ballad.",
+      "image": ""
+    },
+    {
+      "date": "2026-03-01",
+      "title": "FRCEM — Junior Consultant",
+      "caption": "In 2026 she earned FRCEM and stepped into consultant life — the chorus swelling, a confident new stanza in her career anthem.",
+      "image": ""
+    },
+    {
+      "date": "2026-05-18",
+      "title": "Engagement — A Promise in a Magical Era",
+      "caption": "May 18, 2026: Akshay and Krupa said yes to forever, a sparkling engagement moment written like a spellbinding duet.",
+      "image": ""
+    },
+    {
+      "date": "2026-07-11",
+      "title": "Krupashree Aces the OET",
+      "caption": "July 11: Krupashree charmed the OET like a soaring chorus — her voice steady, her confidence fearless.",
+      "image": "assets/images/2026_oet.jpeg"
+    },
+    {
+      "date": "2026-07-14",
+      "title": "Akshay and Krupa get their photos taken at Janal",
+      "caption": "On July 14, 2026, Akshay and Krupa posed together at Janal like a pair of storybook champions, capturing a bright new chapter.",
+      "image": "assets/images/Janal_photo.jpeg"
+    },
+    {
+      "date": "2026-07-27",
+      "title": "Krupa visits Rameshwaram",
+      "caption": "On July 27, Krupa journeyed to Rameshwaram like a traveling physician of light, breathing magic into every coastal breeze.",
+      "image": "assets/images/Rameshwaram.jpeg"
     }
   ]
 }

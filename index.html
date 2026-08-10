@@ -3,25 +3,26 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <!-- Ensure relative paths resolve correctly when served via GitHub Pages -->
-    <base href="/" />
+    <!-- Use relative paths for local preview and GitHub Pages deployment -->
+    <base href="./" />
     <title>Happy Birthday — Timeline</title>
-    <meta name="description" content="A birthday timeline with a Hogwarts-inspired theme" />
+    <meta name="description" content="A Hogwarts-meets-Fearless chronicle of spells, starlit nights, and healing heroics" />
     <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
 
     <!-- Fonts + theme CSS -->
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Cardo:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <style>
 :root{
-  --hp-bg:#0e0b0a;
-  --hp-paper:#efe6cf;
-  --hp-accent:#d4af37; /* slightly warmer gold */
-  --hp-text:#efeae3;
-  --hp-muted:#c9b391;
+  --hp-bg:#f6ead0;
+  --hp-paper:#fff8e6;
+  --hp-accent:#8b5a17;
+  --hp-text:#3e2b17;
+  --hp-muted:#7d643c;
   --max-content-width:1100px;
 }
-html,body{height:100%;margin:0;background:linear-gradient(180deg,#090707 0%,#141212 100%);font-family:Cardo,Georgia,serif;color:var(--hp-text)}
-.page{max-width:var(--max-content-width);margin:2.25rem auto;padding:2rem;background:rgba(255,255,255,0.02);border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.03)}
+*, *::before, *::after{box-sizing:border-box;}
+html,body{min-height:100%;margin:0;background-image:radial-gradient(circle at top left, rgba(255,255,255,0.9), transparent 18%), radial-gradient(circle at bottom right, rgba(237,210,148,0.65), transparent 20%), linear-gradient(rgba(250,237,211,0.88), rgba(235,203,140,0.88)), url('https://upload.wikimedia.org/wikipedia/commons/7/74/Neuschwanstein_Castle_2013.jpg');background-size:cover;background-position:center;background-attachment:fixed;font-family:Cardo,Georgia,serif;color:var(--hp-text);overflow-x:hidden;}
+.page{max-width:var(--max-content-width);margin:2.25rem auto;padding:2rem;background:rgba(255,248,230,0.94);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,0.12);border:1px solid rgba(139,101,64,0.16)}
 .header{display:flex;align-items:center;gap:1rem;margin-bottom:1rem}
 .crest{width:60px;height:60px;display:grid;place-items:center;font-weight:800;color:rgba(255,255,255,0.06);font-family:'Cinzel',serif}
 .header-accent{color:var(--hp-accent);font-weight:700;text-shadow:0 1px 0 rgba(0,0,0,0.6);font-size:1.9rem}
@@ -34,20 +35,25 @@ html,body{height:100%;margin:0;background:linear-gradient(180deg,#090707 0%,#141
 /* Timeline layout */
 .timeline{position:relative;margin-top:1.5rem;padding:1rem 0}
 .line{position:absolute;left:50%;width:6px;background:linear-gradient(#d4af37,#b07e2f);top:0;bottom:0;margin-left:-3px;border-radius:3px;box-shadow:0 2px 6px rgba(0,0,0,0.15)}
-.entry{position:relative;width:44%;padding:1rem 1.25rem;border-radius:10px;background:linear-gradient(180deg,rgba(255,255,255,0.035),rgba(0,0,0,0.06));box-shadow:0 8px 28px rgba(0,0,0,0.32);margin:1rem 0}
-.entry .date{font-weight:700;color:var(--hp-accent);margin-bottom:.35rem}
+.entry{position:relative;width:44%;padding:1.2rem 1.35rem;border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,0.95),rgba(247,220,145,0.95));box-shadow:0 16px 32px rgba(97,67,35,0.18);border:1px solid rgba(139,101,64,0.18);margin:1rem 0}
+.entry .date{font-weight:700;color:var(--hp-accent);margin-bottom:.35rem;letter-spacing:.02em}
 .entry h3{margin:.2rem 0;color:var(--hp-text)}
-.entry .meta{font-size:1.06rem;color:var(--hp-muted);margin-top:.6rem;line-height:1.6}
+.entry .meta{font-size:1.06rem;color:var(--hp-muted);margin-top:.6rem;line-height:1.7}
 .left{left:0;margin-right:6%}
 .right{left:56%}
-.entry .media{margin-top:.6rem}
-.entry img{display:block;width:100%;height:auto;border-radius:8px;object-fit:cover}
+.entry .media{margin-top:.85rem}
+.entry img{display:block;width:100%;height:auto;border-radius:14px;object-fit:cover;border:1px solid rgba(139,101,64,0.12)}
+.entry.clickable{cursor:pointer;}
+.entry.clickable:hover{transform:translateY(-1px);box-shadow:0 18px 38px rgba(97,67,35,0.22)}
+.media-hint{margin-top:.75rem;color:var(--hp-muted);font-size:0.98rem;font-style:italic;text-align:center;user-select:none}
+.media img.hidden{display:none}
+.media img.revealed{display:block;margin-top:.85rem}
 
 /* HERO: make image visually prominent and full-bleed inside card */
-#entry-hero{background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.08));padding:0;border-radius:12px;overflow:hidden}
+#entry-hero{background:linear-gradient(180deg,rgba(255,255,255,0.9),rgba(240,217,155,0.95));padding:0;border-radius:20px;overflow:hidden;border:1px solid rgba(139,101,64,0.22)}
 #entry-hero .media{width:100%}
 #entry-hero img.hp-hero{width:100%;height:520px;object-fit:cover;border-radius:0}
-#entry-hero .hp-caption{border-left:4px solid var(--hp-accent);padding:1rem 1.25rem;margin:0;color:var(--hp-muted);background:linear-gradient(180deg,rgba(0,0,0,0.02),rgba(0,0,0,0.04))}
+#entry-hero .hp-caption{border-left:4px solid var(--hp-accent);padding:1rem 1.35rem;margin:0;color:var(--hp-text);background:rgba(245,235,206,0.9);font-style:italic;letter-spacing:.01em}
 
 /* Controls */
 .controls{margin-top:1.25rem;display:flex;gap:.5rem;align-items:center}
@@ -77,44 +83,31 @@ html,body{height:100%;margin:0;background:linear-gradient(180deg,#090707 0%,#141
       <header class="header">
         <div class="crest">K</div>
         <div>
-          <div class="header-accent">Happy Birthday — Timeline</div>
-          <div class="lead">A magical timeline of moments</div>
+          <div class="header-accent">Enchanted &amp; Fearless Timeline</div>
+          <div class="lead">A Hogwarts-meets-Fearless chronicle of spells, starlit nights, and healing heroics</div>
         </div>
         <div class="header-toolbar">
-          <button id="confettiBtnHeader" class="header-btn" title="Throw confetti">🎉</button>
+          <button id="confettiBtnHeader" class="header-btn" title="Summon confetti">🪄✨</button>
         </div>
       </header>
 
       <div id="timeline" class="timeline">
         <div class="line"></div>
-
-        <div class="entry left" id="entry-hero">
-          <div class="media">
-            <!-- Responsive image: use repo-relative paths so Pages serves them correctly -->
-            <picture>
-              <source type="image/webp" srcset="assets/images/karate_master-opt.webp">
-              <source type="image/jpeg" srcset="assets/images/karate_master-opt.jpg">
-              <img src="assets/images/karate_master.jpeg" alt="Karate master" loading="lazy" class="hp-hero">
-            </picture>
-          </div>
-          <div class="hp-caption">A heroic stance — captured and styled for a magical, parchment-like page.</div>
-        </div>
-
         <!-- Entries will be appended here by the script -->
       </div>
 
       <div class="controls">
-        <button class="btn" id="confettiBtn">Throw Confetti</button>
+        <button class="btn" id="confettiBtn">Summon Glitter</button>
         <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
-          <div class="toggle-pill" id="orderLabel">Order: <strong id="orderState">Oldest</strong></div>
-          <button id="orderToggle" class="btn btn-ghost">Toggle Order</button>
+          <div class="toggle-pill" id="orderLabel">Order: <strong id="orderState">Chronological</strong></div>
+          <button id="orderToggle" class="btn btn-ghost">Flip Timeline</button>
         </div>
       </div>
     </div>
 
     <script>
-    // Small improvements: clear previous entries (except hero) and support ordering toggle
-    let newestFirst = sessionStorage.getItem('timelineNewest') === 'true';
+    // Small improvements: clear previous entries (except hero) and start in chronological order
+    let newestFirst = false;
 
     async function loadTimeline(){
       try{
@@ -133,19 +126,27 @@ html,body{height:100%;margin:0;background:linear-gradient(180deg,#090707 0%,#141
       // remove existing entries (except hero)
       Array.from(container.querySelectorAll('.entry')).forEach(e=>{ if(e.id !== 'entry-hero') e.remove(); });
 
-      // sort
-      items.sort((a,b)=> newestFirst ? new Date(b.date) - new Date(a.date) : new Date(a.date) - new Date(b.date));
+      // sort by actual date value
+      items.sort((a,b)=> {
+        const da = Date.parse(a.date);
+        const db = Date.parse(b.date);
+        return newestFirst ? db - da : da - db;
+      });
 
       // append
       items.forEach((it, idx)=>{
         const side = (idx % 2 === 0) ? 'left' : 'right';
         const entry = document.createElement('article');
-        entry.className = `entry ${side}`;
+        const entryClasses = ['entry', side];
+        if(it.image) entryClasses.push('clickable');
+        entry.className = entryClasses.join(' ');
         entry.tabIndex = 0;
 
         let mediaHTML = '';
         if(it.image){
-          mediaHTML += `<div class="media"><img src="${escapeHTML(it.image)}" alt="${escapeHTML(it.title||'')}"></div>`;
+          const safeSrc = escapeHTML(it.image);
+          const safeAlt = escapeHTML(it.title||'Image');
+          mediaHTML += `<div class="media"><img class="hidden" data-src="${safeSrc}" alt="${safeAlt}"></div><div class="media-hint">Click anywhere in this card to reveal the image</div>`;
         }
         if(it.video){
           if(isYouTube(it.video)){
@@ -158,18 +159,60 @@ html,body{height:100%;margin:0;background:linear-gradient(180deg,#090707 0%,#141
           }
         }
 
-        entry.innerHTML = `\n          <div class="date">${escapeHTML(it.date)}</div>\n          <h3>${escapeHTML(it.title)}</h3>\n          <div class="meta">${escapeHTML(it.caption || '')}</div>\n          ${mediaHTML}\n        `;
+        entry.innerHTML = `\n          <div class="date">${escapeHTML(formatDate(it.date))}</div>\n          <h3>${escapeHTML(it.title)}</h3>\n          <div class="meta">${escapeHTML(it.caption || '')}</div>\n          ${mediaHTML}\n        `;
         container.appendChild(entry);
+
+        if(it.image){
+          const toggleImage = ()=>{
+            const img = entry.querySelector('img');
+            if(!img) return;
+            const isHidden = img.classList.contains('hidden');
+            if(isHidden){
+              img.src = img.dataset.src;
+              img.classList.remove('hidden');
+              img.classList.add('revealed');
+              entry.setAttribute('aria-expanded','true');
+            } else {
+              img.classList.remove('revealed');
+              img.classList.add('hidden');
+              img.src = '';
+              entry.setAttribute('aria-expanded','false');
+            }
+          };
+
+          entry.addEventListener('click', (event)=>{
+            if(event.target.closest('.media') || event.target.closest('.media-hint') || event.target === entry || event.target.closest('article')){
+              toggleImage();
+            }
+          });
+
+          entry.addEventListener('keydown', (event)=>{
+            if(event.key === 'Enter' || event.key === ' '){
+              event.preventDefault();
+              toggleImage();
+            }
+          });
+        }
 
         // small click feedback
         entry.addEventListener('click', ()=>{ entry.style.transform = 'scale(1.01)'; setTimeout(()=>entry.style.transform=''); });
       });
 
-      // update order label
-      document.getElementById('orderState').textContent = newestFirst ? 'Newest' : 'Oldest';
+      // update order label (more descriptive)
+      document.getElementById('orderState').textContent = newestFirst ? 'Reverse Chronological' : 'Chronological';
     }
 
     function escapeHTML(s){ if(!s) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+    function formatDate(s){
+      if(!s) return '';
+      const t = Date.parse(s);
+      if(isNaN(t)) return escapeHTML(s);
+      const d = new Date(t);
+      const day = d.getUTCDate();
+      const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      if(day === 1) return `${d.getUTCFullYear()}-${monthNames[d.getUTCMonth()]}`;
+      return d.toISOString().slice(0,10);
+    }
     function isYouTube(url){ return /youtube|youtu.be/.test(url); }
     function youTubeEmbed(v){ const idMatch = v.match(/(?:v=|v\/|embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/); const id = idMatch? idMatch[1] : ''; return `https://www.youtube.com/embed/${id}`; }
     function isVimeo(url){ return /vimeo/.test(url); }
@@ -193,7 +236,7 @@ html,body{height:100%;margin:0;background:linear-gradient(180deg,#090707 0%,#141
     document.getElementById('confettiBtnHeader')?.addEventListener('click', ()=>throwConfetti(120));
 
     document.getElementById('orderToggle').addEventListener('click', ()=>{
-      newestFirst = !newestFirst; sessionStorage.setItem('timelineNewest', String(newestFirst)); renderTimeline(window._timelineItems || []);
+      newestFirst = !newestFirst; renderTimeline(window._timelineItems || []);
     });
 
     // Load and cache items onto window so toggle is instant
