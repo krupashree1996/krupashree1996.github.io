@@ -831,6 +831,8 @@
 
     var defLots = Calc.defaultLots(ipo.category);
     var perPan = ipo.bandHi > 0 && ipo.shareLot ? Math.round(ipo.bandHi * ipo.shareLot * defLots) : 0;
+    var applied = {};
+    DATA.applications.forEach(function (a) { if (a.ipoId === ipo.id) applied[a.panId] = true; });
     form.appendChild(el('p', 'hint', 'Default per PAN: ' + Calc.price(ipo.bandHi) + ' \u00D7 ' +
       Calc.fmtNum(ipo.shareLot || 0) + ' sh/lot \u00D7 ' + defLots + ' lot = ' + Calc.inr(perPan) +
       '. Tick the PAN holder(s) you applied under. Fine-tune lots/price later via edit.'));
@@ -838,13 +840,15 @@
 
     var panPick = el('div', 'panPick');
     DATA.pans.forEach(function (p) {
+      var dup = !!applied[p.id];
       var lab = el('label', 'panOpt');
       var c = document.createElement('input');
       c.type = 'checkbox';
       c.id = 'panCk' + p.id;
+      if (dup) c.disabled = true;
       c.onchange = updateTotal;
       lab.appendChild(c);
-      lab.appendChild(el('span', '', holderLabel(p)));
+      lab.appendChild(el('span', '', holderLabel(p) + (dup ? ' \u2014 already applied' : '')));
       panPick.appendChild(lab);
     });
     form.appendChild(field('Apply under', panPick, true));
@@ -903,6 +907,10 @@
     rec.notes = val('aNotes');
     var problems = Calc.validApp(rec, ipo);
     if (problems.length) { err.textContent = problems.join(' '); return; }
+    if (Calc.hasApp(DATA.applications, rec.ipoId, rec.panId, edit ? rec.id : null)) {
+      err.textContent = 'This PAN already has an application for this IPO.';
+      return;
+    }
     if (edit) {
       for (var i = 0; i < DATA.applications.length; i++) if (DATA.applications[i].id === rec.id) { DATA.applications[i] = rec; break; }
     } else {
