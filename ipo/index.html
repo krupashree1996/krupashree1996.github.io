@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a7d6b">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>ipo</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="topbar">
+  <div class="brand">ipo&#183;tracker</div>
+  <div id="profilechip" class="chip" role="button" tabindex="0" aria-label="Edit profile and PAN holders" title="Click to edit profile and PAN holders"></div>
+  <select id="panSel" class="chipsel" title="Filter by PAN card holder"></select>
+  <div id="sumChips" class="chips"></div>
+  <div class="spacer"></div>
+  <button id="btnFetch" class="ghost" title="Fetch the latest IPO data (dates, subscription) from the built-in default NSE+BSE snapshot, or from the calendar URL you set in Profile (requires internet); everything else works offline. Nothing is sent with the request.">Fetch Online</button>
+  <button id="btnSave" class="ghost" title="Download data/bundle.js with your current data to keep this folder portable">Save bundle</button>
+  <button id="btnImport" class="ghost" title="Load a previously saved bundle file">Open bundle</button>
+</header>
+
+<nav id="tabs" role="tablist">
+  <button class="tab now" data-tab="cal" role="tab">IPO calendar</button>
+  <button class="tab" data-tab="apps" role="tab">Applications</button>
+  <button class="tab" data-tab="hist" role="tab">History&nbsp;&amp;&nbsp;P&amp;L</button>
+</nav>
+
+<div id="panBar" class="panbar" hidden></div>
+
+<main id="app">
+  <section id="sec-cal" class="tabsec"></section>
+  <section id="sec-apps" class="tabsec" hidden></section>
+  <section id="sec-hist" class="tabsec" hidden></section>
+</main>
+
+<input type="file" id="importFile" accept=".js,.json" class="sr-only" aria-hidden="true">
+<div id="modal" aria-hidden="true"><div id="modalBox" role="dialog" aria-modal="true"></div></div>
+<div id="toasts"></div>
+
+<script src="calc.js"></script>
+<script src="data/bundle.js"></script>
+<script src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
+</script>
+</body>
+</html>

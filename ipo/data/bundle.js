@@ -1,0 +1,1 @@
+window.DATA = { profile: { name: '' }, pans: [], meta: {}, ipos: [], applications: [] };
