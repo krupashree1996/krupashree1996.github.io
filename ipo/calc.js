@@ -73,8 +73,11 @@ var Calc = (function () {
     return (ipos || []).slice().sort(function (a, b) {
       var ra = calRank(a, today), rb = calRank(b, today);
       if (ra !== rb) return ra - rb;
-      var da = a.openDate || '9999-99-99', db = b.openDate || '9999-99-99';
-      if (da !== db) return da < db ? -1 : 1;
+      var dir = (ra === 3 || ra === 4) ? -1 : 1;
+      var hasDa = !!a.openDate, hasDb = !!b.openDate;
+      if (hasDa !== hasDb) return hasDa ? -1 : 1;
+      if (!hasDa) return (a.name || '').localeCompare(b.name || '');
+      if (a.openDate !== b.openDate) return (a.openDate < b.openDate ? -1 : 1) * dir;
       return (a.name || '').localeCompare(b.name || '');
     });
   }
@@ -93,7 +96,10 @@ var Calc = (function () {
   }
   function lienAmount(app, ipo) {
     if (!ipo || !ipo.shareLot) return 0;
-    return Math.round(qtyOf(app, ipo) * offerPrice(app, ipo));
+    if (app.status === 'rejected') return 0;
+    var qty = app.status === 'allotted' ? sharesOf(app, ipo) : qtyOf(app, ipo);
+    if (!(qty > 0)) return 0;
+    return Math.round(qty * offerPrice(app, ipo));
   }
   function effPrice(app, ipo) {
     var p = app.soldPrice;
@@ -192,6 +198,12 @@ var Calc = (function () {
     if (!(o.name || '').trim()) e.push('Holder name is required.');
     return e;
   }
+  function hasApp(apps, ipoId, panId, excludeId) {
+    return (apps || []).some(function (a) {
+      if (excludeId && a.id === excludeId) return false;
+      return a.ipoId === ipoId && a.panId === panId;
+    });
+  }
   function cleanupDue(ipo, apps, days, today) {
     if (!ipo) return false;
     for (var i = 0; i < (apps || []).length; i++) {
@@ -230,7 +242,7 @@ var Calc = (function () {
     uid: uid, ipoStatus: ipoStatus, calRank: calRank, sortIpos: sortIpos, sharesOf: sharesOf, qtyOf: qtyOf,
     offerPrice: offerPrice, lienAmount: lienAmount, effPrice: effPrice,
     pnlOf: pnlOf, appAmount: appAmount, minAmount: minAmount, defaultLots: defaultLots, allotmentDue: allotmentDue, normRemote: normRemote,
-    validIpo: validIpo, validApp: validApp, normPan: normPan, validPan: validPan,
+    validIpo: validIpo, validApp: validApp, normPan: normPan, validPan: validPan, hasApp: hasApp,
     cleanupDue: cleanupDue, cleanupCandidates: cleanupCandidates,
     ipoSummary: ipoSummary
   };
