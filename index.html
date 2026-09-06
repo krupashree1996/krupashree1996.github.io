@@ -32,6 +32,15 @@ html,body{min-height:100%;margin:0;background-image:radial-gradient(circle at to
 .header-toolbar{margin-left:auto;display:flex;gap:.5rem;align-items:center}
 .header-btn{padding:.35rem .5rem;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--hp-text);cursor:pointer}
 
+/* Tools dropdown in the header */
+.dropdown{position:relative}
+.dropdown-menu{position:absolute;right:0;top:calc(100% + 6px);min-width:220px;display:none;flex-direction:column;background:rgba(255,248,230,0.98);border:1px solid rgba(139,101,64,0.2);border-radius:10px;box-shadow:0 12px 32px rgba(97,67,35,0.18);padding:.35rem;z-index:50}
+.dropdown.open .dropdown-menu{display:flex}
+.dropdown-item{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem;padding:.5rem .65rem;border-radius:6px;color:var(--hp-text);text-decoration:none;white-space:nowrap}
+.dropdown-item:hover{background:rgba(139,101,64,0.12)}
+.dropdown-sub{color:var(--hp-muted);font-size:.82rem;font-style:italic}
+.dropdown-item .dropdown-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
+
 /* Timeline layout */
 .timeline{position:relative;margin-top:1.5rem;padding:1rem 0}
 .line{position:absolute;left:50%;width:6px;background:linear-gradient(#d4af37,#b07e2f);top:0;bottom:0;margin-left:-3px;border-radius:3px;box-shadow:0 2px 6px rgba(0,0,0,0.15)}
@@ -87,8 +96,13 @@ html,body{min-height:100%;margin:0;background-image:radial-gradient(circle at to
           <div class="lead">A Hogwarts-meets-Fearless chronicle of spells, starlit nights, and healing heroics</div>
         </div>
         <div class="header-toolbar">
+          <div class="dropdown" id="toolsDropdown">
+            <button id="toolsBtn" class="header-btn" aria-haspopup="true" aria-expanded="false">⚙️ Tools ▾</button>
+            <div class="dropdown-menu" role="menu">
+              <a class="dropdown-item" role="menuitem" href="./pdf-tools.html">📄 PDF Tools <span class="dropdown-sub">Merge &amp; compress</span></a>
+            </div>
+          </div>
           <button id="confettiBtnHeader" class="header-btn" title="Summon confetti">🪄✨</button>
-          <a class="header-btn" href="./pdf-tools.html" title="Merge & Compress PDFs">📄 PDF Tools</a>
         </div>
       </header>
 
@@ -249,6 +263,28 @@ html,body{min-height:100%;margin:0;background-image:radial-gradient(circle at to
         } else { loadTimeline(); }
       }catch(e){ loadTimeline(); }
     })();
+
+    // Tools dropdown
+    const toolsDropdown = document.getElementById('toolsDropdown');
+    const toolsBtn = document.getElementById('toolsBtn');
+    toolsBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const open = toolsDropdown.classList.toggle('open');
+      toolsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    document.addEventListener('click', (e)=>{
+      if(!toolsDropdown.contains(e.target)){
+        toolsDropdown.classList.remove('open');
+        toolsBtn.setAttribute('aria-expanded','false');
+      }
+    });
+    document.addEventListener('keydown', (e)=>{
+      if(e.key === 'Escape'){
+        toolsDropdown.classList.remove('open');
+        toolsBtn.setAttribute('aria-expanded','false');
+        toolsBtn.focus();
+      }
+    });
     </script>
   </body>
 </html>
