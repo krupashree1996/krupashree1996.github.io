@@ -4,7 +4,7 @@
   var LS = 'ipo.tracker.session';
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
-  var DEFAULT_CAL_URL = 'https://vinodscode.github.io/ipo-exchange-scrape/data/ipos.json';
+  var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
