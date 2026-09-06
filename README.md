@@ -6,6 +6,7 @@ Life and tools of Krupashree — a personal site hosted on GitHub Pages.
 
 - **Home** — an enchanted, Hogwarts-meets-Fearless birthday timeline at https://krupashree1996.github.io/
 - **PDF Tools** — a single-file, offline PDF toolkit for merging and compressing PDFs, at [pdf-tools.html](pdf-tools.html)
+- **IPO Tracker** — an offline PWA for tracking Indian IPO applications and allotments, at [ipo/](ipo/)
 
 ## Tech
 
