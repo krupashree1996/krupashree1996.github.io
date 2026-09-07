@@ -594,6 +594,75 @@ const Calc = (function () {
     return checks;
   }
 
+  function p2(n) { return (n < 10 ? '0' : '') + n; }
+  function fyOfYear(y) { return p2(y % 100) + '-' + p2((y + 1) % 100); }
+  /* Half-year the date falls in: FY starts Apr, H1 = Apr-Sep, H2 = Oct-Mar. */
+  function hyOfDate(d) {
+    var m = String(d || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (!m) return '';
+    var mm = +m[2], y = +m[3];
+    var fyStart = (mm >= 4) ? y : y - 1;
+    var half = (mm >= 4 && mm <= 9) ? 1 : 2;
+    return fyOfYear(fyStart) + 'H' + half;
+  }
+  function hyKey(h) {
+    var m = String(h || '').match(/^(\d{2})-(\d{2})H([12])$/);
+    if (!m) return -1;
+    return (2000 + +m[1]) * 2 + +m[3];
+  }
+  function hyNext(h) {
+    var m = String(h || '').match(/^(\d{2})-(\d{2})H(1|2)$/);
+    if (!m) return '';
+    if (m[3] === '1') return m[1] + '-' + m[2] + 'H2';
+    return fyOfYear(2001 + +m[1]) + 'H1';
+  }
+  function hyPrev(h) {
+    var m = String(h || '').match(/^(\d{2})-(\d{2})H(1|2)$/);
+    if (!m) return '';
+    if (m[3] === '2') return m[1] + '-' + m[2] + 'H1';
+    return fyOfYear(1999 + +m[1]) + 'H2';
+  }
+  function hyLabel(h) {
+    var m = String(h || '').match(/^(\d{2})-(\d{2})H([12])$/);
+    return m ? ('H' + m[3] + ' ' + m[1] + '-' + m[2]) : '—';
+  }
+  function hyCurrent() {
+    var d = new Date();
+    return hyOfDate(p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + d.getFullYear());
+  }
+  /* Best-effort half-year for a parsed receipt. PT installments carry the
+   * half explicitly ("I/25-26" = H1, "II/25-26" = H2); CMWSSB eRcpt items only
+   * carry the FY ("24-25/CA"), so the half defaults to the paid date's half. */
+  function hyDetect(obj) {
+    if (!obj) return '';
+    var fy = '', half = 0;
+    (obj.items || []).forEach(function (it) {
+      var t = String(it && it.term || '');
+      var m = t.match(/^([IVX]+)\/(\d{2})-(\d{2})\b/);
+      if (m) {
+        var nr = m[1].length;
+        if (nr === 1 || nr === 2) { fy = m[2] + '-' + m[3]; half = nr; }
+        return;
+      }
+      m = t.match(/^(\d{2})-(\d{2})\//);
+      if (m && !fy) fy = m[1] + '-' + m[2];
+    });
+    if (fy && half) return fy + 'H' + half;
+    var d = hyOfDate(obj.paidDate);
+    if (fy && d) return fy + 'H' + d.charAt(d.length - 1);
+    return d;
+  }
+  function hyOptions() {
+    var curKey = hyKey(hyCurrent());
+    var out = [''];
+    for (var k = curKey - 2; k <= curKey + 4; k++) {
+      var base = Math.floor((k - 1) / 2);
+      var half = ((k - 1) % 2) + 1;
+      out.push(fyOfYear(base) + 'H' + half);
+    }
+    return out;
+  }
+
   function duplicatesFor(records, periodFrom, periodTo, selfId) {
     var out = [];
     (records || []).forEach(function (r) {
@@ -675,6 +744,7 @@ const Calc = (function () {
     r.consumerName = r.consumerName == null ? '' : String(r.consumerName);
     r.periodFrom = r.periodFrom == null ? '' : String(r.periodFrom);
     r.periodTo = r.periodTo == null ? '' : String(r.periodTo);
+    if (isNonElec) r.hy = r.hy == null ? '' : String(r.hy);
     r.status = (r.status === 'paid' || (r.paidOn && (r.paidOn.date || r.paidOn.receiptNo))) ? 'paid' : (r.status || 'unpaid');
     if (!Array.isArray(r.accepted)) r.accepted = [];
     if (!Array.isArray(r.docs)) r.docs = [];
@@ -779,6 +849,14 @@ const Calc = (function () {
     statusSummary: statusSummary,
     fmtMoney: fmtMoney,
     fmtNum: fmtNum,
+    hyOfDate: hyOfDate,
+    hyKey: hyKey,
+    hyNext: hyNext,
+    hyPrev: hyPrev,
+    hyLabel: hyLabel,
+    hyCurrent: hyCurrent,
+    hyDetect: hyDetect,
+    hyOptions: hyOptions,
     SCHEMA_VERSION: SCHEMA_VERSION,
     migrateBundle: migrateBundle,
     BLOCKING: BLOCKING

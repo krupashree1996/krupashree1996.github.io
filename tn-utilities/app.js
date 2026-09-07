@@ -221,7 +221,7 @@
   }
 
   /* ---------- state machine ---------- */
-  var S = { phase: 'landing', bc: null, bChecks: null, bx: {}, pending: null, later: null,     rc: null, rx: {}, manualRcpt: null, u: null, uChecks: null, ux: {}, _ufile: null };
+  var S = { phase: 'landing', bc: null, bChecks: null, bx: {}, pending: null, later: null,     rc: null, rx: {}, manualRcpt: null, u: null, uChecks: null, ux: {}, _ufile: null, uhy: '' };
 
   /* ---------- utility selection (elec / water / pt) ---------- */
   function curUtil() {
@@ -810,6 +810,7 @@
       var tr = document.createElement('tr');
       var tdP = document.createElement('td');
       tdP.textContent = shortDate(r.periodTo) + (r.paidOn && r.paidOn.time ? ' · ' + r.paidOn.time : '');
+      if (r.hy) tdP.appendChild(el('span', 'hychip', Calc.hyLabel(r.hy)));
       if (r.consumerName) tdP.title = 'Consumer: ' + r.consumerName;
       var tdA = document.createElement('td');
       tdA.className = 'num'; tdA.textContent = fmtMoney(r.totalPayable);
@@ -824,10 +825,13 @@
       view.onclick = function () { viewRec(r); };
       var at = el('button', 'mini', 'attach');
       at.onclick = function () { attachTo(r); };
+      var hy = el('button', 'mini', 'hy');
+      hy.title = 'Set which half-year this payment covers';
+      hy.onclick = function () { editUtilHy(r); };
       var del = el('button', 'mini danger', 'del');
       del.title = 'Delete this record (and its stored documents)';
       del.onclick = function () { deleteRecord(r); };
-      x.appendChild(view); x.appendChild(at); x.appendChild(del);
+      x.appendChild(view); x.appendChild(at); x.appendChild(hy); x.appendChild(del);
       tr.appendChild(tdP); tr.appendChild(tdA); tr.appendChild(tdR); tr.appendChild(s); tr.appendChild(x);
       tb.appendChild(tr);
     });
@@ -836,6 +840,45 @@
     $('summaryRow').appendChild(kvRow('Receipts', recs.length));
     $('summaryRow').appendChild(kvRow('Spent', fmtMoney(tot)));
     $('summaryRow').appendChild(kvRow('Unpaid', 0));
+    var pt = '';
+    recs.forEach(function (r) { if (r.hy && Calc.hyKey(r.hy) > Calc.hyKey(pt)) pt = r.hy; });
+    var due = pt ? Calc.hyNext(pt) : Calc.hyCurrent();
+    var dueOverdue = Calc.hyKey(due) <= Calc.hyKey(Calc.hyCurrent());
+    var ptRow = el('div');
+    ptRow.appendChild(el('b', '', 'Paid to'));
+    ptRow.appendChild(el('span', '', pt ? Calc.hyLabel(pt) : '—'));
+    $('summaryRow').appendChild(ptRow);
+    var dueRow = el('div');
+    dueRow.appendChild(el('b', '', 'Next due'));
+    dueRow.appendChild(el('span', dueOverdue ? 'badge warn' : 'badge pass', Calc.hyLabel(due) + (dueOverdue ? ' — due now' : '')));
+    $('summaryRow').appendChild(dueRow);
+  }
+  function editUtilHy(r) {
+    var m = el('div', 'card');
+    m.appendChild(el('h3', '', 'Half-year coverage'));
+    m.appendChild(el('p', 'muted', 'Which half-year does this ' + (r.type === 'water' ? 'water' : 'property tax') + ' payment cover? This drives the paid-through / next-due summary.'));
+    var sel = el('select', '');
+    var hyOpts = Calc.hyOptions();
+    if (r.hy && hyOpts.indexOf(r.hy) < 0) hyOpts.push(r.hy);
+    hyOpts.forEach(function (h) {
+      var op = document.createElement('option');
+      op.value = h;
+      op.textContent = h ? Calc.hyLabel(h) : 'Paid for next half-year?';
+      sel.appendChild(op);
+    });
+    sel.value = r.hy || '';
+    var act = el('div', 'actions');
+    var save = el('button', 'primary', 'Save');
+    save.onclick = function () {
+      r.hy = sel.value;
+      persist(); renderTable();
+      closeModal(); toast('Half-year updated.');
+    };
+    var cancel = el('button', 'ghost', 'Cancel');
+    cancel.onclick = function () { closeModal(); };
+    act.appendChild(save); act.appendChild(cancel);
+    m.appendChild(sel); m.appendChild(act);
+    modal(m, true);
   }
   function attachTo(r) {
     var inp = document.createElement('input');
@@ -1141,6 +1184,7 @@
     S.rc = null; S.rx = {};
     S.u = p;
     S.ux = {};
+    S.uhy = '';
     renderStage();
   }
   function renderUtil() {
@@ -1165,6 +1209,20 @@
     if (o.paidTotal != null && o.paidTotal !== o.amount) kv.appendChild(kvRow('Paid after adjustments', fmtMoney(o.paidTotal)));
     if (o.mode) kv.appendChild(kvRow('Payment mode', o.mode));
     $('vuExtract').appendChild(kv);
+
+    var hySel = $('vuHy');
+    hySel.innerHTML = '';
+    var detHy = S.uhy || Calc.hyDetect(o);
+    var hyOpts = Calc.hyOptions();
+    if (detHy && hyOpts.indexOf(detHy) < 0) hyOpts.push(detHy);
+    hyOpts.forEach(function (h) {
+      var op = document.createElement('option');
+      op.value = h;
+      op.textContent = h ? Calc.hyLabel(h) : 'Paid for next half-year?';
+      hySel.appendChild(op);
+    });
+    hySel.value = detHy || '';
+    hySel.onchange = function () { S.uhy = hySel.value === '' ? '' : hySel.options[hySel.selectedIndex].value; };
 
     var conn = curConn(u.kind);
     var ctx = { usedReceiptNo: utilUsedSet(u.kind) };
@@ -1243,6 +1301,7 @@
       cls: o.cls,
       category: o.category,
       terms: (o.items || []).map(function (it) { return { term: it.term, amount: it.amount }; }),
+      hy: S.uhy || Calc.hyDetect(o),
       layout: o.layout || '',
       status: 'paid',
       paidOn: { date: o.paidDate || '', time: o.paidTime || '', receiptNo: o.receiptNo || '', amount: o.amount, portal: o.portal || '', ocr: !!o._ocr },
@@ -1261,7 +1320,7 @@
       }, function () { toast('Could not save the receipt PDF locally — the attachment may be missing.', 'warn'); });
     }
     DATA.records.unshift(rec);
-    S.u = null; S.ux = {}; S._ufile = null;
+    S.u = null; S.ux = {}; S.uhy = ''; S._ufile = null;
     persist();
     renderAll();
     toast((isW ? 'Water receipt' : 'Property tax receipt') + ' recorded as paid (' + fmtMoney(rec.totalPayable) + ').', 'ok');

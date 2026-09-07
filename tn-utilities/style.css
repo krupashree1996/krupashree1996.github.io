@@ -28,6 +28,11 @@ button.danger{color:var(--bad)}
   border-radius:999px;padding:2px 8px;max-width:240px}
 .tchip{display:inline-block;background:var(--info-bg);color:var(--info);border:1px solid #b9d9ff;
   border-radius:999px;font-size:10px;padding:0 6px;margin-left:6px;font-weight:600}
+.hychip{display:inline-block;background:var(--warn-bg);color:var(--warn);border:1px solid #f6d365;
+  border-radius:999px;font-size:10px;padding:0 6px;margin-left:6px;font-weight:600}
+.hyWrap{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:13px}
+.hyWrap label{color:var(--muted);font-weight:500;white-space:nowrap}
+.hyWrap select{border:1px solid var(--line);border-radius:8px;padding:5px 8px;font:inherit;flex:1;min-width:0}
 .crow{display:grid;grid-template-columns:120px 1fr 140px auto;gap:6px;align-items:center;grid-column:1 / -1}
 .crow input{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:inherit}
 .crow3{display:grid;grid-template-columns:150px 1fr auto;gap:6px;align-items:center;grid-column:1 / -1}
