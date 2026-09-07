@@ -1074,7 +1074,11 @@
     toast('Parsing receipt…');
     if (/\.pdf$/i.test(file.name)) {
       readFile(file).then(function (p) {
-        if (!p.obj) { toast('Could not read this PDF — no text found (try OCR or a clearer scan).', 'bad'); return; }
+        if (!p.obj) {
+          toast('No text in this PDF — trying OCR…', 'warn');
+          ocr(file).then(ocrThenParse, function (e) { toast('OCR failed: ' + e.message + ' — enter manually.', 'bad'); });
+          return;
+        }
         if (p.kind === 'bill') { toast('That looks like a bill — use Import bill.', 'warn'); return; }
         if (fieldsOf(p.obj).blank) {
           toast('No text in this PDF — trying OCR…', 'warn');
