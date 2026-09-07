@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TN Utilities</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="topbar">
+  <div class="brand">TN&#183;Utilities</div>
+  <div id="profilechip" class="chip" role="button" tabindex="0" aria-label="Edit consumers" title="Click to edit consumers">…</div>
+  <select id="utilSel" class="chipsel" title="Choose utility"><option value="elec">Electricity</option><option value="water">Water</option><option value="pt">Property tax</option></select>
+  <select id="scSel" class="chipsel" title="Choose service connection" style="display:none"></select>
+  <div class="spacer"></div>
+  <button id="btnRates" class="ghost">Tariff</button>
+  <button id="btnSave" class="ghost" title="Download updated data/bundle.js to keep this folder portable">Save bundle</button>
+  <button id="btnImport" class="ghost" title="Load a previously saved bundle file">Open bundle</button>
+</header>
+
+<main id="app">
+  <section id="stepper" class="steps" aria-hidden="true"></section>
+
+  <div id="chartCard" class="card">
+    <h3 id="dTitle">Units per period</h3>
+    <p id="dSub" class="muted small"></p>
+    <div id="chartBox"><canvas id="chart" height="180"></canvas></div>
+  </div>
+
+  <section id="stage">
+    <div id="landing" class="panel">
+      <h2 id="landingTitle">Start with a bill</h2>
+      <p id="landingHint" class="muted">Select a TANGEDCO bill PDF to import and verify.</p>
+      <label id="billDrop" class="drop">
+        <input type="file" id="billFile" accept="application/pdf,.pdf" class="sr-only" aria-label="Import bill PDF">
+        <span><strong>Choose the bill PDF</strong> or drop it here</span>
+      </label>
+      <div id="queueHelp" class="muted small"></div>
+    </div>
+
+    <div id="verifyBill" class="panel" aria-hidden="true">
+      <div class="panelHead">
+        <h2>Verify bill</h2>
+        <span id="vbPeriod" class="chip"></span>
+      </div>
+      <div id="vbExtract" class="kv"></div>
+      <div id="vbChecks"></div>
+      <div class="actions">
+        <button id="vbCommit" class="primary" disabled>Add this bill</button>
+        <button id="vbCancel" class="ghost">Cancel</button>
+      </div>
+    </div>
+
+    <div id="awaitReceipt" class="panel" aria-hidden="true">
+      <h2 id="arTitle">Awaiting payment</h2>
+      <div id="arBill" class="kv"></div>
+      <p class="muted">After paying, upload the receipt PDF (or scan) to mark this bill paid.</p>
+      <div class="actions">
+        <label id="receiptDrop" class="drop small">
+          <input type="file" id="receiptFile" accept="application/pdf,image/*,.pdf,.png,.jpg,.jpeg" class="sr-only" aria-label="Upload receipt file">
+          <span>Upload receipt PDF or scan</span>
+        </label>
+        <button id="btnManualRcpt" class="ghost">Enter receipt manually</button>
+      </div>
+    </div>
+
+    <div id="manualRcpt" class="panel small" aria-hidden="true">
+      <h3>Receipt details (manual)</h3>
+      <div class="form">
+        <label>Receipt no. <input id="rNo" placeholder="PG…"></label>
+        <label>Service connection no. <input id="rSc" placeholder="S/C number (leave blank to use noted S/C)"></label>
+        <label>Amount paid (₹) <input id="rAmt" type="number" step="0.01"></label>
+        <label>Paid on (dd/mm/yyyy) <input id="rDate" placeholder="31/12/2025"></label>
+      </div>
+      <div class="actions">
+        <button id="rOk" class="primary">Verify receipt</button>
+        <button id="rCancel" class="ghost">Cancel</button>
+      </div>
+    </div>
+
+    <div id="verifyReceipt" class="panel" aria-hidden="true">
+      <div class="panelHead">
+        <h2>Verify receipt</h2>
+        <span id="vrPeriod" class="chip"></span>
+      </div>
+      <div id="vrExtract" class="kv"></div>
+      <div id="vrChecks"></div>
+      <div class="actions">
+        <button id="vrCommit" class="primary" disabled>Mark as paid</button>
+        <button id="vrCancel" class="ghost">Cancel</button>
+      </div>
+    </div>
+
+    <div id="verifyUtil" class="panel" aria-hidden="true">
+      <div class="panelHead">
+        <h2>Verify receipt</h2>
+        <span id="vuKind" class="chip"></span>
+      </div>
+      <div id="vuExtract" class="kv"></div>
+      <div id="vuChecks"></div>
+      <p id="vuDup" class="muted small"></p>
+      <div class="actions">
+        <button id="vuCommit" class="primary" disabled>Record as paid</button>
+        <button id="vuCancel" class="ghost">Cancel</button>
+      </div>
+    </div>
+
+    <div id="done" class="panel" aria-hidden="true">
+      <h2>All bills for now</h2>
+      <p class="muted">Use <em>Import bill</em> again when the next bill arrives.</p>
+      <button id="dNewBill" class="primary">Import next bill</button>
+    </div>
+  </section>
+
+  <aside id="side">
+    <div id="histCard" class="card">
+      <h3 id="histTitle">History</h3>
+      <div id="summaryRow" class="kv inline"></div>
+      <table id="hist"><thead>
+        <tr><th>Period</th><th>Un</th><th>RecE</th><th>Pay</th><th>Status</th><th></th></tr>
+      </thead><tbody></tbody></table>
+    </div>
+  </aside>
+</main>
+
+  <div id="modal" aria-hidden="true"><div id="modalBox" role="dialog" aria-modal="true"></div></div>
+<div id="toasts"></div>
+
+<script src="lib/pdf.min.js"></script>
+<script src="lib/chart.umd.js"></script>
+<script src="parser.js"></script>
+<script src="calc.js"></script>
+<script src="data/bundle.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

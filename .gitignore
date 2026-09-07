@@ -1,0 +1,37 @@
+# ── Documentation / internal notes — NEVER deploy ──────────────────────────
+# These files describe the apps' internals and may reference real personal
+# data (PII). They must never reach the live Pages site.
+**/AGENTS.md
+**/design.md
+**/session_handoff.md
+**/requirements.md
+**/testcase.md
+**/README.md
+
+# ── Development / test harnesses — not part of the deployed apps ──────────
+dev/
+.stfolder/
+
+# ── Personal documents / source artefacts — NEVER deploy ──────────────────
+# Bills, receipts, scans, screenshots and similar files produced by the
+# apps live on the user's machine, not in the repo. Guard them here so
+# nothing containing PII can be committed and served publicly.
+*.pdf
+
+# ── OS / editor noise ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+.vscode/
+.idea/
+
+# ── Node / build ───────────────────────────────────────────────────────────
+node_modules/
+
+# ── Environment ────────────────────────────────────────────────────────────
+.env
+.env.local
