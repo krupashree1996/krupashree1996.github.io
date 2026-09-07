@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#175cd3">
 <title>TN Utilities</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -132,5 +135,10 @@
 <script src="calc.js"></script>
 <script src="data/bundle.js"></script>
 <script src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+    navigator.serviceWorker.register('sw.js');
+  }
+</script>
 </body>
 </html>
