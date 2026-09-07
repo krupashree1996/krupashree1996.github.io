@@ -554,13 +554,21 @@
     else p.textContent = 'All checked.';
     return { box: box, pendingEl: p, nPending: pending.length };
   }
+  /* every check is pass/info or already accepted — nothing left to decide */
+  function clearToCommit(checks) {
+    for (var i = 0; i < checks.length; i++) {
+      if (checks[i].status === 'fail' || checks[i].status === 'warn') return false;
+    }
+    return true;
+  }
 
-  function renderBill() {
+  function renderBill(auto) {
+    var applied = Calc.applyExceptions(S.bChecks.checks, S.bx);
+    if (auto && clearToCommit(applied.checks) && !existingRecord(S.bc.scNo, S.bc.periodTo)) { commitBill(); return; }
     show('verifyBill');
     $('vbPeriod').textContent = S.bc.periodTo || S.bc.periodFrom || 'bill';
     $('vbExtract').replaceChildren ? $('vbExtract').replaceChildren() : ($('vbExtract').innerHTML = '');
     $('vbExtract').appendChild(objAsKv(S.bc));
-    var applied = Calc.applyExceptions(S.bChecks.checks, S.bx);
     var box = checksBox(applied.checks, S.bx, function (key) {
       S.bx[key] = 'accepted by user';
       renderBill();
@@ -572,12 +580,16 @@
     $('vbChecks').replaceChildren();
     $('vbChecks').appendChild(box.box);
     $('vbChecks').appendChild(box.pendingEl);
-    var ok = !Calc.hasBlocking(applied.checks, S.bx);
+    var ok = clearToCommit(applied.checks);
     var btn = $('vbCommit');
     btn.disabled = !ok;
     btn.title = ok ? '' : 'Resolve flagged items first';
   }
-  function renderReceipt() {
+  function renderReceipt(auto) {
+    var pay = { receiptNo: S.rc.receiptNo || '', scNo: S.rc.scNo || '', paidAmount: S.rc.amount };
+    var vr = Calc.verifyReceipt(pay, S.pending, { usedReceiptNo: usedSet() });
+    var applied = Calc.applyExceptions(vr, S.rx);
+    if (auto && clearToCommit(applied.checks)) { commitReceipt(); return; }
     show('verifyReceipt');
     var fields = fieldsOf(S.rc);
     $('vrPeriod').textContent = S.pending ? (S.pending.periodTo || '') : 'receipt';
@@ -593,9 +605,6 @@
       kv.querySelector('button').onclick = function () { runOcr(); };
     }
     $('vrExtract').appendChild(kv);
-    var pay = { receiptNo: S.rc.receiptNo || '', scNo: S.rc.scNo || '', paidAmount: S.rc.amount };
-    var vr = Calc.verifyReceipt(pay, S.pending, { usedReceiptNo: usedSet() });
-    var applied = Calc.applyExceptions(vr, S.rx);
     var box = checksBox(applied.checks, S.rx, function (key) {
       S.rx[key] = 'accepted by user';
       renderReceipt();
@@ -607,8 +616,10 @@
     $('vrChecks').replaceChildren();
     $('vrChecks').appendChild(box.box);
     $('vrChecks').appendChild(box.pendingEl);
-    var ok = !Calc.hasBlocking(applied.checks, S.rx);
-    $('vrCommit').disabled = !ok;
+    var ok = clearToCommit(applied.checks);
+    var btn = $('vrCommit');
+    btn.disabled = !ok;
+    btn.title = ok ? '' : 'Resolve flagged items first';
   }
   function fieldsOf(rc) {
     return { receiptNo: rc.receiptNo || '', scNo: rc.scNo || '', amount: rc.amount, date: rc.paidDate || '', time: rc.paidTime || '', blank: !(rc.receiptNo || rc.scNo || isFinite(rc.amount) || rc.paidDate) };
@@ -920,8 +931,9 @@
       bill.billFile = 'local';
       bill._file = file;
       step(2);
-      renderBill();
-      toast('Parsed in ' + ((Date.now() - t0) / 1000).toFixed(1) + 's. ' + Calc.statusSummary(S.bChecks.checks).pass + ' checks passed.', 'ok');
+      var summary = Calc.statusSummary(S.bChecks.checks);
+      renderBill(true);
+      toast('Parsed in ' + ((Date.now() - t0) / 1000).toFixed(1) + 's. ' + summary.pass + ' checks passed.', 'ok');
     }, function (e) { toast('Could not parse PDF: ' + e.message, 'bad'); });
   }
   function goImport(r) {
@@ -1048,14 +1060,14 @@
     if (!S.pending) { toast('No unpaid bill selected. Pick one from History → pay.', 'warn'); return; }
     S.rc = rc;
     S.rx = {};
-    renderReceipt();
+    renderReceipt(true);
   }
   function ocrThenParse(d) {
     var t = d && d.text ? d.text : '';
     if (!String(t).trim()) { toast('OCR produced nothing.', 'bad'); return; }
     var rc = Parser.parseReceipt(String(t).split(/\r?\n/));
     rc._ocr = true;
-    if (fieldsOf(rc).blank) { toast('OCRed but no receipt fields found — enter manually.', 'warn'); S.rc = rc; renderReceipt(); }
+    if (fieldsOf(rc).blank) { toast('OCRed but no receipt fields found — enter manually.', 'warn'); S.rc = rc; renderReceipt(true); }
     else beginReceiptObj(rc);
   }
   function beginReceipt(file) {
@@ -1086,7 +1098,7 @@
       rc._ocr = true;
       S.rc = rc;
       toast('OCR done.');
-      renderReceipt();
+      renderReceipt(true);
     }, function (e) { toast('OCR failed: ' + e.message, 'bad'); });
   }
   function commitReceipt() {
@@ -1117,7 +1129,7 @@
     S.rc = null; S.rx = {}; S.pending = null;
     persist();
     renderAll();
-    toast('Marked paid.', 'ok');
+    toast('Receipt recorded — bill marked paid.', 'ok');
   }
 
   /* ---------- single-stage utilities (water / property tax) ---------- */
@@ -1265,7 +1277,7 @@
     };
     if (!rc.receiptNo || !isFinite(rc.amount)) { toast('Receipt no. and amount required.', 'warn'); return; }
     S.rc = rc;
-    renderReceipt();
+    renderReceipt(true);
   }
 
   /* ---------- persistence UI ---------- */

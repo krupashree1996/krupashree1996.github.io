@@ -1,4 +1,4 @@
-var CACHE = 'tn-utils-v2';
+var CACHE = 'tn-utils-v3';
 var PRECACHE = ['index.html', 'style.css', 'parser.js', 'calc.js', 'app.js', 'data/bundle.js', 'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', function (e) {
