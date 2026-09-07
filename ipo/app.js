@@ -1,9 +1,11 @@
 (function () {
   var DATA = window.DATA || (window.DATA = { profile: { name: '' }, pans: [], meta: {}, ipos: [], applications: [] });
   var S = { tab: 'cal', curPan: '', chartTimer: 0 };
+  var newerSession = false;
   var LS = 'ipo.tracker.session';
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
+  var SCHEMA_VERSION = 1;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
 
   function el(tag, cls, text) {
@@ -39,7 +41,10 @@
       var raw = localStorage.getItem(LS);
       if (raw) {
         var d = JSON.parse(raw);
-        if (d && Array.isArray(d.ipos) && Array.isArray(d.applications)) {
+        if (d && typeof d.version === 'number' && d.version > SCHEMA_VERSION) {
+          newerSession = true;
+          toast('Saved data is from a newer app version (schema ' + d.version + '). Update the app first — nothing was overwritten.', 'warn');
+        } else if (d && Array.isArray(d.ipos) && Array.isArray(d.applications)) {
           DATA.ipos = d.ipos;
           DATA.applications = d.applications;
           if (Array.isArray(d.pans)) DATA.pans = d.pans;
@@ -51,7 +56,10 @@
     try { S.curPan = localStorage.getItem(LS_PAN) || ''; } catch (e) {}
   }
   function flush() {
-    try { localStorage.setItem(LS, JSON.stringify(DATA)); } catch (e) {}
+    if (newerSession) return; // never write back into a newer schema
+    try {
+      localStorage.setItem(LS, JSON.stringify({ version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, ipos: DATA.ipos, applications: DATA.applications }));
+    } catch (e) {}
   }
   var persisting = 0;
   function persist() {
@@ -1056,7 +1064,8 @@
   }
 
   function saveBundle() {
-    var blob = new Blob(['window.DATA = ' + JSON.stringify(DATA, null, 1) + ';\n'], { type: 'text/javascript' });
+    var out = { version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, ipos: DATA.ipos, applications: DATA.applications };
+    var blob = new Blob(['window.DATA = ' + JSON.stringify(out, null, 1) + ';\n'], { type: 'text/javascript' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'data/bundle.js';
@@ -1074,6 +1083,10 @@
         if (/\bwindow\.DATA\s*=/.test(s)) s = s.replace(/^[\s\S]*?=\s*/, '').replace(/;\s*$/, '');
         var d = JSON.parse(s);
         if (!d || !Array.isArray(d.ipos) || !Array.isArray(d.applications)) throw new Error('missing ipos/applications arrays');
+        if (typeof d.version === 'number' && d.version > SCHEMA_VERSION) {
+          toast('This bundle is from a newer app version (schema ' + d.version + '). Update the app first — nothing was loaded.', 'warn');
+          return;
+        }
         DATA.ipos = d.ipos;
         DATA.applications = d.applications;
         if (Array.isArray(d.pans)) DATA.pans = d.pans;

@@ -1588,20 +1588,27 @@
     wire();
     var st = null;
     try { st = localStorage.getItem(STORE_KEY); } catch (e) {}
+    var newerBackup = false;
     // stock seed or no bundle + a stored session => restore the local backup
     if (!Array.isArray(window.__seed) && (!DATA.records || !DATA.records.length) && st) {
       try {
         var bk = JSON.parse(st);
         if (bk && Array.isArray(bk.records) && bk.records.length) {
-          window.DATA = bk; DATA = bk; loadData(); window.DATA = DATA;
-          persist();
-          toast('Restored last session from local backup.');
+          var mig = Calc.migrateBundle(bk);
+          if (mig.incompatible) {
+            newerBackup = true;
+            toast('Local backup was written by a newer app version (schema ' + mig.version + '). Update the app first — nothing was touched.', 'bad');
+          } else {
+            window.DATA = bk; DATA = bk; loadData(); window.DATA = DATA;
+            persist();
+            toast('Restored last session from local backup.');
+          }
         }
       } catch (e) {}
     }
     window.DATA = DATA;
     ensureRateTables();
-    persist();
+    if (!newerBackup) persist();
     renderAll();
   }
 
