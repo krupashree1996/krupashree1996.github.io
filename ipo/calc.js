@@ -118,7 +118,14 @@ var Calc = (function () {
     return Math.round(ipo.bandHi * ipo.shareLot * (lots || 0));
   }
   function minAmount(ipo) { return appAmount(ipo, ipo.minLots || 1); }
-  function defaultLots(category) { return category === 'SME' ? 1 : 3; }
+  function defaultLots(category, ipo) {
+    if (category === 'SME') {
+      var amt = (ipo && ipo.bandHi > 0 && ipo.shareLot > 0) ? ipo.bandHi * ipo.shareLot : 0;
+      if (amt > 0) return Math.max(1, Math.ceil(200000 / amt));
+      return 1;
+    }
+    return 1;
+  }
   function allotmentDue(app, ipo, today) {
     if (!app || app.status !== 'applied') return false;
     if (!ipo || !ipo.closeDate) return false;
