@@ -236,7 +236,7 @@
     if (ipo.symbol) name.appendChild(el('span', 'muted small', '  ' + ipo.symbol));
     mainBox.appendChild(name);
 
-    var defLots = Calc.defaultLots(ipo.category);
+    var defLots = Calc.defaultLots(ipo.category, ipo);
     var perAppShares = (ipo.shareLot || 0) * defLots;
     var totalValue = perAppShares && ipo.bandHi > 0 ? Math.round(ipo.bandHi * perAppShares) : null;
     var cells = el('div', 'rowCells');
@@ -645,14 +645,22 @@
     form.appendChild(field('Exchange', selectControl('iExchange', [{ v: 'NSE', l: 'NSE' }, { v: 'BSE', l: 'BSE' }], o.exchange || 'NSE')));
     form.appendChild(field('Category', selectControl('iCategory', [{ v: 'Mainline', l: 'Mainline' }, { v: 'SME', l: 'SME' }], o.category || 'Mainline')));
     var catSel = form.querySelector('#iCategory') || null;
-    form.appendChild(field('Max price (\u20B9) *', numInput('iHi', o.bandHi == null ? '' : o.bandHi, 'offer price per share', '0.01')));
-    form.appendChild(field('Shares per lot *', numInput('iLot', o.shareLot, 'e.g. 9', '1')));
+    var hiIn = numInput('iHi', o.bandHi == null ? '' : o.bandHi, 'offer price per share', '0.01');
+    form.appendChild(field('Max price (\u20B9) *', hiIn));
+    var lotIn = numInput('iLot', o.shareLot, 'e.g. 9', '1');
+    form.appendChild(field('Shares per lot *', lotIn));
     var minTouched = edit && o.minLots != null;
-    var minIn = numInput('iMin', o.minLots != null ? o.minLots : Calc.defaultLots(o.category));
+    var minIn = numInput('iMin', o.minLots != null ? o.minLots : Calc.defaultLots(o.category, o));
     minIn.addEventListener('input', function () { minTouched = true; });
-    catSel.onchange = function () {
-      if (!minTouched) minIn.value = Calc.defaultLots(catSel.value);
+    var refreshMin = function () {
+      if (!minTouched && !o.minLots) {
+        var probe = { bandHi: num('iHi'), shareLot: num('iLot') };
+        minIn.value = Calc.defaultLots(catSel.value, probe);
+      }
     };
+    catSel.onchange = refreshMin;
+    hiIn.addEventListener('input', refreshMin);
+    lotIn.addEventListener('input', refreshMin);
     form.appendChild(field('Min lots', minIn));
     form.appendChild(field('Open date', dateInput('iOpen', o.openDate)));
     form.appendChild(field('Close date', dateInput('iClose', o.closeDate)));
@@ -686,7 +694,7 @@
     var hi = num('iHi');
     rec.bandHi = hi && hi > 0 ? hi : null;
     rec.shareLot = num('iLot');
-    rec.minLots = num('iMin') || Calc.defaultLots(rec.category);
+    rec.minLots = num('iMin') || Calc.defaultLots(rec.category, rec);
     rec.openDate = val('iOpen') || null;
     rec.closeDate = val('iClose') || null;
     rec.refundDate = val('iRefund') || null;
@@ -744,7 +752,7 @@
 
     var defIpo = function () { return ipoOf(ipoSel.value); };
     var defPrice = function () { return a.price || (defIpo() && defIpo().bandHi); };
-    var defLotsPick = function () { var i = defIpo(); return i ? Calc.defaultLots(i.category) : 3; };
+    var defLotsPick = function () { var i = defIpo(); return i ? Calc.defaultLots(i.category, i) : 1; };
 
     var lotsTouched = edit && a.lots != null;
     var lots = numInput('aLots', a.lots != null ? a.lots : defLotsPick(), 'number of lots');
@@ -837,7 +845,7 @@
       return;
     }
 
-    var defLots = Calc.defaultLots(ipo.category);
+    var defLots = Calc.defaultLots(ipo.category, ipo);
     var perPan = ipo.bandHi > 0 && ipo.shareLot ? Math.round(ipo.bandHi * ipo.shareLot * defLots) : 0;
     var applied = {};
     DATA.applications.forEach(function (a) { if (a.ipoId === ipo.id) applied[a.panId] = true; });
