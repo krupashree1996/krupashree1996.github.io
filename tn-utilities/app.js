@@ -37,7 +37,11 @@
       if (f) f.focus();
     }
   }
-  function closeModal() { $('modal').classList.remove('open'); }
+  function closeModal() {
+    $('modal').classList.remove('open');
+    $('modal').setAttribute('aria-hidden', 'true');
+    $('modalBox').replaceChildren();
+  }
   $('modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
   function saveFile(name, text, mime) {
     var b = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });

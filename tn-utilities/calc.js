@@ -368,13 +368,12 @@ const Calc = (function () {
     var tolE = cutover ? 10.0 : 2.0;
     var energyDiff = round2(recomputed.total - bill.energyCharges);
     var netDiff = round2(recomputed.total - (isFinite(bill.totalPayable) ? bill.totalPayable : bill.netTotal));
-    var energyOk = close(recomputed.total, bill.energyCharges, tolE) ||
-      (!isFinite(bill.energyCharges) && hasNet && close(recomputed.total, bill.totalPayable, tolE));
     var unitsUsable = isFinite(bill.units) && isFinite(recomputed.total);
     var hasNet = isFinite(bill.totalPayable);
     var hasSub = isFinite(bill.govtSubsidy);
     var energyMatched = close(recomputed.total, bill.energyCharges, tolE);
     var netMatched = hasNet && close(recomputed.total, bill.totalPayable, tolE);
+    var energyOk = energyMatched || netMatched;
     var eF = Calc.fmtMoney(recomputed.total);
     var cutNote = cutover
       ? 'Bill period spans the ' + cutover.on + ' tariff change — prorated by days across both rates.'
