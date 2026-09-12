@@ -465,6 +465,77 @@ const Calc = (function () {
       configurable: true
     });
 
+    // 9 security deposit: internal arithmetic + consistency with the previous
+    //    recorded bill. The TANGEDCO SD ledger is reprinted frozen on every bill
+    //    within a financial year, so identical opening/closing is the normal
+    //    case (pass). When it changed, verify the printed block adds up and
+    //    that the change since the previous bill is explained by the printed
+    //    movements (collected + interest − refund).
+    var hasSd = isFinite(bill.sdOpening) && isFinite(bill.sdClosing);
+    if (hasSd) {
+      var sdCalc = round2(bill.sdOpening + (bill.sdCollected || 0) + (bill.sdInterest || 0) + (bill.sdCollectedAfter || 0) - (bill.sdRefund || 0));
+      var sdArithOk = close(sdCalc, bill.sdClosing, 0.01);
+      var prevSd = (prev && isFinite(prev.sdClosing)) ? prev : null;
+      var sdMsg = 'SD ' + Calc.fmtMoney(bill.sdOpening) + ' + collected ' + Calc.fmtMoney(bill.sdCollected || 0) +
+        ' + interest ' + Calc.fmtMoney(bill.sdInterest || 0) + ' − refund ' + Calc.fmtMoney(bill.sdRefund || 0) +
+        ' = ' + Calc.fmtMoney(sdCalc);
+      var status, label, extra = '';
+      if (!prevSd) {
+        status = 'pass';
+        label = 'Security deposit (baseline)';
+        extra = ' — first recorded bill with a deposit block; ' + sdMsg + '.';
+      } else {
+        var blockSame = close(prevSd.sdClosing, bill.sdClosing, 0.01) &&
+          close(prevSd.sdOpening, bill.sdOpening, 0.01) &&
+          close(prevSd.sdInterest || 0, bill.sdInterest || 0, 0.01) &&
+          close(prevSd.sdCollected || 0, bill.sdCollected || 0, 0.01) &&
+          close(prevSd.sdRefund || 0, bill.sdRefund || 0, 0.01) &&
+          close(prevSd.sdCollectedAfter || 0, bill.sdCollectedAfter || 0, 0.01);
+        if (blockSame) {
+          status = 'pass';
+          label = 'Security deposit unchanged';
+          extra = ' — ledger identical to previous bill (₹' + round2(prevSd.sdClosing) + ').';
+        } else {
+          var deltaPrev = round2(bill.sdClosing - prevSd.sdClosing);
+          var openingMatch = close(prevSd.sdClosing, bill.sdOpening, 0.01);
+          status = !sdArithOk ? 'fail' : (openingMatch ? 'pass' : 'warn');
+          label = 'Security deposit movement';
+          extra = ' — was ' + Calc.fmtMoney(prevSd.sdClosing) + ' (prev bill ' + (prevSd.periodTo || '') +
+            '), now ' + Calc.fmtMoney(bill.sdClosing) + ', Δ ' + Calc.fmtMoney(deltaPrev) +
+            (openingMatch
+              ? ' — opening matches previous closing; movement is the printed interest/collection.'
+              : ' — opening differs from previous closing (₹' + round2(prevSd.sdClosing) +
+                ' → ₹' + round2(bill.sdOpening) + '); check no deposit/interest event was missed between bills.') +
+            ' ' + sdMsg + '.';
+        }
+      }
+      checks.push({
+        key: 'sd', label: label,
+        status: status,
+        expected: prevSd ? prevSd.sdClosing : null,
+        actual: bill.sdClosing,
+        delta: prevSd ? round2(bill.sdClosing - prevSd.sdClosing) : null,
+        message: extra,
+        configurable: true
+      });
+      if (isFinite(bill.mcd) && bill.mcd > 0 && !close(bill.sdClosing, bill.mcd) && bill.sdClosing < bill.mcd) {
+        checks.push({
+          key: 'mcd', label: 'Security deposit ≥ required MCD',
+          status: 'warn',
+          expected: bill.mcd, actual: bill.sdClosing,
+          delta: round2(bill.mcd - bill.sdClosing),
+          message: 'SD balance ' + Calc.fmtMoney(bill.sdClosing) + ' is below the required meter caution deposit ' + Calc.fmtMoney(bill.mcd) + '.',
+          configurable: true
+        });
+      }
+    } else {
+      checks.push({
+        key: 'sd', label: 'Security deposit',
+        status: 'info',
+        message: 'Skipped — no security-deposit block on this bill (older layout).'
+      });
+    }
+
     return { checks: checks, recomputed: recomputed.total, compTotal: compTotal };
   }
 
