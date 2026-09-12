@@ -11,10 +11,14 @@ const Calc = (function () {
   }
 
   function cleanAmount(s) {
-    var n;
     if (s == null) return NaN;
-    n = String(s).replace(/[₹Rs.,\s]/gi, '').replace(/\/-?/g, '');
-    n = n.replace(/\(-/g, '').replace(/\)/g, '');
+    var n = String(s)
+      .replace(/rs\.?/gi, '')   // "Rs." / "Rs" / "R" / "RS." prefix
+      .replace(/₹/g, '')        // rupee symbol
+      .replace(/[,\s]/g, '')    // thousands separators + whitespace, keep dots
+      .replace(/\/-?/g, '')     // trailing "99/-" or "99.00/" dash form
+      .replace(/[−–]/g, '-')    // Unicode minus / en-dash that PDFs sometimes print
+      .replace(/\(/g, '').replace(/\)/g, '');
     if (!/^-?\d+(\.\d*)?$/.test(n)) return NaN;
     return parseFloat(n);
   }
@@ -733,13 +737,24 @@ const Calc = (function () {
     return out;
   }
 
+  /* Dates are stored dd/mm/yyyy, so compare numerically — a raw string compare
+   * (e.g. "15/10/2025" < "31/08/2025") is wrong once days differ. */
+  function periodOrd(s) {
+    var m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    return m ? (+m[3]) * 10000 + (+m[2]) * 100 + (+m[1]) : NaN;
+  }
   function duplicatesFor(records, periodFrom, periodTo, selfId) {
     var out = [];
+    var f = periodOrd(periodFrom), t = periodOrd(periodTo);
     (records || []).forEach(function (r) {
       if (selfId && r.id === selfId) return;
       if (!r.periodFrom || !r.periodTo) return;
-      if (periodTo < r.periodFrom || periodFrom > r.periodTo) return;
-      out.push(r);
+      var rf = periodOrd(r.periodFrom), rt = periodOrd(r.periodTo);
+      var noOverlap;
+      if (isFinite(t) && isFinite(rf)) noOverlap = t < rf;
+      else if (isFinite(f) && isFinite(rt)) noOverlap = f > rt;
+      else noOverlap = String(periodTo) < String(r.periodFrom) || String(periodFrom) > String(r.periodTo);
+      if (!noOverlap) out.push(r);
     });
     return out;
   }
