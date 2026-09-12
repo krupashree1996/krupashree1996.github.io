@@ -513,6 +513,14 @@
       if (skip[r[2]]) return;
       box.appendChild(kvRow(r[0], r[1]));
     });
+    if (isFinite(obj.sdOpening) && isFinite(obj.sdClosing)) {
+      box.appendChild(kvRow('SD opening (01-04)', fmtMoney(obj.sdOpening)));
+      if (isFinite(obj.sdInterest) && obj.sdInterest) box.appendChild(kvRow('SD interest (after TDS)', fmtMoney(obj.sdInterest)));
+      if (isFinite(obj.sdCollected) && obj.sdCollected) box.appendChild(kvRow('SD collected in year', fmtMoney(obj.sdCollected)));
+      if (isFinite(obj.sdRefund) && obj.sdRefund) box.appendChild(kvRow('SD refund in year', fmtMoney(obj.sdRefund)));
+      box.appendChild(kvRow('SD closing', fmtMoney(obj.sdClosing)));
+      if (isFinite(obj.mcd) && obj.mcd) box.appendChild(kvRow('MCD required', fmtMoney(obj.mcd)));
+    }
     return box;
   }
   function checkRow(c, onAccept, onRaise, hasExceptions) {
@@ -751,14 +759,22 @@
       if (transferIds[r.id]) tdP.appendChild(el('span', 'tchip', 'name transfer'));
       var u = document.createElement('td');
       u.className = 'num'; u.textContent = fmtNum(r.units);
-      var e = document.createElement('td');
-      e.className = 'num';
-      var eraRec = Calc.tablesForBill(r);
-      var rec = (eraRec ? Calc.proposedByTables(r.units, eraRec.tables) : Calc.proposedByTables(r.units, DATA.rateTables));
-      e.textContent = fmtNum(rec.total);
-      e.title = 'Energy recomputed from built-in tariff (era by bill period)';
       var a = document.createElement('td');
       a.className = 'num'; a.textContent = fmtMoney(r.totalPayable);
+      var sd = document.createElement('td');
+      sd.className = 'num';
+      if (isFinite(r.sdClosing)) {
+        sd.textContent = fmtNum(r.sdClosing);
+        sd.title = 'Security deposit: opening ' + fmtMoney(r.sdOpening) +
+          (isFinite(r.sdInterest) ? '\n+ interest ' + fmtMoney(r.sdInterest) : '') +
+          (isFinite(r.sdCollected) && r.sdCollected ? '\n+ collected ' + fmtMoney(r.sdCollected) : '') +
+          (isFinite(r.sdRefund) && r.sdRefund ? '\n− refund ' + fmtMoney(r.sdRefund) : '') +
+          '\n= closing ' + fmtMoney(r.sdClosing) +
+          (isFinite(r.mcd) ? '\nMCD required ' + fmtMoney(r.mcd) : '');
+      } else {
+        sd.textContent = '—';
+        sd.title = 'No security-deposit block on this bill (older layout)';
+      }
       var s = document.createElement('td');
       var b = el('span', 'badge ' + (r.status === 'paid' ? 'pass' : 'warn'), r.status);
       s.appendChild(b);
@@ -1075,6 +1091,13 @@
       scNo: bill.scNo,
       consumerName: bill.consumerName || '',
       layout: bill.layout,
+      sdOpening: bill.sdOpening,
+      sdCollected: bill.sdCollected || 0,
+      sdInterest: bill.sdInterest,
+      sdRefund: bill.sdRefund || 0,
+      sdCollectedAfter: bill.sdCollectedAfter || 0,
+      sdClosing: bill.sdClosing,
+      mcd: bill.mcd,
       status: 'unpaid',
       committedAt: new Date().toISOString(),
       srcFile: bill.srcFile || '',
@@ -1083,7 +1106,8 @@
     };
     if (bill.checksSnap) rec.checksSnap = bill.checksSnap;
     DATA.records.unshift(rec);
-    upsertConsumer({ scNo: bill.scNo, consumerName: bill.consumerName || '', tariff: bill.tariff }, bill.periodTo);
+    var cons = upsertConsumer({ scNo: bill.scNo, consumerName: bill.consumerName || '', tariff: bill.tariff }, bill.periodTo);
+    if (cons && isFinite(bill.mcd)) cons.mcd = bill.mcd; /* auto-update required MCD from the newest bill */
     var f = bill._file;
     if (f) {
       putDoc(rec.id, 'bill', f.name, f).then(function () {

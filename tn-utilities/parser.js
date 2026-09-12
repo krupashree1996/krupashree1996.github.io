@@ -125,6 +125,63 @@ const Parser = (function () {
   var RE_DATE = /\d{2}\/\d{2}\/\d{4}/;
   var RE_NUM = /-?\d[\d,]*(?:\.\d+)?/;
 
+  /* Security-deposit ledger block on electricity bills (new layout, 2023-12+):
+   *   "SECURITY DEPOSIT" header → Balance as on 01-04-YYYY, Collected During
+   *   Year, Interest Credited (after TDS), Refund made, Collected after 31-3,
+   *   closing (Total as on / Balance as of). Values are on the same visual line
+   *   as the label (2-column form) or, in the older label-above layout, on the
+   *   line following the label. MCD (meter caution deposit) is printed on its
+   *   own "MCD as of dd/mm/yyyy" line right after the block. */
+  function sdBlock(lines) {
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (/^\s*SECURITY DEPOSIT/.test(lines[i])) { start = i; break; }
+    }
+    if (start < 0) return null;
+    var stop = lines.length;
+    for (var j = start + 1; j < lines.length; j++) {
+      if (/OLD ARREARS|ADVANCE\s*CC|MCD as of/i.test(lines[j])) { stop = j; break; }
+    }
+    var sec = lines.slice(start + 1, stop);
+    function grab(labelRe) {
+      for (var k = 0; k < sec.length; k++) {
+        if (!labelRe.test(sec[k])) continue;
+        var m = sec[k].match(/(-?[\d,]+\.\d{1,2})/);
+        if (m) return num(m[1]);
+        if (k + 1 < sec.length) {
+          m = sec[k + 1].match(/(-?[\d,]+\.\d{1,2})/);
+          if (m) return num(m[1]);
+        }
+        return NaN;
+      }
+      return NaN;
+    }
+    var sd = {
+      sdOpening: grab(/Balance as (?:on|of) 01-04-\d{4}/),
+      sdCollected: grab(/(?:Collection|Collected) During (?:the )?Year/),
+      sdInterest: grab(/Interest Credited/),
+      sdRefund: grab(/Refund made/),
+      sdCollectedAfter: grab(/Collected after 31-3/),
+      sdClosing: grab(/(?:Total as on|Balance as of) 1\d\/\d{2}\/\d{4}/)
+    };
+    if (!isFinite(sd.sdCollected)) sd.sdCollected = 0;
+    if (!isFinite(sd.sdRefund)) sd.sdRefund = 0;
+    if (!isFinite(sd.sdCollectedAfter)) sd.sdCollectedAfter = 0;
+    if (!isFinite(sd.sdClosing) && isFinite(sd.sdOpening)) {
+      sd.sdClosing = round2(sd.sdOpening + sd.sdCollected + sd.sdInterest + sd.sdCollectedAfter - sd.sdRefund);
+    }
+    var mcd = NaN;
+    for (var q = 0; q < lines.length; q++) {
+      var mm = lines[q].match(/MCD as of\s+\d{2}\/\d{2}\/\d{4}\s+(-?[\d,]+\.\d{1,2})/);
+      if (mm) { mcd = num(mm[1]); break; }
+    }
+    return { sd: sd, mcd: mcd };
+  }
+
+  function round2(x) {
+    return Math.round((x + Number.EPSILON) * 100) / 100;
+  }
+
   function firstNum(s) {
     var m = s.match(RE_NUM);
     return m ? num(m[0]) : NaN;
@@ -508,6 +565,16 @@ const Parser = (function () {
     if (isL2(lines)) b = parseL2(lines); else b = parseL1(lines);
     b.kind = 'bill';
     b.layoutVersion = 1;
+    var sb = sdBlock(lines);
+    if (sb) {
+      b.sdOpening = sb.sd.sdOpening;
+      b.sdCollected = sb.sd.sdCollected;
+      b.sdInterest = sb.sd.sdInterest;
+      b.sdRefund = sb.sd.sdRefund;
+      b.sdCollectedAfter = sb.sd.sdCollectedAfter;
+      b.sdClosing = sb.sd.sdClosing;
+      b.mcd = sb.mcd;
+    }
     b.consumerName = (isL2(lines) ? l2ConsumerName(lines) : '') || consumerNameOf(lines);
     b.units = num(b.units);
     b.prevReading = num(b.prevReading);
