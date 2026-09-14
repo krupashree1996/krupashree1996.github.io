@@ -134,12 +134,12 @@ const Calc = (function () {
    * → ₹1,436.881, exactly this model (free-200 value = 200×4.95 + carried
    * 0.25/0.35 upper-slab subsidies). B13.pdf's printed invoice (subsidy
    * ₹977.53, net ₹1,527.00) deviates → billing-software error, accept via gate. */
-  function sub2026(u) {
-    if (u <= 200) return 4.95 * u;
-    if (u <= 400) return 4.95 * 200 + 0.25 * (u - 200);
-    if (u <= 500) return 4.95 * 200 + 0.25 * 200 + 0.35 * (u - 400);
-    return govtSubsidy(u);
-  }
+   function sub2026(u) {
+     if (u <= 200) return 4.95 * u;
+     if (u <= 400) return 4.95 * 200 + 0.25 * (u - 200);
+     if (u <= 500) return 4.95 * 200 + 0.25 * 200 + 0.35 * (u - 400);
+     return govtSubsidy(u);
+   }
   var REGIMES = [
     { key: 'R2022', from: '2022-09-10', label: 'Sep-2022 order · 10-Sep-2022 → 30-Jun-2023',
       below: [[1, 400, 4.50], [401, 500, 6.00]],
@@ -214,7 +214,7 @@ const Calc = (function () {
         if (REGIMES[i].from > perFrom && REGIMES[i].from <= perTo) { cut = REGIMES[i]; break; }
       }
     }
-    if (!cut) return { regime: cur, tables: { below: cur.below, above: cur.above }, subFn: cur.sub };
+    if (!cut) return { regime: cur, tables: { below: cur.below, above: cur.above }, subFn: cur.sub, cutover: null };
     var idx = REGIMES.indexOf(cut);
     if (idx === 0) return null; /* consumption starts before the earliest built-in era */
     var prev = REGIMES[idx - 1];
@@ -484,7 +484,7 @@ const Calc = (function () {
         ' = ' + Calc.fmtMoney(sdCalc);
       var status, label, extra = '';
       if (!prevSd) {
-        status = 'pass';
+        status = sdArithOk ? 'pass' : 'fail';
         label = 'Security deposit (baseline)';
         extra = ' — first recorded bill with a deposit block; ' + sdMsg + '.';
       } else {
@@ -751,9 +751,11 @@ const Calc = (function () {
       if (!r.periodFrom || !r.periodTo) return;
       var rf = periodOrd(r.periodFrom), rt = periodOrd(r.periodTo);
       var noOverlap;
-      if (isFinite(t) && isFinite(rf)) noOverlap = t < rf;
-      else if (isFinite(f) && isFinite(rt)) noOverlap = f > rt;
-      else noOverlap = String(periodTo) < String(r.periodFrom) || String(periodFrom) > String(r.periodTo);
+      if (isFinite(f) && isFinite(t) && isFinite(rf) && isFinite(rt)) {
+        noOverlap = t < rf || f > rt;
+      } else {
+        noOverlap = String(periodTo) < String(r.periodFrom) || String(periodFrom) > String(r.periodTo);
+      }
       if (!noOverlap) out.push(r);
     });
     return out;
@@ -851,7 +853,10 @@ const Calc = (function () {
       if (!map[sc]) map[sc] = { scNo: sc, name: r.consumerName || '', tariff: r.tariff || '', since: r.periodFrom || '' };
       else {
         if (!map[sc].name && r.consumerName) map[sc].name = r.consumerName;
-        if (r.periodFrom && (!map[sc].since || r.periodFrom < map[sc].since)) map[sc].since = r.periodFrom;
+        if (r.periodFrom) {
+          var pf = periodOrd(r.periodFrom), ps = map[sc].since ? periodOrd(map[sc].since) : NaN;
+          if (!map[sc].since || (isFinite(pf) && (isNaN(ps) || pf < ps))) map[sc].since = r.periodFrom;
+        }
       }
     });
     d.consumers = Object.keys(map).map(function (k) { return map[k]; });

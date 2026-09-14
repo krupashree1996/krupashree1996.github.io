@@ -126,16 +126,22 @@ html,body{min-height:100%;margin:0;background-image:radial-gradient(circle at to
     // Small improvements: clear previous entries (except hero) and start in chronological order
     let newestFirst = false;
 
-    async function loadTimeline(){
+    // Escape for BOTH element content and attribute values (quotes included).
+    function escapeHTML(s){ if(s == null) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;'); }
+    // Only http(s) URLs are ever placed in href/src — blocks javascript:/data:/vbscript:
+    function safeUrl(u){
+      if(!u) return '';
       try{
-        const res = await fetch('data/timeline.json',{cache: 'no-store'});
-        if(!res.ok) throw new Error('Timeline data not found');
-        const data = await res.json();
-        renderTimeline(data.items || []);
-      }catch(err){
-        const el = document.getElementById('timeline');
-        el.insertAdjacentHTML('beforeend', `<p style="padding:1rem;color:var(--hp-muted)">Could not load timeline data: ${err.message}. Check the repository data/timeline.json.</p>`);
-      }
+        const p = new URL(String(u), location.href);
+        return (p.protocol === 'https:' || p.protocol === 'http:') ? p.href : '';
+      }catch(e){ return ''; }
+    }
+    function showLoadError(err){
+      const el = document.getElementById('timeline');
+      const p = document.createElement('p');
+      p.style.cssText = 'padding:1rem;color:var(--hp-muted)';
+      p.textContent = 'Could not load timeline data: ' + (err && err.message ? err.message : err) + '. Check the repository data/timeline.json.';
+      el.appendChild(p);
     }
 
     function renderTimeline(items){
@@ -143,10 +149,12 @@ html,body{min-height:100%;margin:0;background-image:radial-gradient(circle at to
       // remove existing entries (except hero)
       Array.from(container.querySelectorAll('.entry')).forEach(e=>{ if(e.id !== 'entry-hero') e.remove(); });
 
-      // sort by actual date value
+      // sort by actual date value (invalid dates sort last)
       items.sort((a,b)=> {
         const da = Date.parse(a.date);
         const db = Date.parse(b.date);
+        if(isNaN(da)) return 1;
+        if(isNaN(db)) return -1;
         return newestFirst ? db - da : da - db;
       });
 
@@ -159,24 +167,62 @@ html,body{min-height:100%;margin:0;background-image:radial-gradient(circle at to
         entry.className = entryClasses.join(' ');
         entry.tabIndex = 0;
 
-        let mediaHTML = '';
+        // Build the card with DOM APIs — no user data ever passes through an
+        // innerHTML string.
+        const dateDiv = document.createElement('div');
+        dateDiv.className = 'date';
+        dateDiv.textContent = formatDate(it.date);
+        const h3 = document.createElement('h3');
+        h3.textContent = it.title;
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'meta';
+        metaDiv.textContent = it.caption || '';
+        entry.appendChild(dateDiv); entry.appendChild(h3); entry.appendChild(metaDiv);
+
         if(it.image){
-          const safeSrc = escapeHTML(it.image);
-          const safeAlt = escapeHTML(it.title||'Image');
-          mediaHTML += `<div class="media"><img class="hidden" data-src="${safeSrc}" alt="${safeAlt}"></div><div class="media-hint">Click anywhere in this card to reveal the image</div>`;
+          const media = document.createElement('div');
+          media.className = 'media';
+          const img = document.createElement('img');
+          img.className = 'hidden';
+          img.dataset.src = it.image;
+          img.alt = it.title || 'Image';
+          media.appendChild(img);
+          entry.appendChild(media);
+          const hint = document.createElement('div');
+          hint.className = 'media-hint';
+          hint.textContent = 'Click anywhere in this card to reveal the image';
+          entry.appendChild(hint);
         }
         if(it.video){
-          if(isYouTube(it.video)){
-            const v = youTubeEmbed(it.video);
-            mediaHTML += `<iframe src="${v}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="width:100%;height:280px;border-radius:8px;margin-top:.6rem"></iframe>`;
-          } else if(isVimeo(it.video)){
-            mediaHTML += `<iframe src="${it.video}" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen style="width:100%;height:280px;border-radius:8px;margin-top:.6rem"></iframe>`;
-          } else {
-            mediaHTML += `<p class="meta">Video: <a href="${escapeHTML(it.video)}" target="_blank">Open video</a></p>`;
+          const v = safeUrl(it.video);
+          const y = v && isYouTube(v) ? youTubeEmbed(v) : '';
+          if(y){
+            const frame = document.createElement('iframe');
+            frame.src = y;
+            frame.setAttribute('frameborder','0');
+            frame.setAttribute('allow','accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+            frame.setAttribute('allowfullscreen','');
+            frame.style.cssText = 'width:100%;height:280px;border-radius:8px;margin-top:.6rem';
+            entry.appendChild(frame);
+          } else if(v && isVimeo(v)){
+            const frame = document.createElement('iframe');
+            frame.src = v;
+            frame.setAttribute('frameborder','0');
+            frame.setAttribute('allow','autoplay; fullscreen; picture-in-picture');
+            frame.setAttribute('allowfullscreen','');
+            frame.style.cssText = 'width:100%;height:280px;border-radius:8px;margin-top:.6rem';
+            entry.appendChild(frame);
+          } else if(v){
+            const p = document.createElement('p');
+            p.className = 'meta';
+            const a = document.createElement('a');
+            a.href = v; a.target = '_blank'; a.rel = 'noopener';
+            a.textContent = 'Open video';
+            p.textContent = 'Video: ';
+            p.appendChild(a);
+            entry.appendChild(p);
           }
         }
-
-        entry.innerHTML = `\n          <div class="date">${escapeHTML(formatDate(it.date))}</div>\n          <h3>${escapeHTML(it.title)}</h3>\n          <div class="meta">${escapeHTML(it.caption || '')}</div>\n          ${mediaHTML}\n        `;
         container.appendChild(entry);
 
         if(it.image){
@@ -219,20 +265,20 @@ html,body{min-height:100%;margin:0;background-image:radial-gradient(circle at to
       document.getElementById('orderState').textContent = newestFirst ? 'Reverse Chronological' : 'Chronological';
     }
 
-    function escapeHTML(s){ if(!s) return ''; return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
     function formatDate(s){
+      // returns a plain string — the caller sets textContent, no escaping needed
       if(!s) return '';
       const t = Date.parse(s);
-      if(isNaN(t)) return escapeHTML(s);
+      if(isNaN(t)) return String(s);
       const d = new Date(t);
       const day = d.getUTCDate();
       const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
       if(day === 1) return `${d.getUTCFullYear()}-${monthNames[d.getUTCMonth()]}`;
       return d.toISOString().slice(0,10);
     }
-    function isYouTube(url){ return /youtube|youtu.be/.test(url); }
-    function youTubeEmbed(v){ const idMatch = v.match(/(?:v=|v\/|embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/); const id = idMatch? idMatch[1] : ''; return `https://www.youtube.com/embed/${id}`; }
-    function isVimeo(url){ return /vimeo/.test(url); }
+    function isYouTube(url){ return /(?:youtube\.com|youtu\.be)\/(?:embed\/|v\/|shorts\/|watch\?v=)/i.test(url) || /youtu\.be\/[A-Za-z0-9_-]{6,}/i.test(url); }
+    function youTubeEmbed(v){ const idMatch = String(v).match(/(?:v=|v\/|embed\/|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{6,})/); const id = idMatch ? idMatch[1] : ''; return id ? 'https://www.youtube.com/embed/' + id : ''; }
+    function isVimeo(url){ return /vimeo\.com\/\d+/i.test(url); }
 
     function throwConfetti(times=60){
       const container = document.createElement('div');
@@ -256,14 +302,15 @@ html,body{min-height:100%;margin:0;background-image:radial-gradient(circle at to
       newestFirst = !newestFirst; renderTimeline(window._timelineItems || []);
     });
 
-    // Load and cache items onto window so toggle is instant
+    // Load once, cache onto window so the order toggle is instant.
     (async function(){
       try{
-        const res = await fetch('data/timeline.json',{cache:'no-store'});
-        if(res.ok){
-          const data = await res.json(); window._timelineItems = data.items || []; renderTimeline(window._timelineItems);
-        } else { loadTimeline(); }
-      }catch(e){ loadTimeline(); }
+        const res = await fetch('data/timeline.json');
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        window._timelineItems = data.items || [];
+        renderTimeline(window._timelineItems);
+      }catch(e){ showLoadError(e); }
     })();
 
     // Tools dropdown

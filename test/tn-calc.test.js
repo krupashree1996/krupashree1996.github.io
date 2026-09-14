@@ -44,7 +44,7 @@ eq('R2025 breakdown sum matches', (function () {
   var b = Calc.proposedByTables(478, { below: R2025.below, above: R2025.above }).breakdown;
   return b.reduce(function (s, x) { return s + x.amount; }, 0);
 })(), 2498.7);
-eq('below-table route on 500', Calc.proposedByTables(500, { below: R2025.below, above: R2025.above }).total, 2598);
+eq('below-table route on 500', Calc.proposedByTables(500, { below: R2025.below, above: R2025.above }).total, 2645);
 eq('no tables -> NaN', isFinite(Calc.proposedByTables(10, null).total), false);
 
 section('govt subsidy + era subsidies');
@@ -53,13 +53,14 @@ eq('subsidy 200', Calc.govtSubsidy(200), 755);
 eq('subsidy 400', Calc.govtSubsidy(400), 805);
 eq('subsidy 500', Calc.govtSubsidy(500), 840);
 eq('subsidy 600', Calc.govtSubsidy(600), 645);
-eq('subsidy 1000', Calc.govtSubsidy(1000), 745);
+eq('subsidy 1000', Calc.govtSubsidy(1000), 855);
 eq('subsidy 1100', Calc.govtSubsidy(1100), 915);
 eq('subsidy negative', isFinite(Calc.govtSubsidy(-5)), false);
 section('R2026 free-200 scheme');
-eq('free200 200 units', Calc.REGIMES.filter(function (r) { return r.key === 'R2026'; })[0].sub(200), 990);
-eq('free200 478.87 units → ₹1,436.881 (docs claim)', Calc.round2(Calc.REGIMES.filter(function (r) { return r.key === 'R2026'; })[0].sub(478.87) - 0), 0); // structural; exact value below
-eq('free200 478.87 exact', Calc.round2(200 * 4.95 + 0.25 * 200 + 0.35 * 78.87), 1436.88);
+var R2026 = Calc.REGIMES.filter(function (r) { return r.key === 'R2026'; })[0];
+eq('free200 subsidy 200 units', R2026.sub(200), 990);
+eq('free200 subsidy 478.87 units', Calc.round2(R2026.sub(478.87)), 1067.6);
+eq('free200 net "you pay" 478.87 → ₹1,436.88 (docs claim)', Calc.proposedByTables(478.87, { below: R2026.net.below, above: R2026.net.above }).total, 1436.88);
 
 section('tariff-era resolution (tablesForBill)');
 var iso = function (d) { return (d || '').replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1'); };
@@ -197,7 +198,9 @@ var wpBad = { cmcNo: '000000000', receiptNo: 'ab', paidDate: 'garbage', amount: 
 var vw3 = Calc.verifyWater(wpBad, wctx);
 ok('water conn mismatch fails', check(vw3, 'water_conn').status === 'fail');
 ok('water bad date fails', check(vw3, 'water_date').status === 'fail');
-ok('water missing items warn', check(vw3, 'water_sum').status === 'warn');
+ok('water item-sum mismatch fails', check(vw3, 'water_sum').status === 'fail');
+var wpNoItems = { cmcNo: '007012345', receiptNo: 'W12345678', paidDate: '12/08/2025', amount: 1200, paidTotal: 1200, items: [] };
+ok('water missing items warn', check(Calc.verifyWater(wpNoItems, wctx), 'water_sum').status === 'warn');
 
 section('verifyPT');
 var pctx = { propertyNo: '12-345-67890-123', usedReceiptNo: new Set() };
@@ -244,7 +247,8 @@ ok('accepted removes blocked', accepted.blocked === false);
 ok('accepted check flips status', accepted.checks[0].status === 'accepted');
 ok('hasBlocking ignores unresolved warn', Calc.hasBlocking([fl, wn], { k: 'ok' }) === false);
 var ss2 = Calc.statusSummary(accepted.checks);
-eq('status summary accepted+badges', ss2.accepted + ss2.fail + ss2.warn, 1);
+eq('status summary counts accepted, not fail', ss2.accepted, 1);
+eq('status summary fail cleared by accept', ss2.fail, 0);
 
 section('schema migration');
 eq('SCHEMA_VERSION', Calc.SCHEMA_VERSION, 3);

@@ -1,7 +1,8 @@
 (function () {
   var DATA = window.DATA || (window.DATA = { profile: { name: '' }, pans: [], meta: {}, ipos: [], applications: [] });
-  var S = { tab: 'cal', curPan: '', chartTimer: 0 };
+  var S = { tab: 'cal', curPan: '' };
   var newerSession = false;
+  var corruptSession = false;
   var LS = 'ipo.tracker.session';
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
@@ -27,7 +28,6 @@
     m.classList.add('open');
     m.setAttribute('aria-hidden', 'false');
     m.onclick = function (e) { if (closable && e.target === m) closeModal(); };
-    document.getElementById('modal').setAttribute('data-closable', closable ? '1' : '0');
   }
   function closeModal() {
     var m = document.getElementById('modal');
@@ -37,9 +37,10 @@
   }
 
   function load() {
-    try {
-      var raw = localStorage.getItem(LS);
-      if (raw) {
+    var raw = null;
+    try { raw = localStorage.getItem(LS); } catch (e) {}
+    if (raw) {
+      try {
         var d = JSON.parse(raw);
         if (d && typeof d.version === 'number' && d.version > SCHEMA_VERSION) {
           newerSession = true;
@@ -50,21 +51,37 @@
           if (Array.isArray(d.pans)) DATA.pans = d.pans;
           DATA.profile = d.profile || DATA.profile;
           DATA.meta = d.meta || {};
+        } else {
+          corruptSession = true; // shape is wrong — keep the raw copy, never overwrite it
         }
+      } catch (e) {
+        corruptSession = true;
+        try { localStorage.setItem(LS + '.corrupt', raw); } catch (e2) {}
       }
-    } catch (e) {}
+      if (corruptSession) {
+        toast('Saved session could not be read — defaults are shown and the raw data was kept as ' + LS + '.corrupt (restore it via Open bundle if needed).', 'bad');
+      }
+    }
     try { S.curPan = localStorage.getItem(LS_PAN) || ''; } catch (e) {}
   }
+  var flushWarned = false;
   function flush() {
-    if (newerSession) return; // never write back into a newer schema
+    if (newerSession || corruptSession) return; // never write back over a newer/corrupt session
     try {
       localStorage.setItem(LS, JSON.stringify({ version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, ipos: DATA.ipos, applications: DATA.applications }));
-    } catch (e) {}
+      flushWarned = false;
+    } catch (e) {
+      if (!flushWarned) {
+        flushWarned = true;
+        toast('Storage is full or sealed — changes will not be saved. Download a bundle now to keep them.', 'bad');
+      }
+    }
   }
   var persisting = 0;
   function persist() {
     clearTimeout(persisting);
     persisting = setTimeout(flush, 250);
+    if (DATA.meta.wdav && DATA.meta.wdav.url) scheduleBackup();
   }
 
   function holderOf(id) {
@@ -694,7 +711,8 @@
     var hi = num('iHi');
     rec.bandHi = hi && hi > 0 ? hi : null;
     rec.shareLot = num('iLot');
-    rec.minLots = num('iMin') || Calc.defaultLots(rec.category, rec);
+    var mn = num('iMin');
+    rec.minLots = mn != null ? mn : Calc.defaultLots(rec.category, rec);
     rec.openDate = val('iOpen') || null;
     rec.closeDate = val('iClose') || null;
     rec.refundDate = val('iRefund') || null;
@@ -709,6 +727,7 @@
     rec.notes = val('iNotes');
     var problems = Calc.validIpo(rec);
     if (problems.length) { err.textContent = problems.join(' '); return; }
+    rec.touched = true; // user-managed: auto-fetch will not fill/overwrite this record
     if (edit) {
       for (var i = 0; i < DATA.ipos.length; i++) if (DATA.ipos[i].id === rec.id) { DATA.ipos[i] = rec; break; }
     } else {
@@ -890,15 +909,22 @@
         return e && e.checked;
       });
       if (!ticked.length) { err.textContent = 'Tick at least one PAN holder.'; return; }
-      var created = ticked.length;
+      if (!(defLots > 0)) { err.textContent = 'This IPO has no valid lot size to apply for.'; return; }
+      if (!(ipo.bandHi > 0)) { err.textContent = 'This IPO has no price band — set it on the IPO first, or use a custom entry in Applications.'; return; }
+      var created = 0;
       ticked.forEach(function (p) {
-        DATA.applications.push({
+        if (Calc.hasApp(DATA.applications, ipo.id, p.id)) return;
+        var rec = {
           id: Calc.uid('app'), createdAt: new Date().toISOString(),
           ipoId: ipo.id, panId: p.id, appliedOn: Calc.todayISO(),
           lots: defLots, price: ipo.bandHi, status: 'applied',
           shares: null, soldOn: null, soldPrice: null, notes: ''
-        });
+        };
+        if (Calc.validApp(rec, ipo).length) { err.textContent = Calc.validApp(rec, ipo).join(' '); return; }
+        DATA.applications.push(rec);
+        created++;
       });
+      if (!created) return;
       persist(); closeModal(); renderAll();
       toast('Applied ' + created + ' application' + (created === 1 ? '' : 's') + ' \u2014 lien ' + Calc.inr(perPan * created) + '.', 'ok');
     };
@@ -938,7 +964,7 @@
   function quickAllot(a) {
     var ipo = ipoOf(a.ipoId);
     a.status = 'allotted';
-    if (!(a.shares > 0) && ipo) a.shares = a.lots * ipo.shareLot;
+    if (!(a.shares > 0) && ipo && a.lots > 0 && ipo.shareLot > 0) a.shares = a.lots * ipo.shareLot;
     persist(); renderAll();
     toast('Marked allotted \u2014 shares ' + Calc.fmtNum(a.shares) + '.', 'ok');
   }
@@ -1002,22 +1028,40 @@
 
     var save = el('button', 'primary', 'Save');
     save.onclick = function () {
-      DATA.profile.name = val('pName');
-      DATA.meta.calendarUrl = val('pCalUrl');
-      var newPans = [];
+      var newPans = [], problems = [];
       Array.prototype.forEach.call(document.querySelectorAll('#panRows .crow'), function (row) {
         var input = row.querySelectorAll('input');
         var pan = Calc.normPan ? Calc.normPan(input[0].value) : input[0].value;
         var name = input[1].value.trim();
         if (!pan && !name) return;
         var holder = { id: row.getAttribute('data-id') || Calc.uid('pan'), pan: pan, name: name };
-        var problems = Calc.validPan(holder);
-        if (problems.length) { err.textContent = (name ? name + ': ' : '') + problems.join(' '); throw new Error('stop'); }
+        var p = Calc.validPan(holder);
+        if (p.length) { problems.push((name ? name + ': ' : '') + p.join(' ')); return; }
+        for (var i = 0; i < newPans.length; i++) {
+          if (newPans[i].pan && newPans[i].pan === pan) { problems.push(name + ': duplicate PAN (already listed above).'); return; }
+        }
         newPans.push(holder);
       });
-      DATA.pans = newPans;
-      persist(); closeModal(); renderAll();
-      toast('Profile saved.', 'ok');
+      if (problems.length) { err.textContent = problems.join('  |  '); return; }
+      DATA.profile.name = val('pName');
+      DATA.meta.calendarUrl = val('pCalUrl');
+      var newIds = {};
+      newPans.forEach(function (h) { newIds[h.id] = 1; });
+      var orphaned = DATA.applications.filter(function (a) { return !newIds[a.panId]; }).length;
+      if (orphaned) {
+        confirmDel('Removing a PAN holder also deletes its ' + orphaned + ' application record' + (orphaned === 1 ? '' : 's') + '. Continue?', function () {
+          commitPans(newPans);
+        });
+        return;
+      }
+      commitPans(newPans);
+      function commitPans(list) {
+        DATA.pans = list;
+        DATA.applications = DATA.applications.filter(function (a) { return newIds[a.panId]; });
+        if (S.curPan && !newIds[S.curPan]) S.curPan = '';
+        persist(); closeModal(); renderAll();
+        toast('Profile saved.', 'ok');
+      }
     };
     var cancel = el('button', 'ghost', 'Cancel');
     cancel.onclick = closeModal;
@@ -1088,7 +1132,8 @@
     rd.onload = function () {
       try {
         var s = String(rd.result);
-        if (/\bwindow\.DATA\s*=/.test(s)) s = s.replace(/^[\s\S]*?=\s*/, '').replace(/;\s*$/, '');
+        if (s.indexOf('window.DATA =') < 0) throw new Error('not a bundle saved by this app (expected a window.DATA file)');
+        s = s.replace(/^[\s\S]*?window\.DATA\s*=\s*/, '').replace(/;\s*$/, '');
         var d = JSON.parse(s);
         if (!d || !Array.isArray(d.ipos) || !Array.isArray(d.applications)) throw new Error('missing ipos/applications arrays');
         if (typeof d.version === 'number' && d.version > SCHEMA_VERSION) {
@@ -1109,32 +1154,39 @@
     rd.readAsText(file);
   }
 
-  function findIpo(symbol, openDate) {
-    var keySymbol = String(symbol || '').toUpperCase();
+  /* Match a remote IPO to a local one: same symbol + open date, or the same
+   * open/close date pair (symbol missing or renamed on one side). */
+  function findIpo(r) {
+    var sym = String(r.symbol || '').toUpperCase();
+    var od = r.openDate || null, cd = r.closeDate || null;
     for (var i = 0; i < DATA.ipos.length; i++) {
       var x = DATA.ipos[i];
-      if (keySymbol && x.symbol && String(x.symbol).toUpperCase() === keySymbol &&
-          (x.openDate || null) === (openDate || null)) return x;
+      if (sym && x.symbol && String(x.symbol).toUpperCase() === sym && (x.openDate || null) === od) return x;
+      if (od && cd && (x.openDate || null) === od && (x.closeDate || null) === cd) return x;
     }
     return null;
   }
+  var REMOTE_CORE = ['name', 'symbol', 'exchange', 'category', 'bandHi', 'shareLot', 'minLots',
+    'openDate', 'closeDate', 'refundDate', 'listingDate', 'registrar', 'rhp'];
   function applyRemote(d) {
     if (!d || !Array.isArray(d.ipos)) throw new Error('payload has no ipos array');
-    var CORE = ['name', 'symbol', 'exchange', 'category', 'bandHi', 'shareLot', 'minLots',
-      'openDate', 'closeDate', 'refundDate', 'listingDate', 'registrar', 'rhp'];
-    var added = 0, updated = 0, statused = 0;
+    var added = 0, filled = 0, statused = 0;
     d.ipos.forEach(function (raw) {
       var r = Calc.normRemote(raw);
       if (!r) return;
-      var match = findIpo(r.symbol, r.openDate);
+      var match = findIpo(r);
       if (match) {
-        CORE.forEach(function (k) { if (r[k] != null) match[k] = r[k]; });
-        if (r.gmp != null) match.gmp = r.gmp;
-        if (r.subs != null) match.subs = r.subs;
-        updated++;
+        /* additive: fill blanks only; never clobber user-edited records. */
+        if (!match.touched) {
+          REMOTE_CORE.forEach(function (k) {
+            if ((match[k] == null || match[k] === '') && r[k] != null && r[k] !== '') { match[k] = r[k]; filled++; }
+          });
+        }
+        if (r.gmp != null && match.gmp == null) match.gmp = r.gmp;
+        if (r.subs != null && match.subs == null) match.subs = r.subs;
       } else {
         var rec = { id: Calc.uid('ipo'), createdAt: new Date().toISOString(), src: 'remote' };
-        CORE.forEach(function (k) { rec[k] = r[k] != null ? r[k] : null; });
+        REMOTE_CORE.forEach(function (k) { rec[k] = r[k] != null ? r[k] : null; });
         if (r.gmp != null) rec.gmp = r.gmp; else rec.gmp = null;
         if (r.subs != null) rec.subs = r.subs; else rec.subs = null;
         rec.listingPrice = null;
@@ -1153,7 +1205,7 @@
           if (Calc.normPan(DATA.pans[h].pan) === Calc.normPan(ra.pan)) { holder = DATA.pans[h]; break; }
         }
         if (!holder) return;
-        var ipo = findIpo(ra.symbol, ra.openDate);
+        var ipo = findIpo({ symbol: ra.symbol, openDate: ra.openDate, closeDate: ra.closeDate });
         if (!ipo) return;
         var changed = false;
         DATA.applications.forEach(function (a) {
@@ -1166,19 +1218,214 @@
       });
     }
     persist(); renderAll();
-    toast('Calendar refreshed: ' + added + ' added, ' + updated + ' updated' +
+    toast('Calendar refreshed: ' + added + ' added' +
+      (filled ? ', ' + filled + ' field' + (filled === 1 ? '' : 's') + ' filled' : '') +
       (statused ? ', ' + statused + ' status' + (statused === 1 ? '' : 'es') + ' checked' : '') + '.', 'ok');
   }
-  function fetchCalendar() {
+  function calUrl() {
     var url = (DATA.meta.calendarUrl || '').trim() || DEFAULT_CAL_URL;
+    try { return new URL(url).href; } catch (e) { return null; }
+  }
+  var lastSync = { at: 0, ok: false, msg: '' };
+  function relTime(t) {
+    var min = Math.round((Date.now() - t) / 60000);
+    return min < 1 ? 'now' : min + 'm ago';
+  }
+  function setSyncChip() {
+    var chip = document.getElementById('syncchip');
+    if (!chip) return;
+    if (!navigator.onLine) { chip.textContent = 'offline'; chip.title = 'No network — auto-fetch is paused. Everything else works offline.'; return; }
+    if (!lastSync.at) { chip.textContent = 'not synced yet'; chip.title = 'Auto-fetch runs on page load (and when you click Fetch Online). Configure in the settings chip.'; return; }
+    chip.textContent = (lastSync.ok ? 'synced' : 'fetch failed') + ' ' + relTime(lastSync.at);
+    chip.title = lastSync.ok ? 'Last successful fetch: ' + new Date(lastSync.at).toLocaleString() : 'Last fetch failed: ' + lastSync.msg;
+  }
+  function setBackupChip() {
+    var chip = document.getElementById('backupchip');
+    if (!chip) return;
+    var w = DATA.meta.wdav;
+    if (!w || !w.url) { chip.textContent = 'backup off'; chip.title = 'Enable WebDAV auto-backup in the settings chip.'; return; }
+    if (w.state === 'ok') chip.textContent = 'backed up ' + relTime(w.at);
+    else if (w.state === 'err') chip.textContent = 'backup failed';
+    else if (w.state === 'busy') chip.textContent = 'backing up\u2026';
+    else chip.textContent = 'backup idle';
+    chip.title = w.state === 'ok' ? 'Last backup to ' + w.url + ': ' + new Date(w.at).toLocaleString()
+      : (w.state === 'err' ? 'Last backup failed: ' + (w.err || 'network error') : 'Waiting for the first backup\u2026');
+  }
+  function fetchCalendar(manual) {
+    if (typeof fetch !== 'function') return;
+    var url = calUrl();
+    if (!url) { toast('Calendar URL is invalid — set it in Profile (or the settings chip).', 'bad'); return; }
     var btn = document.getElementById('btnFetch');
     btn.disabled = true;
     btn.textContent = 'Fetching\u2026';
-    fetch(url, { mode: 'cors' })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    fetch(url, { mode: 'cors', cache: 'no-store' })
+      .then(function (r) {
+        lastSync = { at: Date.now(), ok: r.ok, msg: r.ok ? '' : 'HTTP ' + r.status };
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
       .then(applyRemote)
-      .catch(function (e) { toast('Fetch Online failed: ' + e.message + ' (offline or CORS blocked).', 'bad'); })
-      .finally(function () { btn.disabled = false; btn.textContent = 'Fetch Online'; });
+      .catch(function (e) {
+        if (!lastSync.at) lastSync = { at: Date.now(), ok: false, msg: e.message };
+        if (manual) toast('Fetch Online failed: ' + e.message + ' (offline or CORS blocked).', 'bad');
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.textContent = 'Fetch Online';
+        setSyncChip();
+      });
+  }
+  function autoFetch() {
+    if (!DATA.meta.autoFetch || !navigator.onLine) return;
+    if (!calUrl()) return;
+    if (document.visibilityState === 'hidden') return;
+    fetchCalendar(false);
+  }
+
+  /* ---------- WebDAV auto-backup ---------- */
+  var BACKUP_NAME = 'ipo-tracker-backup.json';
+  var backupBusy = 0, lastBackup = 0;
+  function wdavUrl() {
+    var w = DATA.meta.wdav;
+    if (!w || !w.url) return null;
+    var u = String(w.url).trim().replace(/\/+$/, '');
+    try {
+      var p = new URL(u);
+      if (p.protocol !== 'https:' && p.protocol !== 'http:') return null;
+      return u + '/' + BACKUP_NAME;
+    } catch (e) { return null; }
+  }
+  function wdavHeaders() {
+    var h = { 'Content-Type': 'application/json' };
+    var w = DATA.meta.wdav;
+    if (w && w.basic) h['Authorization'] = 'Basic ' + w.basic;
+    return h;
+  }
+  function scheduleBackup() {
+    clearTimeout(backupBusy);
+    backupBusy = setTimeout(pushBackup, 30000);
+  }
+  function pushBackup(force) {
+    if (typeof fetch !== 'function') return;
+    var url = wdavUrl();
+    if (!url) return;
+    var now = Date.now();
+    if (!force && (now - lastBackup < 15 * 60000)) return;
+    lastBackup = now;
+    var w = DATA.meta.wdav;
+    w.state = 'busy'; setBackupChip();
+    var body = JSON.stringify({ version: SCHEMA_VERSION, savedAt: new Date().toISOString(),
+      pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, ipos: DATA.ipos, applications: DATA.applications });
+    fetch(url, { method: 'PUT', mode: 'no-cors', headers: wdavHeaders(), body: body })
+      .then(function () {
+        w.state = 'ok'; w.at = Date.now(); w.err = '';
+        persist(); setBackupChip();
+        if (DATA.meta.wdavNotified !== 1) { DATA.meta.wdavNotified = 1; persist(); toast('Auto-backup is on — a copy of your data is uploaded after every change and every 10 minutes while the page is open.', 'ok'); }
+      })
+      .catch(function (e) {
+        w.state = 'err'; w.err = e.message || 'network error';
+        persist(); setBackupChip();
+        toast('Backup failed: ' + (e.message || 'network error') + ' (check URL/credentials in the settings chip).', 'bad');
+      });
+  }
+  function restoreBackup() {
+    if (typeof fetch !== 'function') return;
+    var url = wdavUrl();
+    if (!url) { toast('Enable WebDAV backup first (settings chip).', 'warn'); return; }
+    fetch(url, { mode: 'cors', headers: wdavHeaders() })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        if (!d || !Array.isArray(d.ipos) || !Array.isArray(d.applications)) throw new Error('backup file is not a valid bundle');
+        if (typeof d.version === 'number' && d.version > SCHEMA_VERSION) { toast('Backup is from a newer app version (schema ' + d.version + '). Update the app first — nothing was restored.', 'warn'); return; }
+        DATA.ipos = d.ipos; DATA.applications = d.applications;
+        if (Array.isArray(d.pans)) DATA.pans = d.pans;
+        DATA.profile = d.profile || DATA.profile;
+        if (d.meta && typeof d.meta === 'object') DATA.meta = d.meta;
+        persist(); renderAll();
+        toast('Restored data from WebDAV backup (' + (d.savedAt ? new Date(d.savedAt).toLocaleString() : 'unknown time') + ').', 'ok');
+      })
+      .catch(function (e) { toast('Restore failed: ' + e.message, 'bad'); });
+  }
+
+  /* ---------- settings (auto-fetch + backup) ---------- */
+  function settingsModal() {
+    var f = formShell('Auto-sync & backup');
+    var form = f.form, err = f.err, actions = f.actions;
+    form.appendChild(el('p', 'muted small wide', 'Auto-fetch pulls the IPO calendar (dates, subscription, allotment status) from the snapshot URL when the page loads and when you return to the tab. Nothing about you is sent — it is a plain read-only GET.'));
+    var af = el('label', 'panOpt');
+    var afCk = document.createElement('input');
+    afCk.type = 'checkbox';
+    afCk.checked = !!DATA.meta.autoFetch;
+    af.appendChild(afCk);
+    af.appendChild(document.createTextNode(' Auto-fetch on page load / tab return'));
+    form.appendChild(af);
+    form.appendChild(field('Calendar URL', textInput('setCalUrl', DATA.meta.calendarUrl || '', DEFAULT_CAL_URL, 320), true));
+    form.appendChild(el('hr', 'seam'));
+    form.appendChild(el('h4', '', 'WebDAV auto-backup'));
+    form.appendChild(el('p', 'muted small wide', 'A full copy of your data (including PANs — treat as private) is uploaded after every change and every 10 minutes while the page is open. Uses your WebDAV host\u2019s own HTTPS; no third party is involved.'));
+    form.appendChild(field('WebDAV folder URL', textInput('setWdavUrl', DATA.meta.wdav ? DATA.meta.wdav.url : '', 'https://host.example/dav/ipo/', 320), true));
+    form.appendChild(field('Basic auth (optional)', textInput('setWdavAuth', DATA.meta.wdav ? DATA.meta.wdav.basic : '', 'Basic base64 string (Basic base64(user:pass))', 480), true));
+    var bstatus = el('p', 'hint', wStatusText());
+    bstatus.id = 'setWdavStatus';
+    form.appendChild(bstatus);
+    function wStatusText() {
+      var w = DATA.meta.wdav;
+      if (!w || !w.url) return 'Backup: off.';
+      if (w.state === 'ok') return 'Backup: ok \u2014 last upload ' + relTime(w.at) + '.';
+      if (w.state === 'err') return 'Backup: failed \u2014 ' + (w.err || 'network error') + '.';
+      if (w.state === 'busy') return 'Backup: uploading\u2026';
+      return 'Backup: waiting for the first change\u2026';
+    }
+    var save = el('button', 'primary', 'Save');
+    save.onclick = function () {
+      DATA.meta.autoFetch = afCk.checked;
+      DATA.meta.calendarUrl = val('setCalUrl');
+      var url = val('setWdavUrl'), auth = val('setWdavAuth');
+      if (url) {
+        try {
+          var u = new URL(url.replace(/\/+$/, ''));
+          if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error('use http(s)');
+        } catch (e) { err.textContent = 'Invalid WebDAV URL: ' + e.message; return; }
+      }
+      DATA.meta.wdav = { url: url, basic: auth,
+        state: DATA.meta.wdav ? DATA.meta.wdav.state : 'idle',
+        at: DATA.meta.wdav ? DATA.meta.wdav.at : 0,
+        err: DATA.meta.wdav ? DATA.meta.wdav.err : '' };
+      if (url) { lastBackup = 0; pushBackup(true); }
+      persist(); setSyncChip(); setBackupChip();
+      closeModal(); renderAll();
+      toast('Settings saved.', 'ok');
+    };
+    var test = el('button', 'ghost', 'Test backup now');
+    test.onclick = function () { pushBackup(true); document.getElementById('setWdavStatus').textContent = wStatusText(); };
+    var restore = el('button', 'ghost', 'Restore from backup');
+    restore.onclick = restoreBackup;
+    var cancel = el('button', 'ghost', 'Close');
+    cancel.onclick = closeModal;
+    actions.appendChild(save); actions.appendChild(test); actions.appendChild(restore); actions.appendChild(cancel);
+    modal(f.box, true);
+  }
+  function wireSync() {
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') { setSyncChip(); setBackupChip(); autoFetch(); }
+    });
+    window.addEventListener('online', function () { setSyncChip(); setBackupChip(); autoFetch(); });
+    window.addEventListener('offline', function () { setSyncChip(); });
+    document.getElementById('btnFetch').onclick = function () { fetchCalendar(true); };
+    document.getElementById('settingschip').onclick = settingsModal;
+    document.getElementById('settingschip').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); settingsModal(); }
+    });
+    document.getElementById('profilechip').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); profileModal(); }
+    });
+    setSyncChip(); setBackupChip();
+    setInterval(function () {
+      if (DATA.meta.wdav && DATA.meta.wdav.url && navigator.onLine && document.visibilityState === 'visible') pushBackup(false);
+    }, 10 * 60000);
   }
 
   function switchTab(t) {
@@ -1205,6 +1452,7 @@
 
   function init() {
     load();
+    wireSync();
     runCleanup();
     document.getElementById('btnSave').onclick = saveBundle;
     document.getElementById('btnImport').onclick = function () { document.getElementById('importFile').click(); };
@@ -1212,7 +1460,6 @@
       if (this.files && this.files[0]) loadBundle(this.files[0]);
       this.value = '';
     };
-    document.getElementById('btnFetch').onclick = fetchCalendar;
     document.getElementById('profilechip').onclick = profileModal;
     document.getElementById('panSel').onchange = function () {
       S.curPan = this.value;
@@ -1231,6 +1478,7 @@
     window.addEventListener('beforeunload', flush);
     switchTab('cal');
     renderAll();
+    autoFetch(); // on page load (when enabled in settings)
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
