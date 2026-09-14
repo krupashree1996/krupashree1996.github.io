@@ -1,0 +1,14 @@
+{
+  "name": "krupashree-site",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Krupashree's personal site: timeline, PDF tools, IPO tracker, TN utilities (no build step).",
+  "scripts": {
+    "test": "node test/ipo-calc.test.js && node test/tn-calc.test.js && node test/ipo-dom.test.js",
+    "test:calc": "node test/ipo-calc.test.js && node test/tn-calc.test.js",
+    "optimize:images": "node scripts/optimize-images.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  }
+}

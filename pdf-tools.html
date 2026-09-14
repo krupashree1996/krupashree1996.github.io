@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF Tools</title>
+    <!-- Inlined vendor: pdf-lib (Apache-2.0, Microsoft/Hopding), pasted in so the
+         page works fully offline. When you replace this blob, pin the exact version
+         you used here (e.g. pdf-lib@1.17.x) so security fixes can be tracked. -->
     <script>
 !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t=t||self).PDFLib={})}(this,(function(t){"use strict";
 /*! *****************************************************************************
@@ -90,7 +93,7 @@
             </div>
             <button id="compressBtn" onclick="compress()" disabled>Reduce &amp; Download</button>
             <div class="status" id="compress-status"></div>
-            <p class="info">Note: Works best with text-heavy PDFs. Image-heavy PDFs may have limited reduction.</p>
+            <p class="info">Note: works best with text-heavy PDFs (strips metadata, re-saves with object streams — it cannot re-encode embedded images, so image-heavy files may barely shrink). Password-protected PDFs are refused unless you confirm; the downloaded copy will have no password.</p>
         </div>
     </div>
 
@@ -107,16 +110,42 @@
             return (bytes / 1048576).toFixed(2) + ' MB';
         }
 
+        function fileLabel(el, file) {
+            // file.name is untrusted (crafted names survive downloads/ZIPs) — never
+            // put it through innerHTML.
+            el.textContent = '';
+            if (!file) { el.textContent = 'No file selected'; return; }
+            const span = document.createElement('span');
+            span.className = 'file-name';
+            span.textContent = file.name + ' (' + formatSize(file.size) + ')';
+            el.appendChild(span);
+        }
+
         function updateMergeLabel(n) {
             const file = document.getElementById('pdf' + n).files[0];
-            document.getElementById('merge-label' + n).innerHTML = file ? '<span class="file-name">' + file.name + ' (' + formatSize(file.size) + ')</span>' : 'No file selected';
+            fileLabel(document.getElementById('merge-label' + n), file);
             document.getElementById('mergeBtn').disabled = !(document.getElementById('pdf1').files[0] && document.getElementById('pdf2').files[0]);
         }
 
         function updateCompressLabel() {
             const file = document.getElementById('pdfC').files[0];
-            document.getElementById('compress-label').innerHTML = file ? '<span class="file-name">' + file.name + ' (' + formatSize(file.size) + ')</span>' : 'No file selected';
+            fileLabel(document.getElementById('compress-label'), file);
             document.getElementById('compressBtn').disabled = !file;
+        }
+
+        // Refuse to silently strip password protection: load with encryption
+        // enforced first, and only relax it if the user explicitly confirms.
+        async function loadPdf(bytes, statusEl) {
+            const { PDFDocument } = PDFLib;
+            try {
+                return await PDFDocument.load(bytes);
+            } catch (e) {
+                const msg = String(e && e.message || e);
+                if (/encrypt/i.test(msg) && window.confirm('This PDF is password-protected. Merging/compressing it will REMOVE the password from the downloaded file. Continue?')) {
+                    return await PDFDocument.load(bytes, { ignoreEncryption: true });
+                }
+                throw new Error(msg);
+            }
         }
 
         async function merge() {
@@ -130,7 +159,7 @@
                 const merged = await PDFDocument.create();
                 for (let i = 1; i <= 2; i++) {
                     const file = document.getElementById('pdf' + i).files[0];
-                    const pdf = await PDFDocument.load(await file.arrayBuffer());
+                    const pdf = await loadPdf(await file.arrayBuffer(), status);
                     const pages = await merged.copyPages(pdf, pdf.getPageIndices());
                     pages.forEach(p => merged.addPage(p));
                 }
@@ -158,7 +187,6 @@
             status.className = 'status';
             status.textContent = 'Processing...';
             try {
-                const { PDFDocument } = PDFLib;
                 const file = document.getElementById('pdfC').files[0];
                 const originalBytes = new Uint8Array(await file.arrayBuffer());
                 const targetBytes = getTargetBytes();
@@ -166,9 +194,11 @@
 
                 status.textContent = 'Original: ' + formatSize(originalSize) + ' → Target: ' + formatSize(targetBytes);
 
-                let pdf = await PDFDocument.load(originalBytes, { ignoreEncryption: true });
+                const pdf = await loadPdf(originalBytes, status);
 
-                // Remove metadata to reduce size
+                // Strip metadata and re-save with object streams. (This does not
+                // re-encode embedded images — pure-JS pdf-lib can't recompress
+                // them — so image-heavy files may barely shrink.)
                 pdf.setTitle('');
                 pdf.setAuthor('');
                 pdf.setSubject('');
@@ -176,46 +206,17 @@
                 pdf.setCreator('');
                 pdf.setProducer('');
 
-                let result = await pdf.save({ useObjectStreams: true, addDefaultPage: false });
+                const result = await pdf.save({ useObjectStreams: true, addDefaultPage: false, updateFieldAppearances: false });
 
-                if (result.length <= targetBytes) {
-                    download(result, 'compressed.pdf');
-                    status.className = 'status success';
-                    status.textContent = 'Done! ' + formatSize(originalSize) + ' → ' + formatSize(result.length);
-                    btn.disabled = false;
-                    return;
-                }
-
-                // If still too large, try removing embedded fonts and re-encoding
-                status.textContent = 'Trying deeper compression...';
-                await new Promise(r => setTimeout(r, 50));
-
-                // Re-load and try without field appearances update
-                pdf = await PDFDocument.load(originalBytes, { ignoreEncryption: true });
-                pdf.setTitle('');
-                pdf.setAuthor('');
-                pdf.setSubject('');
-                pdf.setKeywords([]);
-                pdf.setCreator('');
-                pdf.setProducer('');
-
-                result = await pdf.save({ useObjectStreams: true, addDefaultPage: false, updateFieldAppearances: false });
-
-                if (result.length <= targetBytes) {
-                    download(result, 'compressed.pdf');
-                    status.className = 'status success';
-                    status.textContent = 'Done! ' + formatSize(originalSize) + ' → ' + formatSize(result.length);
-                    btn.disabled = false;
-                    return;
-                }
-
-                // Report what we achieved
                 const pct = ((1 - result.length / originalSize) * 100).toFixed(1);
                 download(result, 'compressed.pdf');
-                status.className = 'status success';
-                status.textContent = 'Reduced by ' + pct + '%: ' + formatSize(originalSize) + ' → ' + formatSize(result.length);
-                if (result.length > targetBytes) {
-                    status.textContent += ' (target not met)';
+                if (result.length <= targetBytes) {
+                    status.className = 'status success';
+                    status.textContent = 'Done! ' + formatSize(originalSize) + ' → ' + formatSize(result.length) + ' (' + pct + '% smaller) — under target.';
+                } else {
+                    status.className = 'status error';
+                    status.textContent = 'Target not met: ' + formatSize(originalSize) + ' → ' + formatSize(result.length) + ' (' + pct + '% smaller). '
+                        + 'Image-heavy PDFs cannot be recompressed in the browser — use an external tool for a real target size. The file above is the best this tool can do.';
                 }
             } catch (e) {
                 status.className = 'status error';

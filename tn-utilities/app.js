@@ -129,7 +129,10 @@
       if (!map[sc]) map[sc] = { scNo: sc, name: '', tariff: '', since: '' };
       if (r.consumerName && !map[sc].name) map[sc].name = r.consumerName;
       if (r.tariff && !map[sc].tariff) map[sc].tariff = r.tariff;
-      if (!map[sc].since && r.periodTo) map[sc].since = r.periodTo;
+      if (r.periodFrom) {
+        var rf = tsOf(r.periodFrom);
+        if (!map[sc].since || (isFinite(rf) && rf < tsOf(map[sc].since))) map[sc].since = r.periodFrom;
+      }
     });
     DATA.consumers = Object.keys(map).sort().map(function (k) { return map[k]; });
   }
@@ -183,8 +186,17 @@
     for (var i = 0; i < DATA.consumers.length; i++) if (normSc(DATA.consumers[i].scNo) === sc) return DATA.consumers[i];
     return DATA.profile;
   }
+  var persistWarned = false;
   function persist() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(DATA)); } catch (e) { /* origin sealed */ }
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(DATA));
+      persistWarned = false;
+    } catch (e) {
+      if (!persistWarned) {
+        persistWarned = true;
+        toast('Local storage is full or sealed — recent changes will be lost if the page closes. Save a bundle now.', 'bad');
+      }
+    }
   }
   function sortedRecords() {
     return DATA.records.slice().sort(function (a, b) { return tsOf(b.periodTo) - tsOf(a.periodTo); });
@@ -439,7 +451,7 @@
     });
   }
   function renderPng(arrBuf) {
-    return pdfjsLib.getDocument({ data: arrBuf }).promise
+    return pdfjsLib.getDocument({ data: arrBuf, isEvalSupported: false }).promise
       .then(function (doc) { return doc.getPage(1); })
       .then(function (page) {
         var vp = page.getViewport({ scale: 2.5 });
@@ -808,7 +820,7 @@
       del.title = 'Delete this record (and its stored documents)';
       del.onclick = function () { deleteRecord(r); };
       x.appendChild(del);
-      tr.appendChild(tdP); tr.appendChild(u); tr.appendChild(e); tr.appendChild(a); tr.appendChild(s); tr.appendChild(x);
+      tr.appendChild(tdP); tr.appendChild(u); tr.appendChild(a); tr.appendChild(sd); tr.appendChild(s); tr.appendChild(x);
       tb.appendChild(tr);
     });
     var unpaid = recs.filter(function (r) { return r.status === 'unpaid'; });
@@ -921,7 +933,6 @@
             toast('Bill matches record.');
             label = billToId(bill) || 'bill';
           }
-          if (p.kind !== 'receipt' && !utilRec) toast('Bill matches record.');
           if (p.kind === 'receipt' && !utilRec) toast('Receipt matches bill amount.');
           var rid = 'doc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
           putDoc(rid, p.kind, f.name, f).then(function () {
@@ -1691,7 +1702,7 @@
     wire();
     var st = null;
     try { st = localStorage.getItem(STORE_KEY); } catch (e) {}
-    var newerBackup = false;
+    var newerBackup = false, corruptBackup = false;
     // stock seed or no bundle + a stored session => restore the local backup
     if (!Array.isArray(window.__seed) && (!DATA.records || !DATA.records.length) && st) {
       try {
@@ -1707,11 +1718,17 @@
             toast('Restored last session from local backup.');
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        if (st) {
+          corruptBackup = true;
+          try { localStorage.setItem(STORE_KEY + '.corrupt', st); } catch (e2) {}
+          toast('Local backup could not be read (corrupt). A copy was kept as ' + STORE_KEY + '.corrupt — the seed data is shown and will not overwrite it.', 'bad');
+        }
+      }
     }
     window.DATA = DATA;
     ensureRateTables();
-    if (!newerBackup) persist();
+    if (!newerBackup && !corruptBackup) persist();
     renderAll();
   }
 
