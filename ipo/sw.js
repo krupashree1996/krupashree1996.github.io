@@ -1,4 +1,4 @@
-var CACHE = 'ipo-v6';
+var CACHE = 'ipo-v7';
 var PRECACHE = ['index.html', 'style.css', 'calc.js', 'app.js', 'data/bundle.js', 'manifest.json', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', function (e) {
@@ -32,16 +32,14 @@ self.addEventListener('fetch', function (e) {
   try { url = new URL(req.url); } catch (err) { return; }
   if (url.origin !== location.origin) return;
   var name = keyFor(url);
-  if (name === '/index.html' || name === '/') {
-    /* serve cache, revalidate in the background so deploys land without a
-     * manual cache-bump. */
+  if (req.mode === 'navigate' || name === '' || name === 'index.html') {
     e.respondWith(
-      caches.match(name).then(function (hit) {
+      caches.match('index.html').then(function (hit) {
         var revalidate = fetch(req).then(function (res) {
-          if (res && res.ok) caches.open(CACHE).then(function (c) { c.put(name, res.clone()); });
+          if (res && res.ok) caches.open(CACHE).then(function (c) { c.put('index.html', res.clone()); });
         }).catch(function () {});
         return hit || fetch(req).then(function (res) {
-          if (res && res.ok) caches.open(CACHE).then(function (c) { c.put(name, res.clone()); });
+          if (res && res.ok) caches.open(CACHE).then(function (c) { c.put('index.html', res.clone()); });
           return res;
         });
       })
