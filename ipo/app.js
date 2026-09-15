@@ -1450,6 +1450,17 @@
     if (S.tab === 'hist') requestAnimationFrame(drawPnlChart);
   }
 
+  function showVersion() {
+    var badge = document.getElementById('verBadge');
+    if (!badge || !navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+    var ch = new MessageChannel();
+    ch.port1.onmessage = function (ev) {
+      var v = ev.data && ev.data.version;
+      if (v) { badge.hidden = false; badge.textContent = v; badge.title = 'Deployed version: ' + v; }
+    };
+    navigator.serviceWorker.controller.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+  }
+
   function init() {
     load();
     wireSync();
@@ -1479,6 +1490,7 @@
     switchTab('cal');
     renderAll();
     autoFetch(); // on page load (when enabled in settings)
+    showVersion();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
