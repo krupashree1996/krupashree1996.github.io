@@ -7,6 +7,7 @@
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
+  var APP_VERSION = 8;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
 
   function el(tag, cls, text) {
@@ -1452,13 +1453,20 @@
 
   function showVersion() {
     var badge = document.getElementById('verBadge');
-    if (!badge || !navigator.serviceWorker || !navigator.serviceWorker.controller) return;
-    var ch = new MessageChannel();
-    ch.port1.onmessage = function (ev) {
-      var v = ev.data && ev.data.version;
-      if (v) { badge.hidden = false; badge.textContent = v; badge.title = 'Deployed version: ' + v; }
-    };
-    navigator.serviceWorker.controller.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+    if (!badge) return;
+    var v = 'v' + APP_VERSION;
+    badge.hidden = false;
+    badge.textContent = v;
+    badge.title = 'Build ' + v;
+    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+    try {
+      var ch = new MessageChannel();
+      ch.port1.onmessage = function (ev) {
+        var swv = ev.data && ev.data.version;
+        if (swv) badge.title = 'Build ' + v + ' · SW cache ' + swv;
+      };
+      navigator.serviceWorker.controller.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+    } catch (e) {}
   }
 
   function init() {

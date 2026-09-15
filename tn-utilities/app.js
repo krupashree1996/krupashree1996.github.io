@@ -10,13 +10,20 @@
   function $(id) { return document.getElementById(id); }
   function showVersion() {
     var badge = $('verBadge');
-    if (!badge || !navigator.serviceWorker || !navigator.serviceWorker.controller) return;
-    var ch = new MessageChannel();
-    ch.port1.onmessage = function (ev) {
-      var v = ev.data && ev.data.version;
-      if (v) { badge.hidden = false; badge.textContent = v; badge.title = 'Deployed version: ' + v; }
-    };
-    navigator.serviceWorker.controller.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+    if (!badge) return;
+    var v = 'v' + APP_VERSION;
+    badge.hidden = false;
+    badge.textContent = v;
+    badge.title = 'Build ' + v;
+    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+    try {
+      var ch = new MessageChannel();
+      ch.port1.onmessage = function (ev) {
+        var swv = ev.data && ev.data.version;
+        if (swv) badge.title = 'Build ' + v + ' · SW cache ' + swv;
+      };
+      navigator.serviceWorker.controller.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+    } catch (e) {}
   }
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -70,6 +77,7 @@
   var DATA = null;
   var importingData = false;
   var RATE_TABLES_VERSION = 2;
+  var APP_VERSION = 8;
   var CUR_BELOW = [[1, 400, 4.95], [401, 500, 6.65]];
   var CUR_ABOVE = [[1, 400, 4.95], [401, 500, 6.65], [501, 600, 8.80], [601, 800, 9.95], [801, 1000, 11.05], [1001, null, 12.15]];
   var OLD_BELOW = [[1, 200, 0], [201, 400, 4.70], [401, 500, 6.30]];

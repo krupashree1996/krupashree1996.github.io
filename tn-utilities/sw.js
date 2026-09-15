@@ -1,4 +1,4 @@
-var CACHE = 'tn-utils-v6';
+var CACHE = 'tn-utils-v7';
 var PRECACHE = ['index.html', 'style.css', 'parser.js', 'calc.js', 'app.js', 'data/bundle.js', 'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png',
   'lib/pdf.min.js', 'lib/pdf.worker.min.js', 'lib/chart.umd.js',
   'lib/tesseract.min.js', 'lib/tess_assets.js', 'lib/tess_worker.min.js', 'lib/tesseract-core-simd-lstm.wasm.js'];
