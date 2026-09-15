@@ -10,6 +10,12 @@ self.addEventListener('install', function (e) {
   );
 });
 
+self.addEventListener('message', function (e) {
+  if (e.data && e.data.type === 'GET_VERSION' && e.ports && e.ports[0]) {
+    e.ports[0].postMessage({ version: CACHE });
+  }
+});
+
 self.addEventListener('activate', function (e) {
   e.waitUntil(
     caches.keys().then(function (keys) {

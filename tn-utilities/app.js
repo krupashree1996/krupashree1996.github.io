@@ -8,6 +8,16 @@
 
   /* ---------- tiny DOM helpers ---------- */
   function $(id) { return document.getElementById(id); }
+  function showVersion() {
+    var badge = $('verBadge');
+    if (!badge || !navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+    var ch = new MessageChannel();
+    ch.port1.onmessage = function (ev) {
+      var v = ev.data && ev.data.version;
+      if (v) { badge.hidden = false; badge.textContent = v; badge.title = 'Deployed version: ' + v; }
+    };
+    navigator.serviceWorker.controller.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+  }
   function el(tag, cls, text) {
     var n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -1698,6 +1708,7 @@
   function boot() {
     if (!window.pdfjsLib) { document.body.innerHTML = '<div style="padding:40px">pdf.min.js failed to load under file://.</div>'; return; }
     try { pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js'; } catch (e) {}
+    showVersion();
     loadData();
     wire();
     var st = null;
