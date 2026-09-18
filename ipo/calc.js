@@ -97,7 +97,8 @@ var Calc = (function () {
   function lienAmount(app, ipo) {
     if (!ipo || !ipo.shareLot) return 0;
     if (app.status === 'rejected') return 0;
-    var qty = app.status === 'allotted' ? sharesOf(app, ipo) : qtyOf(app, ipo);
+    if (app.status === 'allotted') return 0;
+    var qty = qtyOf(app, ipo);
     if (!(qty > 0)) return 0;
     return Math.round(qty * offerPrice(app, ipo));
   }
