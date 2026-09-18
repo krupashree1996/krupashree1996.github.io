@@ -7,7 +7,7 @@
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 8;
+  var APP_VERSION = 9;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
 
   function el(tag, cls, text) {
@@ -105,6 +105,11 @@
   }
   function myAppsFor(ipoId) { return filterApps(DATA.applications.filter(function (a) { return a.ipoId === ipoId; })); }
   function mySummary(ipo) { return Calc.ipoSummary(ipo, myAppsFor(ipo.id)); }
+  function myDeployed(ipo) {
+    var sum = 0;
+    myAppsFor(ipo.id).forEach(function (a) { sum += Calc.deployedAmount(a, ipo); });
+    return sum;
+  }
   function hasPrice(ipo) {
     if (ipo.listingPrice > 0) return true;
     return myAppsFor(ipo.id).some(function (a) { return a.soldPrice > 0; });
@@ -434,13 +439,13 @@
     head.appendChild(el('span', 'chip', 'view: ' + viewTitle()));
     card.appendChild(head);
 
-    var tot = { lien: 0, shares: 0, value: 0, pnl: 0 };
+    var tot = { deployed: 0, shares: 0, value: 0, pnl: 0 };
     hist.forEach(function (i) {
       var s = mySummary(i);
-      tot.lien += s.lien; tot.shares += s.shares; tot.value += s.listValue; tot.pnl += s.pnl;
+      tot.deployed += myDeployed(i); tot.shares += s.shares; tot.value += s.listValue; tot.pnl += s.pnl;
     });
     var kv = el('div', 'kv inline');
-    kv.appendChild(statBox('Lien deployed', Calc.inr(tot.lien)));
+    kv.appendChild(statBox('Capital deployed', Calc.inr(tot.deployed)));
     kv.appendChild(statBox('Allotted shares', Calc.fmtNum(tot.shares)));
     kv.appendChild(statBox('Value @ listing', hist.length && tot.value ? Calc.inr(tot.value) : '\u2014'));
     kv.appendChild(statBox('Net P&L', (tot.pnl >= 0 ? '+' : '') + Calc.inr(tot.pnl)));
@@ -452,7 +457,7 @@
       var t = el('table');
       var th = el('thead');
       var trH = el('tr');
-      ['IPO', 'Closed', 'Listed', 'Lien', 'Shares', 'Value', 'P&L', 'Result'].forEach(function (h, i) {
+      ['IPO', 'Closed', 'Listed', 'Deployed', 'Shares', 'Value', 'P&L', 'Result'].forEach(function (h, i) {
         trH.appendChild(el('th', i >= 3 ? 'num' : '', h));
       });
       th.appendChild(trH); t.appendChild(th);
@@ -464,7 +469,7 @@
         tr.appendChild(el('td', '', i.name));
         tr.appendChild(el('td', '', Calc.fmtDate(i.closeDate)));
         tr.appendChild(el('td', '', Calc.fmtDate(i.listingDate)));
-        tr.appendChild(el('td', 'num', Calc.inr(s.lien)));
+        tr.appendChild(el('td', 'num', Calc.inr(myDeployed(i))));
         tr.appendChild(el('td', 'num', s.shares ? Calc.fmtNum(s.shares) : '\u2014'));
         tr.appendChild(el('td', 'num', hp && s.listValue ? Calc.inr(s.listValue) : '\u2014'));
         tr.appendChild(pnlCell(s.pnl, hp));
@@ -1317,8 +1322,9 @@
     w.state = 'busy'; setBackupChip();
     var body = JSON.stringify({ version: SCHEMA_VERSION, savedAt: new Date().toISOString(),
       pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, ipos: DATA.ipos, applications: DATA.applications });
-    fetch(url, { method: 'PUT', mode: 'no-cors', headers: wdavHeaders(), body: body })
-      .then(function () {
+    fetch(url, { method: 'PUT', mode: 'cors', headers: wdavHeaders(), body: body })
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error('HTTP ' + (res ? res.status : '(no response)') + ' — the server must allow CORS for PUT');
         w.state = 'ok'; w.at = Date.now(); w.err = '';
         persist(); setBackupChip();
         if (DATA.meta.wdavNotified !== 1) { DATA.meta.wdavNotified = 1; persist(); toast('Auto-backup is on — a copy of your data is uploaded after every change and every 10 minutes while the page is open.', 'ok'); }
