@@ -102,6 +102,13 @@ var Calc = (function () {
     if (!(qty > 0)) return 0;
     return Math.round(qty * offerPrice(app, ipo));
   }
+  function deployedAmount(app, ipo) {
+    if (!ipo || !ipo.shareLot) return 0;
+    if (app.status === 'rejected') return 0;
+    var qty = app.status === 'allotted' ? sharesOf(app, ipo) : qtyOf(app, ipo);
+    if (!(qty > 0)) return 0;
+    return Math.round(qty * offerPrice(app, ipo));
+  }
   function effPrice(app, ipo) {
     var p = app.soldPrice;
     if (p == null || p <= 0) p = ipo && ipo.listingPrice;
@@ -248,7 +255,7 @@ var Calc = (function () {
     todayISO: todayISO, dateAdd: dateAdd, fmtDate: fmtDate,
     groupIn: groupIn, fmtNum: fmtNum, inr: inr, compact: compact, price: price, fmtSubs: fmtSubs,
     uid: uid, ipoStatus: ipoStatus, calRank: calRank, sortIpos: sortIpos, sharesOf: sharesOf, qtyOf: qtyOf,
-    offerPrice: offerPrice, lienAmount: lienAmount, effPrice: effPrice,
+    offerPrice: offerPrice, lienAmount: lienAmount, deployedAmount: deployedAmount, effPrice: effPrice,
     pnlOf: pnlOf, appAmount: appAmount, minAmount: minAmount, defaultLots: defaultLots, allotmentDue: allotmentDue, normRemote: normRemote,
     validIpo: validIpo, validApp: validApp, normPan: normPan, validPan: validPan, hasApp: hasApp,
     cleanupDue: cleanupDue, cleanupCandidates: cleanupCandidates,
