@@ -191,7 +191,26 @@ eq('BPPY desc clean', nw.txns[2].desc, 'BPPY CC PAYMENT');
 eq('ASTROTALK not credit despite C prefix', nw.txns[4].credit, false);
 eq('PINK base parsed (new)', nw.txns[1].base, 90);
 eq('normDate textual', Parser.normDate('18 Nov, 2025'), '18/11/2025');
-eq('normDate slash', Parser.normDate('18/11/2025'), '18/11/2025');
+ eq('normDate slash', Parser.normDate('18/11/2025'), '18/11/2025');
+ /* no-time rows (EMI/fee/loan-prepay/AGGREGATOREMI) must parse, not be dropped */
+ var nt = Parser.parseTxnLine('18/02/2025 AGGREGATOREMI -OFFUS CREDIT (Ref# 09999999980218000651934) - 416 27,709.10 Cr');
+ ok('no-time row parsed', !!nt);
+ eq('no-time credit flag', nt.credit, true);
+ eq('no-time amount', nt.amount, 27709.10);
+ eq('no-time base', nt.base, 416);
+ eq('no-time time default', nt.time, '00:00');
+ var nt2 = Parser.parseTxnLine('10/03/2025 OFFUS EMI,LOAN PRECL,00000120112346 (Ref# 09999999980310000210652) 27,709.10');
+ ok('no-time debit row parsed', !!nt2);
+ eq('no-time debit flag', nt2.credit, false);
+ eq('no-time debit amount', nt2.amount, 27709.10);
+ /* '+ C <amount>' credit (description wrapped to the prior line) must be a credit */
+ var wc = Parser.parseTxnLine('19/01/2026 12:53 + C 1,210.00');
+ ok('wrapped +C credit parsed', !!wc);
+ eq('wrapped +C is credit', wc.credit, true);
+ eq('wrapped +C amount', wc.amount, 1210.00);
+ var wc2 = Parser.parseTxnLine('17/06/2026 13:18 PETRO SURCHARGE WAIVER + C 8.68');
+ eq('waiver +C is credit', wc2.credit, true);
+ eq('waiver +C amount', wc2.amount, 8.68);
 
 /* ------------------------------------------------------------------ */
 section('verifyStatement — old layout (all pass)');

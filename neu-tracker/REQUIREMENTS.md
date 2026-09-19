@@ -164,14 +164,23 @@ Checks (key → meaning → configurable):
 Tolerances (`deltas`): purchases/payments error ≤ ₹2; balance ≤ ₹20;
 coins ≤ 5 (real statements are clean except note ₹8.68/ft quirks below).
 
-Known residual mismatches on real statements (2025-2026, all 20 verified):
-- 202503 (old layout): transactions sum off by ₹2 (₹16,946.46 vs 16,948.46); payments off by ₹299 (₹53,439.85 vs 53,738.85) due to an EMI / `PI` row.
-- 202507 (new): purchases ₹43,366.41 vs 43,395.41 (₹29 bank rounding split).
-- 20250918: transactions vs printed ₹2,19,972.09 → ₹2,19,981.61; payments ₹2,99,974.00 → ₹3,15,773.28 — both flagged but import allowed; treat as "needs statement-level override".
-- 20260119: purchases ₹27,743.45 vs ₹24,023.45; payments ₹70,623.00 vs ₹74,343.00 (residual EMI/refund rows; `₹8.68` waiver credit now parsed correctly).
-- General: `PETRO SURCHARGE WAIVER + C 8.68` (₹8.68 waiver credit) and EMI/PI
-  rows must NOT be counted as purchases/payments; the parser handles the waiver
-  credit; EMI rows should be tagged `emi` when desc matches `EMI`.
+All 20 real statements (202501–202608, old + new layout) now import with **zero
+failing checks** — the two historical gaps are closed:
+
+1. **No-time rows** (parser.js `parseTxnLine`): EMI / fee / loan-prepay /
+   `AGGREGATOREMI` credit rows print with **no time-of-day**
+   (e.g. `18/02/2025 AGGREGATOREMI -OFFUS CREDIT (Ref# …) - 416 27,709.10 Cr`).
+   Previously these were dropped entirely (the date-time guard required
+   `\d{2}:\d{2}`), silently under-counting payments/purchases. Now `parseTxnLine`
+   falls back to a date-only match with `time='00:00'`, and the caller guard in
+   `parseTransactions` accepts a date followed by a space or `|` (so pipe-layout
+   new rows still work). Covers 202502, 202503, 202507.
+2. **Wrapped `+ C <amount>` credits** (parser.js credit regex): payment rows whose
+   description wraps to the previous line print as `19/01/2026 12:53 + C 1,210.00`
+   — a credit, but the old credit regex ended `\s*Cr?` (a *required* literal `C`
+   after the amount), so it never matched the bare amount. Changed to `(?:\s*Cr)?$`
+   (optional). This also fixes `PETRO SURCHARGE WAIVER + C 8.68`. Covers all 2026
+   files + the waiver.
 
 **Rule:** verification never mutates data; it only reports. Import is allowed if
 no non-configurable check fails; configurable fails surface to the user to accept
