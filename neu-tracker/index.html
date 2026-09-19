@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HDFC Tata Neu Credit Card Tracker</title>
+<meta name="description" content="Offline tracker for your HDFC Tata Neu credit card: verify imported statement PDFs, keep a manual spend ledger and reconcile each cycle. 100% local — nothing leaves your device.">
+<meta name="theme-color" content="#1c1a15">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="modal" aria-hidden="true"><div id="modalBox"></div></div>
+<div id="toasts"></div>
+
+<header>
+  <div class="brand">
+    <h1>HDFC Tata Neu <span>Credit Card Tracker</span></h1>
+    <p class="tag">Verify statements · manual spend ledger · reconcile every cycle — fully offline.</p>
+  </div>
+  <nav class="nav">
+    <button id="importGo" class="btn primary">Import statement</button>
+    <button id="ledgerGo" class="btn">Ledger</button>
+    <button id="rewardsGo" class="btn">Rewards</button>
+    <button id="billsGo" class="btn">Bills</button>
+    <button id="saveBundleBtn" class="btn ghost" title="Download this folder's data as bundle.js">Save bundle</button>
+    <button id="openBundleBtn" class="btn ghost" title="Restore a downloaded bundle.js">Open bundle</button>
+    <input id="openBundleInput" type="file" accept=".js" hidden>
+    <input id="importFile" type="file" accept=".pdf" hidden>
+  </nav>
+</header>
+
+<main>
+  <section id="landing" class="panel">
+    <div class="hero">
+      <h2>Track every card cycle in one place</h2>
+      <ol class="steps">
+        <li>Click <b>Import statement</b> and pick your <i>encrypted</i> HDFC Tata Neu statement PDF.</li>
+        <li>The app unlocks it with the password you type (kept on this device only), reads every line and verifies the printed amounts and NeuCoins against the confirmed formulas.</li>
+        <li>Log each spend in the <b>Ledger</b> as you make it (UPI / Grocery / Base / Tata / NoCoins / Payment).</li>
+        <li>Reconcile each statement to see what matched and what didn’t — plus expected vs. earned NeuCoins.</li>
+      </ol>
+      <button id="heroImport" class="btn primary big">Import your first statement</button>
+    </div>
+    <div class="cards">
+      <div class="card" id="landingStats"></div>
+      <div class="card chart"><h4>Monthly purchases</h4><div class="cv"><canvas id="chartMonthly"></canvas></div></div>
+      <div class="card chart"><h4>Spend by category</h4><div class="cv tall"><canvas id="chartCats"></canvas></div></div>
+    </div>
+    <p id="importCounter" class="muted"></p>
+    <p id="importHint" class="muted" style="min-height:1.2em"></p>
+  </section>
+
+  <section id="verify" class="panel" style="display:none">
+    <h2 id="verifyTitle"></h2>
+    <div class="kv" id="verifyKv"></div>
+    <h4>Bonus programs on statement</h4>
+    <div id="bonusChips"></div>
+    <p class="muted" id="txnCount"></p>
+    <h4>Checks</h4>
+    <div id="checksBox"></div>
+    <div class="actions">
+      <span class="muted" id="raiseNote">no exceptions yet</span>
+      <div class="spacer"></div>
+      <button id="discardBtn" class="btn ghost">Discard</button>
+      <button id="commitBtn" class="btn primary" disabled>Record statement</button>
+    </div>
+  </section>
+
+  <section id="ledger" class="panel" style="display:none">
+    <h2>Expense ledger</h2>
+    <div class="form ledger-form">
+      <div><label>Date</label><input id="leDate" type="text" placeholder="dd/mm/yyyy"></div>
+      <div class="grow"><label>Description</label><input id="leDesc" type="text" placeholder="Where / what did you pay?"></div>
+      <div><label>Category</label>
+        <select id="leCat"></select>
+      </div>
+      <div><label>Amount (₹)</label><input id="leAmt" type="number" min="1" step="0.01" placeholder="0.00"></div>
+      <div class="align-end"><button id="addBtn" class="btn primary">Add entry</button></div>
+    </div>
+    <p class="muted hint" id="leHint"></p>
+    <h4>Totals</h4>
+    <div id="ledgerTotals"></div>
+    <h4>Entries</h4>
+    <div id="ledgerList"></div>
+  </section>
+
+  <section id="reconcile" class="panel" style="display:none">
+    <h2>Reconcile a statement</h2>
+    <div class="form"><label>Statement</label><select id="rcSel"></select></div>
+    <div id="rcBody"></div>
+  </section>
+
+  <section id="rewards" class="panel" style="display:none">
+    <h2>Rewards — NeuCoins</h2>
+    <div id="rwSummary"></div>
+    <h4>Per-cycle breakdown</h4>
+    <div class="form"><label>Cycle</label><select id="rwSel"></select>
+      <button id="rwConfigBtn" class="btn ghost">Coin value…</button></div>
+    <div id="rwCycle"></div>
+    <div class="cards">
+      <div class="card chart"><h4>NeuCoins earned per cycle</h4><div class="cv"><canvas id="chartEarned"></canvas></div></div>
+      <div class="card chart"><h4>NeuCoin balance over time</h4><div class="cv"><canvas id="chartBalance"></canvas></div></div>
+    </div>
+    <h4>Redemptions / transfers</h4>
+    <div class="form ledger-form">
+      <div><label>Date</label><input id="rwDate" type="text" placeholder="dd/mm/yyyy"></div>
+      <div><label>NeuCoins</label><input id="rwCoins" type="number" min="0" step="1" placeholder="0"></div>
+      <div><label>Worth (₹)</label><input id="rwValue" type="number" min="0" step="0.01" placeholder="optional"></div>
+      <div class="grow"><label>Note</label><input id="rwNote" type="text" placeholder="e.g. paid for a Tata order"></div>
+      <div class="align-end"><button id="rwAddBtn" class="btn primary">Add</button></div>
+    </div>
+    <div id="rwReconcile"></div>
+    <div id="rwList"></div>
+  </section>
+
+  <section id="bills" class="panel" style="display:none">
+    <h2>Bills &amp; payments</h2>
+    <div class="cards">
+      <div class="card chart"><h4>Credit utilization per cycle</h4><div class="cv"><canvas id="chartUtil"></canvas></div></div>
+      <div class="card"><h4>Interest</h4><div id="blInterest"></div></div>
+    </div>
+    <h4>Due dates</h4>
+    <div id="blDue"></div>
+    <h4>Payment log</h4>
+    <div class="form ledger-form">
+      <div><label>Date</label><input id="blDate" type="text" placeholder="dd/mm/yyyy"></div>
+      <div><label>For period</label><select id="blFor"></select></div>
+      <div><label>Amount (₹)</label><input id="blAmt" type="number" min="0" step="0.01" placeholder="0.00"></div>
+      <div><label>Method</label><input id="blMethod" type="text" placeholder="netbanking / UPI / auto" list="blMethods"></div>
+      <datalist id="blMethods"><option value="Netbanking"></option><option value="UPI"></option><option value="Autopay"></option></datalist>
+      <div class="align-end"><button id="blAddBtn" class="btn primary">Add payment</button></div>
+    </div>
+    <div id="blPayments"></div>
+  </section>
+</main>
+
+<footer>
+  <p>100% local &amp; offline. PDF parsing, verification and your data never leave this device — bundle.js intentionally stores no password.</p>
+</footer>
+
+<script src="lib/pdf.min.js"></script>
+<script src="parser.js"></script>
+<script src="calc.js"></script>
+<script src="lib/chart.umd.js"></script>
+<script src="data/bundle.js"></script>
+<script src="app.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var hi = document.getElementById('heroImport');
+  if (hi) hi.addEventListener('click', function () { document.getElementById('importFile').click(); });
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* offline-only mode */ });
+  }
+});
+</script>
+</body>
+</html>
