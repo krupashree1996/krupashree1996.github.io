@@ -167,11 +167,15 @@ const Parser = (function () {
   function parseTxnLine(line) {
     var m = line.match(/^(\d{2}\/\d{2}\/\d{4})\s*\|?\s*(\d{2}:\d{2}(?::\d{2})?)\s+(.+)$/);
     if (!m) {
-      /* some statements print the date only (multi-line rows) — skip for now */
-      return null;
+      /* EMI/fee/reversal rows print without a time-of-day — parse them too. */
+      m = line.match(/^(\d{2}\/\d{2}\/\d{4})\s+([A-Z].+)$/);
+      if (!m) return null;
+      var date = m[1], time = '00:00';
+      var rest = m[2];
+    } else {
+      var date = m[1], time = m[2];
+      var rest = m[3];
     }
-    var date = m[1], time = m[2];
-    var rest = m[3];
     var toks = rest.trim().split(' ');
     var credit = false;
     var amount = NaN, base = 0;
@@ -195,7 +199,7 @@ const Parser = (function () {
     var desc = toks.slice(0, i + 1).join(' ').replace(/\s+/g, ' ').trim();
     /* A trailing sign + currency before the amount marks a credit
      * (waivers/refunds print e.g. 'PETRO SURCHARGE WAIVER + C 8.68'). */
-    if (/[+\-]\s*C\s*[+\-]?\s*[\d,]+(?:\.\d{1,2})?\s*Cr?$/i.test(rest)) credit = true;
+    if (/[+\-]\s*C\s*[+\-]?\s*[\d,]+(?:\.\d{1,2})?(?:\s*Cr)?$/i.test(rest)) credit = true;
     desc = desc.replace(/\s*[+\-]\s*(?:C\b)?$/i, '').trim();
     if (/^BPPY/i.test(desc)) credit = true;
     if (!isFinite(amount)) return null;
@@ -207,8 +211,7 @@ const Parser = (function () {
   function parseTransactions(lines) {
     var txns = [];
     for (var i = 0; i < lines.length; i++) {
-      var m = lines[i].match(/^(\d{2}\/\d{2}\/\d{4})\s*\|?\s*(\d{2}:\d{2})/);
-      if (!m) continue;
+      if (!/^\d{2}\/\d{2}\/\d{4}(\s|\|)/.test(lines[i])) continue;
       var t = parseTxnLine(lines[i]);
       if (t) txns.push(t);
     }
