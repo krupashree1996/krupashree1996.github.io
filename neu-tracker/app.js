@@ -18,7 +18,7 @@
 
   var STORE_KEY = 'ne.tracker.data';
   var PW_KEY = 'ne.tracker.pw';
-  var APP_VERSION = 3;
+  var APP_VERSION = 4;
 
   /* ---------------- tiny DOM helpers ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -93,8 +93,10 @@
     DATA = m;
     window.DATA = m;
   }
-  function getPw() { try { return localStorage.getItem(PW_KEY) || ''; } catch (e) { return ''; } }
-  function setPw(p) { try { localStorage.setItem(PW_KEY, p); } catch (e) { } }
+  /* Session-only: lives in sessionStorage — survives reloads of this tab,
+   * wiped when the browser (or tab) closes. Never in localStorage. */
+  function getPw() { try { return sessionStorage.getItem(PW_KEY) || ''; } catch (e) { return ''; } }
+  function setPw(p) { try { if (p) sessionStorage.setItem(PW_KEY, p); else sessionStorage.removeItem(PW_KEY); } catch (e) { } }
 
   /* ---------------- import / parse ---------------- */
   function readPdf(ab, pw) {
@@ -121,19 +123,15 @@
   function askPassword(cb) {
     var box = el('div');
     box.appendChild(el('h2', '', 'Statement password'));
-    box.appendChild(el('p', 'muted', 'Unlock this statement PDF. Your password is used once and kept only in this browser (never stored in bundle.js or the repo).'));
+    box.appendChild(el('p', 'muted', 'Unlock this statement PDF. Your password is kept only for this browser session (sessionStorage) and is wiped when you close the browser — it is never saved to disk, bundle.js or the repo.'));
     var row = el('div', 'form');
     var inp = el('input'); inp.type = 'password'; inp.placeholder = 'PDF password'; inp.autocomplete = 'current-password';
     row.appendChild(inp);
-    var mem = el('label', 'lbl');
-    var chk = el('input'); chk.type = 'checkbox'; chk.checked = !!getPw();
-    mem.appendChild(chk); mem.appendChild(document.createTextNode(' Remember on this device'));
     box.appendChild(row);
-    box.appendChild(mem);
     var ok = el('button', '', 'Unlock');
     ok.onclick = function () {
       var pw = inp.value;
-      setPw(chk.checked ? pw : '');
+      setPw(pw);
       closeModal();
       cb(pw);
     };

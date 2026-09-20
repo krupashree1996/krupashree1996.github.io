@@ -202,6 +202,9 @@ no non-configurable check fails; configurable fails surface to the user to accep
   formula, finance-charge summary, credit-limit utilization trend
   (`utilizationOf = used/limit`).
 - **Persistence:** statements + bundle localStorage key; schema v2 with migration.
+- **Password:** session-only — stored in `sessionStorage` (survives reload of the open
+  tab, wiped when the browser/tab closes). Never in `localStorage`, bundle.js, or the
+  repo. There is no "remember on this device" option by design.
 - Charts are guarded so views without the chart lib never throw.
 
 ---
