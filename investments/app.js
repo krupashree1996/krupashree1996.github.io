@@ -550,8 +550,78 @@
       tbl.appendChild(tr);
     });
     card.appendChild(tbl);
+    var chartPts = list.filter(function (a) { return a.xirr != null && a.maturityDate; })
+      .map(function (a) { return { date: a.maturityDate, v: a.xirr, account: a.account || '' }; })
+      .sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+    if (chartPts.length >= 1) {
+      var cw = el('div', 'xirrChart');
+      cw.appendChild(el('h3', '', 'XIRR by maturity date'));
+      cw.appendChild(xirrChart(chartPts));
+      cw.appendChild(el('p', 'hint', 'Annualized return (XIRR) for each matured FD, oldest maturity first.'));
+      card.appendChild(cw);
+    }
     card.appendChild(el('p', 'hint', 'Archived when 45+ days past maturity. XIRR uses initial amount, final credited value, and (for payout-mode bonds) the recorded net payouts.'));
     sec.appendChild(card);
+  }
+  function xirrChart(pts) {
+    var W = 640, H = 220, m = { l: 44, r: 16, t: 16, b: 30 };
+    var pw = W - m.l - m.r, ph = H - m.t - m.b;
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('class', 'xirrSvg');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'XIRR by maturity date');
+    function S(tag, at, txt) {
+      var e = document.createElementNS(ns, tag);
+      for (var k in at) e.setAttribute(k, at[k]);
+      if (txt != null) e.textContent = txt;
+      svg.appendChild(e);
+      return e;
+    }
+    function txt(tag, at, s) {
+      var e = document.createElementNS(ns, tag);
+      for (var k in at) e.setAttribute(k, at[k]);
+      e.textContent = s;
+      svg.appendChild(e);
+      return e;
+    }
+    var minD = Calc.parseISO(pts[0].date).getTime();
+    var maxD = Calc.parseISO(pts[pts.length - 1].date).getTime();
+    var span = (maxD - minD) || 1;
+    var vals = pts.map(function (p) { return p.v * 100; });
+    var minV = Math.min.apply(null, vals.concat([0]));
+    var maxV = Math.max.apply(null, vals.concat([0]));
+    if (maxV - minV < 0.5) { minV = Math.min(minV, 0); maxV = Math.max(maxV, 0.5); }
+    var padV = (maxV - minV) * 0.08; minV -= padV; maxV += padV;
+    function X(d) { return m.l + (d - minD) / span * pw; }
+    function Y(v) { return m.t + (1 - (v - minV) / (maxV - minV)) * ph; }
+    // gridlines + y labels (4 ticks)
+    var ticks = 4, i;
+    for (i = 0; i <= ticks; i++) {
+      var vv = minV + (maxV - minV) * i / ticks;
+      var yy = Y(vv);
+      S('line', { x1: m.l, y1: yy, x2: W - m.r, y2: yy, class: 'grid' });
+      txt('text', { x: m.l - 6, y: yy + 3, class: 'ax', 'text-anchor': 'end' }, vv.toFixed(1));
+    }
+    // zero baseline
+    S('line', { x1: m.l, y1: Y(0), x2: W - m.r, y2: Y(0), class: 'zero' });
+    // x labels (first, mid, last maturity date)
+    txt('text', { x: m.l, y: H - 8, class: 'ax', 'text-anchor': 'start' }, Calc.fmtDate(pts[0].date));
+    if (pts.length > 2) txt('text', { x: m.l + pw / 2, y: H - 8, class: 'ax', 'text-anchor': 'middle' }, Calc.fmtDate(pts[Math.floor(pts.length / 2)].date));
+    txt('text', { x: W - m.r, y: H - 8, class: 'ax', 'text-anchor': 'end' }, Calc.fmtDate(pts[pts.length - 1].date));
+    // line + points
+    var path = pts.map(function (p, idx) {
+      return (idx ? 'L' : 'M') + X(Calc.parseISO(p.date).getTime()).toFixed(1) + ' ' + Y(p.v * 100).toFixed(1);
+    }).join(' ');
+    S('path', { d: path, class: 'line' });
+    pts.forEach(function (p) {
+      var c = S('circle', { cx: X(Calc.parseISO(p.date).getTime()).toFixed(1), cy: Y(p.v * 100).toFixed(1), r: 4, class: 'dot' });
+      var ti = document.createElementNS(ns, 'title');
+      ti.textContent = (p.account || '') + ' · ' + Calc.fmtDate(p.date) + ' · ' + (p.v * 100).toFixed(2) + '% p.a.';
+      c.appendChild(ti);
+    });
+    return svg;
   }
   function kvin(label, value, cls) {
     var d = el('div');
