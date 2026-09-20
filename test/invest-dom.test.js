@@ -144,6 +144,26 @@ whenReady(function run() {
   eq('row shows interest (paid) cell', $$('#sec-fd .fdCell').some(function (c) { return c.querySelector('small').textContent === 'Interest (paid)'; }), true);
   eq('summary shows interest received', $('#sec-fd .kv').textContent.indexOf('Interest (received)') >= 0, true);
 
+  console.log('7) auto-archive matured 45+ days (keep XIRR, drop data)');
+  App.DATA.fds.push({
+    id: 'fdOld', account: '130910DP00004005', panId: 'pan1',
+    amount: 400000, rate: 8.1, issueDate: '2025-06-01', maturityDate: '2026-06-01',
+    maturityValue: 440000, days: 365, interestMode: 'compound',
+    entries: [{ date: '2025-09-28', int: 3060, tax: 306 }]
+  });
+  App.renderAll();
+  var today = dom.window.Calc.todayISO();
+  eq('old FD visible before archive', $$('#sec-fd .fdRow').length, 3);
+  eq('matured 45+ days (today ' + today + ')', dom.window.Calc.fdAutoRemove(App.DATA.fds[2], today, 45), true);
+  App.archiveMatured(today);
+  eq('old FD removed from fds', App.DATA.fds.length, 2);
+  eq('archived row created', App.DATA.archived.length, 1);
+  eq('archived has xirr', typeof App.DATA.archived[0].xirr, 'number');
+  App.renderAll();
+  eq('history card shown', !!$('#sec-fd .archTable'), true);
+  eq('history row shows account', $('#sec-fd .archTable').textContent.indexOf('130910DP00004005') >= 0, true);
+  eq('history row shows xirr %', $('#sec-fd .archTable').textContent.indexOf('% p.a.') >= 0, true);
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exit(1);
 });

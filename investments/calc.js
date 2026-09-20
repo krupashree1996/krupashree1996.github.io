@@ -149,6 +149,53 @@ var Calc = (function () {
     if (!x || !y) return null;
     return Math.round((y - x) / 86400000);
   }
+  /* XIRR (annualized IRR) over cash flows [{date: iso, amt: +/-number}].
+   * Returns fraction (0.08 = 8%) or null. Newton-Raphson with bisection fallback. */
+  function xirr(flows) {
+    var f = (flows || []).filter(function (x) { return parseISO(x && x.date) && isFinite(x.amt); })
+      .map(function (x) { return { d: parseISO(x.date), a: x.amt }; });
+    f.sort(function (x, y) { return x.d - y.d; });
+    if (f.length < 2) return null;
+    var t0 = f[0].d.getTime(), sumPos = 0, sumNeg = 0;
+    f.forEach(function (x) { if (x.a > 0) sumPos += x.a; else sumNeg -= x.a; });
+    if (sumPos <= 0 || sumNeg <= 0) return null;
+    function npv(r) {
+      var d = 0;
+      f.forEach(function (x) { d += x.a / Math.pow(1 + r, (x.d - t0) / 86400000 / 365); });
+      return d;
+    }
+    var lo = -0.9999, hi = 10;
+    var flo = npv(lo), fhi = npv(hi);
+    if (flo * fhi > 0) return null;
+    var r = 0.1, i, x, fx, slope, nr;
+    for (i = 0; i < 200; i++) {
+      fx = npv(r);
+      if (Math.abs(fx) < 1e-9) return r;
+      if (fx * flo > 0) { lo = r; flo = fx; } else { hi = r; }
+      x = r + 1e-9;
+      slope = (npv(x) - fx) / 1e-9;
+      if (slope !== 0) nr = r - fx / slope; else nr = (lo + hi) / 2;
+      if (!(nr > lo && nr < hi)) nr = (lo + hi) / 2;
+      if (Math.abs(nr - r) < 1e-12) return nr;
+      r = nr;
+    }
+    return isFinite(r) ? r : null;
+  }
+  /* Annualized return of an FD. Payout-mode net entries count as cash flows;
+   * compound-mode ones do not (credited in, so only initial + final matter). */
+  function fdXirr(fd) {
+    if (!fd || !fd.amount || !fd.issueDate) return null;
+    var flows = [{ date: fd.issueDate, amt: -fd.amount }];
+    var mode = normInterestMode(fd);
+    (fd.entries || []).forEach(function (e) {
+      var net = entryNet(e);
+      if (mode === 'payout' && e.date && net > 0) flows.push({ date: e.date, amt: net });
+    });
+    var final = fd.maturityValue > 0 ? fd.maturityValue : fdExpectedTotal(fd);
+    if (final > 0 && fd.maturityDate) flows.push({ date: fd.maturityDate, amt: final });
+    if (flows.length < 2) return null;
+    return xirr(flows);
+  }
   /* Accept DD/MM/YYYY (Indian) or YYYY-MM-DD; return ISO or null if invalid. */
   function parseDDMMYYYY(s) {
     s = (s == null ? '' : String(s)).trim();
@@ -179,6 +226,15 @@ var Calc = (function () {
     if (!fd || !fd.maturityDate) return 'unknown';
     if (today < fd.maturityDate) return 'active';
     return 'matured';
+  }
+  /* True when the FD is `days` or more past maturity (auto-removed from the app). */
+  function fdAutoRemove(fd, today, days) {
+    today = today || todayISO();
+    days = days == null ? 45 : days;
+    if (!fd || !fd.maturityDate) return false;
+    var m = parseISO(fd.maturityDate), t = parseISO(today);
+    if (!m || !t) return false;
+    return Math.round((t - m) / 86400000) >= days;
   }
   function fdStatusRank(fd, today) {
     var r = { active: 0, matured: 1, unknown: 2 }[fdStatus(fd, today)];
@@ -242,7 +298,8 @@ var Calc = (function () {
     fdDays: fdDays, fdInterest: fdInterest, fdExpectedTotal: fdExpectedTotal,
     fdTax: fdTax, fdNetTotal: fdNetTotal, fdMaturityValue: fdMaturityValue,
     normInterestMode: normInterestMode, entryNet: entryNet, fdEntries: fdEntries, fdEntrySummary: fdEntrySummary,
-    fdStatus: fdStatus, fdStatusRank: fdStatusRank, sortFds: sortFds, fdSummary: fdSummary,
+    fdStatus: fdStatus, fdAutoRemove: fdAutoRemove, fdStatusRank: fdStatusRank,
+    xirr: xirr, fdXirr: fdXirr, sortFds: sortFds, fdSummary: fdSummary,
     validFd: validFd, validPan: validPan, normPan: normPan, holderLabel: holderLabel,
     parseDDMMYYYY: parseDDMMYYYY, isoToDDMMYYYY: isoToDDMMYYYY
   };

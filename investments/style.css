@@ -109,6 +109,7 @@ label.chk input{width:auto}
 #interestModal .intTable td.num.warn{color:var(--warn)}
 #interestModal .intAdd{border-top:1px solid var(--line,#e5e7eb);padding-top:12px;margin-top:8px}
 input.datein{font-variant-numeric:tabular-nums;letter-spacing:.5px}
+.archTable td:first-child{white-space:nowrap}
 #importModal .kv{margin:12px 0}
 #importModal .parseStatus{font-size:12.5px;margin:0 0 10px;padding:8px 10px;border-radius:8px}
 .parseStatus.ok{background:var(--ok-bg);color:var(--ok)}
