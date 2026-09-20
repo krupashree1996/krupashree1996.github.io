@@ -256,7 +256,7 @@ const Parser = (function () {
     var label = /\bPayment Due Date\b.*\bMinimum Amount Due\b/i;
     for (var i = 0; i < lines.length; i++) {
       if (!label.test(lines[i])) continue;
-      for (var j = i; j < lines.length && j <= i + 2; j++) {
+        for (var j = i; j < lines.length && j <= i + 4; j++) {
         var v = moneyTokens(lines[j]);
         if (v.length < 2) continue;
         var dt = lines[j].match(/(\d{2}\/\d{2}\/\d{4})/);
@@ -272,10 +272,13 @@ const Parser = (function () {
       if (v.length >= 3) return v;
       var iv = intAmountTokens(lines[j]);
       if (iv.length >= 3) return iv;
-      /* mixed rows like '₹5,00,000 ₹4,90,987.85 ₹2,00,000' / 'C12,40,000 C12,21,375 C4,96,000' */
-      var all = [];
-      String(lines[j] || '').replace(/(?:₹|C|Rs\.?|RS\.?)?[+\-]?[\d,]+(?:\.\d{1,2})?/gi, function (m) { all.push(num(m.replace(/[₹C]|rs\.?/gi, ''))); return m; });
-      if (all.length >= 3) return all;
+      /* mixed rows like '₹5,00,000 ₹4,90,987.85 ₹2,00,000' / 'C12,40,000 C12,21,375 C4,96,000'
+       * — never a date row ('C890.00 07 Sep, 2026' would otherwise read as 890 / 7 / 2026). */
+      if (!/\/|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(lines[j])) {
+        var all = [];
+        String(lines[j] || '').replace(/(?:₹|C|Rs\.?|RS\.?)?[+\-]?[\d,]+(?:\.\d{1,2})?/gi, function (m) { all.push(num(m.replace(/[₹C]|rs\.?/gi, ''))); return m; });
+        if (all.length >= 3) return all;
+      }
       return null;
     }
     /* header-style label lines only (never the sentence in the footer blurb),
