@@ -191,15 +191,20 @@ var FdParse = (function () {
         isEvalSupported: false
       });
       task.promise.then(function (pdf) {
+        var items = [];
         var p = Promise.resolve();
-        for (var i = 1; i <= pdf.numPages; i++) p = p.then(function (acc) {
-          return pdf.getPage(i).then(function (page) {
-            return page.getTextContent().then(function (tc) {
-              return acc.concat(fromTextContent(tc.items));
+        for (var i = 1; i <= pdf.numPages; i++) {
+          (function (pageIdx) {
+            p = p.then(function () {
+              return pdf.getPage(pageIdx).then(function (page) {
+                return page.getTextContent().then(function (tc) {
+                  items = items.concat(fromTextContent(tc.items));
+                });
+              });
             });
-          });
-        }, []);
-        p.then(function (items) { resolve(parse(items, name)); }, reject);
+          })(i);
+        }
+        p.then(function () { resolve(parse(items, name)); }, reject);
       }).catch(reject);
     });
   }

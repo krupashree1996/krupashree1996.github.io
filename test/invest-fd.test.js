@@ -130,5 +130,50 @@ console.log('parse — lone amount equal to maturity is not the principal');
   eq('amount left blank', f.amount, 0);
 })();
 
-console.log('\n' + passed + ' passed, ' + failed + ' failed');
-if (failed) process.exit(1);
+console.log('parsePdf — page loop reads every page (regression: var-in-async-loop)');
+(function () {
+  // Mock pdfjsLib so we exercise the real page-loop closure without a PDF worker.
+  // Each page yields a distinct item; the loop must fetch pages 1..N in order.
+  function mockPdfjs(numPages, itemsPerPage) {
+    return {
+      GlobalWorkerOptions: {},
+      getDocument: function () {
+        return {
+          promise: Promise.resolve({
+            numPages: numPages,
+            getPage: function (n) {
+              if (!Number.isInteger(n) || n <= 0 || n > numPages) {
+                return Promise.reject(new Error('Invalid page request.'));
+              }
+              return Promise.resolve({
+                getTextContent: function () { return Promise.resolve({ items: itemsPerPage[n - 1] }); }
+              });
+            }
+          })
+        };
+      }
+    };
+  }
+  var items = [
+    [
+      { transform: [1, 0, 0, 1, 100, 560], str: 'Confirmation of e-Fixed Deposit' },
+      { transform: [1, 0, 0, 1, 94, 535], str: 'Deposit Amount' },
+      { transform: [1, 0, 0, 1, 94, 525], str: '₹4,00,000.00' }
+    ],
+    [{ transform: [1, 0, 0, 1, 0, 0], str: 'page two marker' }]
+  ];
+  FdParse.parsePdf(new Uint8Array([]), mockPdfjs(2, items), 'Y_PNB_FD_20270528_4001_510000.pdf').then(function (f) {
+    eq('parsed without Invalid page request', f.amount, 400000);
+    eq('account from file name', f.account, '130910DP4001');
+    done();
+  }).catch(function (e) {
+    failed++;
+    console.log('FAIL  parsePdf threw — ' + e.message);
+    done();
+  });
+})();
+
+function done() {
+  console.log('\n' + passed + ' passed, ' + failed + ' failed');
+  if (failed) process.exit(1);
+}
