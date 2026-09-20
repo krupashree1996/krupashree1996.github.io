@@ -83,6 +83,17 @@ eq('validPan bad format', Calc.validPan({ pan: 'BADPAN', name: 'X' }).length, 1)
 eq('holderLabel', Calc.holderLabel({ name: 'TEST NAME', pan: 'ABCDE1234F' }), 'TEST NAME · ABCDE1234F');
 eq('holderLabel empty', Calc.holderLabel(null), '—');
 
+console.log('day-first date parsing (DD/MM/YYYY)');
+eq('dd/mm/yyyy -> iso', Calc.parseDDMMYYYY('27/08/2025'), '2025-08-27');
+eq('single-digit dd/mm', Calc.parseDDMMYYYY('7/8/25'), '2025-08-07');
+eq('iso passthrough', Calc.parseDDMMYYYY('2025-08-27'), '2025-08-27');
+eq('invalid day (31 Feb) -> null', Calc.parseDDMMYYYY('31/02/2025'), null);
+eq('invalid month -> null', Calc.parseDDMMYYYY('05/13/2025'), null);
+eq('garbage -> null', Calc.parseDDMMYYYY('not a date'), null);
+eq('empty -> null', Calc.parseDDMMYYYY(''), null);
+eq('iso -> dd/mm/yyyy', Calc.isoToDDMMYYYY('2025-08-27'), '27/08/2025');
+eq('iso empty -> empty', Calc.isoToDDMMYYYY(''), '');
+
 console.log('interest ledger — compound (credited in)');
 (function () {
   // Mirrors the 130910DP00004005 slip in 202608_consolidated.xlsx (8.1%, issue 2025-08-27).

@@ -142,8 +142,20 @@
   }
   function dateInput(id, value) {
     var i = document.createElement('input');
-    i.id = id; i.type = 'date'; i.value = value || '';
+    i.id = id; i.type = 'text'; i.placeholder = 'DD/MM/YYYY'; i.maxLength = 10;
+    i.setAttribute('inputmode', 'numeric');
+    i.value = Calc.isoToDDMMYYYY(value || '');
+    i.classList.add('datein');
     return i;
+  }
+  function readDate(id) { return Calc.parseDDMMYYYY(val(id)); }
+  function dateErrors(ids) {
+    var out = [];
+    (ids || []).forEach(function (id) {
+      var raw = val(id);
+      if (raw && !Calc.parseDDMMYYYY(raw)) out.push('Date \u2018' + raw + '\u2019 should be DD/MM/YYYY.');
+    });
+    return out;
   }
   function val(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; }
   function num(id) { var s = val(id); if (!s) return null; var n = Number(s); return isNaN(n) ? null : n; }
@@ -197,8 +209,8 @@
         pan: val('fPan'),
         amount: num('fAmt'),
         rate: num('fRate'),
-        issueDate: val('fIssue') || null,
-        maturityDate: val('fMaturity') || null,
+        issueDate: readDate('fIssue'),
+        maturityDate: readDate('fMaturity'),
         maturityValue: num('fMv'),
         tdsRate: num('fTds'),
         interestMode: document.getElementById('fImode') ? val('fImode') : (rec.interestMode || 'compound'),
@@ -235,7 +247,7 @@
     var save = el('button', 'primary', edit ? 'Save changes' : 'Add FD');
     save.onclick = function () {
       var rec = ff.read();
-      var errs = Calc.validFd(rec);
+      var errs = Calc.validFd(rec).concat(dateErrors(['fIssue', 'fMaturity']));
       if (errs.length) { f.err.textContent = errs.join('  |  '); return; }
       commitFd(rec, edit, o);
       persist(); closeModal(); renderAll();
@@ -360,9 +372,11 @@
     f.form.appendChild(addForm);
     var add = el('button', 'primary', 'Add payout');
     add.onclick = function () {
-      var d = val('imDate');
+      var d = readDate('imDate');
+      var rawD = val('imDate');
       var g = num('imInt');
-      if (!d || !(g > 0)) { f.err.textContent = 'Enter a date and a gross interest amount.'; return; }
+      if (rawD && !d) { f.err.textContent = 'Date should be DD/MM/YYYY.'; return; }
+      if (!d || !(g > 0)) { f.err.textContent = 'Enter a date (DD/MM/YYYY) and a gross interest amount.'; return; }
       var t = num('imTax');
       if (fd.entries == null) fd.entries = [];
       fd.entries.push({ date: d, int: g, tax: t || 0 });
@@ -511,7 +525,7 @@
     var save = el('button', 'primary', 'Add FD');
     save.onclick = function () {
       var rec = ff.read();
-      var probs = Calc.validFd(rec);
+      var probs = Calc.validFd(rec).concat(dateErrors(['fIssue', 'fMaturity']));
       if (probs.length) { err.textContent = probs.join('  |  '); return; }
       commitFd(rec, false, {});
       persist(); closeModal(); renderAll();

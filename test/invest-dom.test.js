@@ -74,8 +74,8 @@ whenReady(function run() {
   setValue('#fAcc', '130910DP00004001');
   setValue('#fAmt', '400000');
   setValue('#fRate', '8.1');
-  setValue('#fIssue', '2026-03-10');
-  setValue('#fMaturity', '2027-05-28');
+  setValue('#fIssue', '10/03/2026');
+  setValue('#fMaturity', '28/05/2027');
   setValue('#fMv', '510000');
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
   eq('modal closed after save', !document.getElementById('modal').classList.contains('open'), true);
@@ -116,12 +116,19 @@ whenReady(function run() {
   eq('mode selector present', !!$('#imMode'), true);
   eq('no payouts yet', !!$('#interestModal .muted'), true);
 
+  // Malformed (mm/dd-shaped) date is rejected, not silently reinterpreted.
+  setValue('#imDate', '08/13/2026');
+  setValue('#imInt', '999');
+  $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
+  eq('malformed date rejected', fd0.entries.length, 0);
+  eq('malformed date shows error', $('#interestModal .err').textContent.indexOf('DD/MM/YYYY') >= 0, true);
+
   // Add two payouts (compound is the default).
-  setValue('#imDate', '2026-06-28');
+  setValue('#imDate', '28/06/2026');
   setValue('#imInt', '8108');
   setValue('#imTax', '811');
   $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
-  setValue('#imDate', '2026-09-24');
+  setValue('#imDate', '24/09/2026');
   setValue('#imInt', '8282');
   setValue('#imTax', '829');
   $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
