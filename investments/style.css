@@ -107,6 +107,8 @@ label.chk input{width:auto}
 #interestModal .intTable th{font-size:11px;color:var(--muted);font-weight:600}
 #interestModal .intTable td.num.ok{color:var(--ok)}
 #interestModal .intTable td.num.warn{color:var(--warn)}
+#interestModal .intTable td:last-child{display:flex;gap:6px;justify-content:flex-end;align-items:center}
+#interestModal .intTable .mini{white-space:nowrap}
 #interestModal .intAdd{border-top:1px solid var(--line,#e5e7eb);padding-top:12px;margin-top:8px}
 input.datein{font-variant-numeric:tabular-nums;letter-spacing:.5px}
 .archTable td:first-child{white-space:nowrap}

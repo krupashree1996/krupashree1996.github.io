@@ -422,16 +422,26 @@
       : 'Each payout is paid out; the "calc" column is a simple-interest estimate on the original principal, to cross-check against the bank figure.'));
     var box = el('div', 'intList');
     f.form.appendChild(box);
-    renderInterestList(fd, box);
 
+    // -1 = adding a new payout; >= 0 = editing entries[editIndex].
+    var editIndex = -1;
+    function startEdit(entry) {
+      editIndex = fd.entries.indexOf(entry);
+      document.getElementById('imDate').value = Calc.isoToDDMMYYYY(entry.date || '');
+      document.getElementById('imInt').value = entry.int;
+      document.getElementById('imTax').value = entry.tax || 0;
+      saveBtn.textContent = 'Save changes';
+      f.err.textContent = '';
+    }
+    renderInterestList(fd, box, false, startEdit);
     var addForm = el('div', 'intAdd');
     addForm.appendChild(field('Date', dateInput('imDate', '')));
     addForm.appendChild(field('Gross interest (₹)', numInput('imInt', '', 'e.g. 7589')));
     addForm.appendChild(field('TDS (₹)', numInput('imTax', '', 'e.g. 759')));
     addForm.appendChild(el('p', 'hint', 'Leave TDS blank for 0. Net = gross \u2212 TDS.'));
     f.form.appendChild(addForm);
-    var add = el('button', 'primary', 'Add payout');
-    add.onclick = function () {
+    var saveBtn = el('button', 'primary', 'Add payout');
+    saveBtn.onclick = function () {
       var d = readDate('imDate');
       var rawD = val('imDate');
       var g = num('imInt');
@@ -439,22 +449,28 @@
       if (!d || !(g > 0)) { f.err.textContent = 'Enter a date (DD/MM/YYYY) and a gross interest amount.'; return; }
       var t = num('imTax');
       if (fd.entries == null) fd.entries = [];
-      var dupE = fd.entries.some(function (e) { return e.date === d && e.int === g; });
-      if (dupE) { f.err.textContent = 'A payout for ' + d + ' (₹' + Calc.inr(g) + ') is already recorded. Delete it first to change it.'; return; }
-      fd.entries.push({ date: d, int: g, tax: t || 0 });
+      // Collision check ignores the row being edited, so changing only its date
+      // is fine, but reusing another payout's date + gross is still flagged.
+      var dupE = fd.entries.some(function (e, i) { return i !== editIndex && e.date === d && e.int === g; });
+      if (dupE) { f.err.textContent = 'A payout for ' + d + ' (₹' + Calc.inr(g) + ') is already recorded.'; return; }
+      if (editIndex >= 0) {
+        fd.entries[editIndex] = { date: d, int: g, tax: t || 0 };
+      } else {
+        fd.entries.push({ date: d, int: g, tax: t || 0 });
+      }
       // Keep the ledger chronologically ordered on disk too, so a refresh shows
       // the same date-sorted table (earliest first).
       fd.entries.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
       fd.interestMode = val('imMode') || mode;
       persist(); renderAll(); buildInterestForm(fd);
-      toast('Payout added.', 'ok');
+      toast(editIndex >= 0 ? 'Payout updated.' : 'Payout added.', 'ok');
     };
     var cancel = el('button', 'ghost', 'Close');
     cancel.onclick = closeModal;
-    f.actions.appendChild(add); f.actions.appendChild(cancel);
+    f.actions.appendChild(saveBtn); f.actions.appendChild(cancel);
     modal(f.box, true);
   }
-  function renderInterestList(fd, box, readOnly) {
+  function renderInterestList(fd, box, readOnly, onEdit) {
     box.textContent = '';
     var rows = Calc.fdEntries(fd);
     if (!rows.length) {
@@ -482,13 +498,18 @@
       tr.appendChild(calc);
       if (!readOnly) {
         var act = el('td', '');
+        var ed = el('button', 'mini', '\u270e\uFE0F');
+        ed.title = 'Edit this payout';
+        ed.onclick = function () { if (onEdit) onEdit(fd.entries[r.idx]); };
         var rm = el('button', 'mini danger', '\u00d7');
+        rm.title = 'Delete this payout';
         rm.onclick = function () {
           confirmDel('Delete the payout on ' + Calc.fmtDate(r.date) + '?', function () {
             fd.entries = fd.entries.filter(function (e) { return !(e.date === r.date && e.int === r.int); });
             persist(); renderAll(); buildInterestForm(fd);
           });
         };
+        act.appendChild(ed);
         act.appendChild(rm);
         tr.appendChild(act);
       }
