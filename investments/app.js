@@ -51,10 +51,13 @@
         } else if (d && Array.isArray(d.fds)) {
           DATA.fds = d.fds;
           DATA.archived = Array.isArray(d.archived) ? d.archived : [];
-          var n = archiveMatured();
-          if (n) {
+          var r = archiveMatured();
+          if (r.moved || r.pruned) {
             flush();
-            toast('Archived ' + n + ' matured FD' + (n > 1 ? 's' : '') + ' to history (45+ days past maturity).', 'ok');
+            var msgs = [];
+            if (r.moved) msgs.push('archived ' + r.moved + ' matured FD' + (r.moved > 1 ? 's' : '') + ' to history');
+            if (r.pruned) msgs.push('removed ' + r.pruned + ' past 1.5 FYs');
+            toast(msgs.join(' · '), 'ok');
           }
           if (Array.isArray(d.pans)) DATA.pans = d.pans;
           DATA.profile = d.profile || DATA.profile;
@@ -86,25 +89,26 @@
   var persisting = 0;
   function persist() { clearTimeout(persisting); persisting = setTimeout(flush, 250); }
 
-  /* Matured 45+ days -> drop the record, keep a compact history row with XIRR. */
+  /* On load: matured FDs move to history as the FULL record (entries, TDS,
+   * repay account, notes, …) + XIRR; history past 1.5 FYs (1-Oct cutoff) is
+   * deleted. Returns { moved, pruned }. */
   function archiveMatured(today) {
     today = today || Calc.todayISO();
     var keep = [], moved = 0;
     DATA.fds.forEach(function (fd) {
-      if (Calc.fdAutoRemove(fd, today, 45)) {
-        var x = Calc.fdXirr(fd);
-        DATA.archived.push({
-          account: fd.account || '', panId: fd.panId || '', pan: fd.pan || '',
-          name: (holderOf(fd.panId) && holderOf(fd.panId).name) || fd.holder || '',
-          amount: fd.amount, rate: fd.rate, issueDate: fd.issueDate, maturityDate: fd.maturityDate,
-          maturityValue: fd.maturityValue, xirr: x, archivedAt: today,
-          entries: (fd.entries || []).length
-        });
+      if (Calc.fdStatus(fd, today) === 'matured') {
+        var a = Object.assign({}, fd); // deep-ish copy: entries is the only array
+        a.entries = (fd.entries || []).map(function (e) { return Object.assign({}, e); });
+        a.xirr = Calc.fdXirr(fd);
+        a.archivedAt = today;
+        DATA.archived.push(a);
         moved++;
       } else keep.push(fd);
     });
     if (moved) DATA.fds = keep;
-    return moved;
+    var before = DATA.archived.length;
+    DATA.archived = DATA.archived.filter(function (a) { return !Calc.fdAutoRemove(a, today); });
+    return { moved: moved, pruned: before - DATA.archived.length };
   }
 
   /* ---- lookups / filtering ---- */
@@ -417,16 +421,16 @@
     f.actions.appendChild(add); f.actions.appendChild(cancel);
     modal(f.box, true);
   }
-  function renderInterestList(fd, box) {
+  function renderInterestList(fd, box, readOnly) {
     box.textContent = '';
     var rows = Calc.fdEntries(fd);
     if (!rows.length) {
-      box.appendChild(el('p', 'muted', 'No payouts recorded yet.'));
+      box.appendChild(el('p', 'muted', readOnly ? 'No payouts were recorded for this FD.' : 'No payouts recorded yet.'));
       return;
     }
     var tbl = el('table', 'intTable');
     var thead = el('tr');
-    ['Date', 'Days', 'Gross', 'TDS', 'Net', 'Worth after', 'Calc (est.)', ''].forEach(function (h) { thead.appendChild(el('th', '', h)); });
+    ['Date', 'Days', 'Gross', 'TDS', 'Net', 'Worth after', 'Calc (est.)'].concat(readOnly ? [] : ['']).forEach(function (h) { thead.appendChild(el('th', '', h)); });
     tbl.appendChild(thead);
     rows.forEach(function (r) {
       var tr = el('tr');
@@ -443,16 +447,18 @@
         calc.className = 'num ' + (Math.abs(diff) <= 5 ? 'ok' : 'warn');
       }
       tr.appendChild(calc);
-      var act = el('td', '');
-      var rm = el('button', 'mini danger', '\u00d7');
-      rm.onclick = function () {
-        confirmDel('Delete the payout on ' + Calc.fmtDate(r.date) + '?', function () {
-          fd.entries = fd.entries.filter(function (e) { return !(e.date === r.date && e.int === r.int); });
-          persist(); renderAll(); buildInterestForm(fd);
-        });
-      };
-      act.appendChild(rm);
-      tr.appendChild(act);
+      if (!readOnly) {
+        var act = el('td', '');
+        var rm = el('button', 'mini danger', '\u00d7');
+        rm.onclick = function () {
+          confirmDel('Delete the payout on ' + Calc.fmtDate(r.date) + '?', function () {
+            fd.entries = fd.entries.filter(function (e) { return !(e.date === r.date && e.int === r.int); });
+            persist(); renderAll(); buildInterestForm(fd);
+          });
+        };
+        act.appendChild(rm);
+        tr.appendChild(act);
+      }
       tbl.appendChild(tr);
     });
     box.appendChild(tbl);
@@ -510,7 +516,7 @@
     var card = el('div', 'card');
     var head = el('div', 'cardHead');
     head.appendChild(el('h2', '', 'Matured · history'));
-    head.appendChild(el('span', 'chip', 'auto-archived 45 days after maturity'));
+    head.appendChild(el('span', 'chip', 'kept till 1.5 FYs past maturity, then removed each 1 Oct'));
     head.appendChild(el('div', 'spacer'));
     var clr = el('button', 'ghost', 'Clear history');
     clr.onclick = function () {
@@ -523,31 +529,48 @@
     card.appendChild(head);
     var tbl = el('table', 'intTable archTable');
     var thead = el('tr');
-    ['Account', 'Invested', 'Rate', 'Maturity', 'Maturity value', 'XIRR', ''].forEach(function (h) { thead.appendChild(el('th', '', h)); });
+    ['Account', 'Invested', 'Rate', 'Issue → Maturity', 'Interest (net)', 'TDS', 'Maturity value', 'XIRR', ''].forEach(function (h) { thead.appendChild(el('th', '', h)); });
     tbl.appendChild(thead);
     list.slice().sort(function (a, b) { return (b.archivedAt || '').localeCompare(a.archivedAt || ''); }).forEach(function (a) {
+      var sum = Calc.fdEntrySummary(a);
       var tr = el('tr');
       tr.appendChild(el('td', '', a.account || '—'));
       tr.appendChild(el('td', '', Calc.inr(a.amount)));
       tr.appendChild(el('td', '', a.rate != null ? a.rate + '%' : '—'));
-      tr.appendChild(el('td', '', Calc.fmtDate(a.maturityDate)));
+      tr.appendChild(el('td', '', Calc.fmtDate(a.issueDate) + ' → ' + Calc.fmtDate(a.maturityDate)));
+      tr.appendChild(el('td', 'num', sum.count ? Calc.inr(sum.net) : '—'));
+      tr.appendChild(el('td', 'num', sum.count ? Calc.inr(sum.tax) : '—'));
       tr.appendChild(el('td', 'num', a.maturityValue > 0 ? Calc.inr(a.maturityValue) : '—'));
       var x = el('td', 'num', a.xirr != null ? (a.xirr * 100).toFixed(2) + '% p.a.' : '—');
-      if (a.entries) x.title = 'XIRR from ' + a.entries + ' recorded payout' + (a.entries > 1 ? 's' : '') + (a.entries === 1 && a.xirr != null ? ' (net payouts counted)' : '');
+      if (sum.count) x.title = 'XIRR from initial amount, final value and ' + sum.count + ' recorded payout' + (sum.count > 1 ? 's' : '');
       tr.appendChild(x);
       var act = el('td', '');
+      var det = el('button', 'mini', 'payouts');
       var rm = el('button', 'mini danger', '×');
       rm.onclick = function () {
-        confirmDel('Delete this archived record?', function () {
+        confirmDel('Delete this archived record (and its payout history)?', function () {
           DATA.archived = (DATA.archived || []).filter(function (o) {
             return !(o.account === a.account && o.maturityDate === a.maturityDate && o.archivedAt === a.archivedAt);
           });
           persist(); renderAll();
         });
       };
-      act.appendChild(rm);
+      act.appendChild(det); act.appendChild(rm);
       tr.appendChild(act);
       tbl.appendChild(tr);
+      // full record detail row (collapsed): payout ledger + all stored fields
+      var drow = el('tr', 'archDetail');
+      drow.hidden = true;
+      drow.setAttribute('data-for', a.account + '|' + a.maturityDate + '|' + a.archivedAt);
+      var cell = el('td', 'archDetailCell');
+      cell.setAttribute('colspan', '9');
+      cell.appendChild(archivedDetail(a));
+      drow.appendChild(cell);
+      tbl.appendChild(drow);
+      det.onclick = function () {
+        drow.hidden = !drow.hidden;
+        det.textContent = drow.hidden ? 'payouts' : 'hide';
+      };
     });
     card.appendChild(tbl);
     var chartPts = list.filter(function (a) { return a.xirr != null && a.maturityDate; })
@@ -560,8 +583,25 @@
       cw.appendChild(el('p', 'hint', 'Annualized return (XIRR) for each matured FD, oldest maturity first.'));
       card.appendChild(cw);
     }
-    card.appendChild(el('p', 'hint', 'Archived when 45+ days past maturity. XIRR uses initial amount, final credited value, and (for payout-mode bonds) the recorded net payouts.'));
+    card.appendChild(el('p', 'hint', 'Matured FDs are kept in history for 1.5 financial years (removed each 1 Oct), with their full payout ledger. XIRR uses initial amount, final credited value, and (for payout-mode bonds) the recorded net payouts.'));
     sec.appendChild(card);
+  }
+  /* Expandable full record for an archived FD: payout ledger + all fields. */
+  function archivedDetail(a) {
+    var wrap = el('div');
+    var info = el('p', 'hint',
+      'Mode: ' + Calc.normInterestMode(a) +
+      (a.tdsRate != null ? ' · TDS rate ' + a.tdsRate + '%' : '') +
+      (a.repayAc ? ' · Repay a/c ' + a.repayAc : '') +
+      (a.pan ? ' · PAN ' + a.pan : '') +
+      (a.name ? ' · ' + a.name : '') +
+      (a.notes ? ' · ' + a.notes : '') +
+      ' · archived ' + Calc.fmtDate(a.archivedAt));
+    wrap.appendChild(info);
+    var box = el('div', 'intList');
+    renderInterestList(a, box, true);
+    wrap.appendChild(box);
+    return wrap;
   }
   function xirrChart(pts) {
     var W = 640, H = 220, m = { l: 44, r: 16, t: 16, b: 30 };
@@ -643,16 +683,42 @@
     var rd = new FileReader();
     rd.onload = function () {
       var buf = new Uint8Array(rd.result);
-      FdParse.parsePdf(buf, pdfjsLib, file.name).then(function (parsed) {
-        setPdfBusy(false, 'Import PNB FD PDF');
-        importPreview(parsed, file.name);
-      }).catch(function (e) {
+        FdParse.parsePdf(buf, pdfjsLib, file.name).then(function (parsed) {
+          setPdfBusy(false, 'Import PNB FD PDF');
+          if (parsed.complete) autoImport(parsed, file.name);
+          else importPreview(parsed, file.name);
+        }).catch(function (e) {
         setPdfBusy(false, 'Import PNB FD PDF');
         toast('Could not read that PDF: ' + (e && e.message ? e.message : 'error'), 'bad');
       });
     };
     rd.onerror = function () { setPdfBusy(false, 'Import PNB FD PDF'); toast('Could not read the file.', 'bad'); };
     rd.readAsArrayBuffer(file);
+  }
+  /* Complete reads skip the review step and go straight into the list. */
+  function autoImport(parsed, fname) {
+    var rec = {
+      account: (parsed.account || '').toUpperCase(),
+      panId: panIdForPanText(parsed.pan),
+      pan: parsed.pan || '',
+      amount: parsed.amount,
+      rate: parsed.rate,
+      issueDate: parsed.issueDate,
+      maturityDate: parsed.maturityDate,
+      maturityValue: parsed.maturityValue,
+      tdsRate: 10,
+      interestMode: 'compound',
+      repayAc: parsed.repayAc || '',
+      holder: parsed.holder || '',
+      notes: 'Imported from ' + fname,
+      entries: []
+    };
+    rec.days = rec.issueDate && rec.maturityDate ? daysBetween(rec.issueDate, rec.maturityDate) : null;
+    var probs = Calc.validFd(rec);
+    if (probs.length) { toast('Complete read but invalid: ' + probs.join(' '), 'warn'); importPreview(parsed, fname); return; }
+    commitFd(rec, false, {});
+    persist(); renderAll();
+    toast('Added ' + rec.account + ' from \u2018' + fname + '\u2019.', 'ok');
   }
   function importPreview(parsed, fname) {
     var f = formShell('Import PNB FD');
@@ -900,5 +966,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview };
+  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview, autoImport: autoImport };
 })();

@@ -144,7 +144,7 @@ whenReady(function run() {
   eq('row shows interest (paid) cell', $$('#sec-fd .fdCell').some(function (c) { return c.querySelector('small').textContent === 'Interest (paid)'; }), true);
   eq('summary shows interest received', $('#sec-fd .kv').textContent.indexOf('Interest (received)') >= 0, true);
 
-  console.log('7) auto-archive matured 45+ days (keep XIRR, drop data)');
+  console.log('7) matured -> history (full record + XIRR); 1.5-FY removal');
   App.DATA.fds.push({
     id: 'fdOld', account: '130910DP00004005', panId: 'pan1',
     amount: 400000, rate: 8.1, issueDate: '2025-06-01', maturityDate: '2026-06-01',
@@ -153,16 +153,25 @@ whenReady(function run() {
   });
   App.renderAll();
   var today = dom.window.Calc.todayISO();
-  eq('old FD visible before archive', $$('#sec-fd .fdRow').length, 3);
-  eq('matured 45+ days (today ' + today + ')', dom.window.Calc.fdAutoRemove(App.DATA.fds[2], today, 45), true);
+  eq('matured FD visible before archive', $$('#sec-fd .fdRow').length, 3);
+  eq('is matured', dom.window.Calc.fdStatus(App.DATA.fds[2], today), 'matured');
+  eq('not yet past 1.5-FY cutoff', dom.window.Calc.fdAutoRemove(App.DATA.fds[2], today), false);
   App.archiveMatured(today);
-  eq('old FD removed from fds', App.DATA.fds.length, 2);
-  eq('archived row created', App.DATA.archived.length, 1);
+  eq('matured FD moved to history', App.DATA.fds.length, 2);
+  eq('archived row created (full record)', App.DATA.archived.length, 1);
+  eq('archived keeps entries', App.DATA.archived[0].entries.length, 1);
   eq('archived has xirr', typeof App.DATA.archived[0].xirr, 'number');
   App.renderAll();
   eq('history card shown', !!$('#sec-fd .archTable'), true);
   eq('history row shows account', $('#sec-fd .archTable').textContent.indexOf('130910DP00004005') >= 0, true);
   eq('history row shows xirr %', $('#sec-fd .archTable').textContent.indexOf('% p.a.') >= 0, true);
+  eq('payouts toggle present', !!$('#sec-fd .archTable button.mini'), true);
+  // expanding shows the payout ledger
+  $$('#sec-fd .archTable button.mini')[0].click();
+  eq('detail row shows payout date', !!$('#sec-fd .archDetail:not([hidden])'), true);
+  // 1.5-FY removal: FY 2026-27 maturity (01/06/2026) is removed from 1 Oct 2028
+  eq('kept at 30 Sep 2028', dom.window.Calc.fdAutoRemove(App.DATA.archived[0], '2028-09-30'), false);
+  eq('removed at 1 Oct 2028', dom.window.Calc.fdAutoRemove(App.DATA.archived[0], '2028-10-01'), true);
   eq('xirr chart rendered', !!$('#sec-fd .xirrSvg'), true);
   eq('chart has a line path', !!$('#sec-fd .xirrSvg path.line'), true);
 

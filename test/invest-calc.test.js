@@ -119,14 +119,18 @@ console.log('xirr / fdXirr');
   eq('no amount -> null', Calc.fdXirr({ maturityValue: 10 }), null);
 })();
 
-console.log('auto-remove (matured 45+ days)');
+console.log('auto-remove (1.5 FYs, 1-Oct cutoff)');
 (function () {
-  var today = '2026-08-21';
-  eq('44 days -> keep', Calc.fdAutoRemove({ maturityDate: '2026-07-08' }, today, 45), false);
-  eq('45 days -> remove', Calc.fdAutoRemove({ maturityDate: '2026-07-07' }, today, 45), true);
-  eq('not yet matured -> keep', Calc.fdAutoRemove({ maturityDate: '2027-01-01' }, today, 45), false);
-  eq('no maturity -> keep', Calc.fdAutoRemove({ amount: 1 }, today, 45), false);
-  eq('default is 45', Calc.fdAutoRemove({ maturityDate: '2026-07-07' }, today), true);
+  // FY 2024-25 (matured 31 Mar 2025) -> cutoff 1 Oct 2026
+  eq('FY24-25 kept just before cutoff', Calc.fdAutoRemove({ maturityDate: '2025-03-31' }, '2026-09-30'), false);
+  eq('FY24-25 removed on 1 Oct 2026', Calc.fdAutoRemove({ maturityDate: '2025-03-31' }, '2026-10-01'), true);
+  // FY 2025-26 (matured 31 Mar 2026) -> cutoff 1 Oct 2027
+  eq('FY25-26 kept until 1 Oct 2027', Calc.fdAutoRemove({ maturityDate: '2026-03-31' }, '2027-09-30'), false);
+  eq('FY25-26 removed on 1 Oct 2027', Calc.fdAutoRemove({ maturityDate: '2026-03-31' }, '2027-10-01'), true);
+  // FY 2026-27 (matured Apr 2026) -> cutoff 1 Oct 2028
+  eq('FY26-27 kept through 30 Sep 2028', Calc.fdAutoRemove({ maturityDate: '2026-08-27' }, '2028-09-30'), false);
+  eq('FY26-27 removed on 1 Oct 2028', Calc.fdAutoRemove({ maturityDate: '2026-08-27' }, '2028-10-01'), true);
+  eq('no maturity -> keep', Calc.fdAutoRemove({ amount: 1 }, '2026-10-01'), false);
 })();
 
 console.log('day-first date parsing (DD/MM/YYYY)');
