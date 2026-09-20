@@ -125,6 +125,7 @@ tr.archDetail td{background:#f8fafc;border-bottom:1px solid var(--line)}
 #importModal .parseStatus{font-size:12.5px;margin:0 0 10px;padding:8px 10px;border-radius:8px}
 .parseStatus.ok{background:var(--ok-bg);color:var(--ok)}
 .parseStatus.warn{background:var(--warn-bg);color:var(--warn)}
+.dateWarn{font-size:12.5px;margin:0 0 12px;padding:9px 11px;border-radius:8px;background:var(--bad-bg);color:var(--bad);border:1px solid var(--bad)}
 
 #modal{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:flex-start;
   justify-content:center;padding:4vh 16px;z-index:50}

@@ -133,6 +133,19 @@ whenReady(function run() {
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
   eq('preview save blocked too', App.DATA.fds.length, beforeDup);
   eq('duplicate error shown', $('#importModal .err').textContent.indexOf('already in your list') >= 0, true);
+  // Close the modal before opening the next one.
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
+
+  console.log('4d) import-preview flags a maturity/tenure year error');
+  // The test slip: 390-day tenure + filename say 30 Dec 2026, printed maturity 30 Dec 2027.
+  App.importPreview({
+    account: '130910DP00004002', holder: 'TEST HOLDER', pan: '', amount: 400000,
+    rate: 8, issueDate: '2025-12-05', maturityDate: '2027-12-30', maturityValue: 500000,
+    days: 390, repayAc: '05582191003046', format: 'epos', complete: true
+  }, 'Y_PNB_FD_20261230_4002_500000.pdf');
+  eq('date/tenure warning shown', !!$('#importModal .dateWarn'), true);
+  eq('warning mentions the year error', $('#importModal .dateWarn').textContent.indexOf('30 Dec 2027') >= 0, true);
+  eq('warning suggests the fix', $('#importModal .dateWarn').textContent.indexOf('30 Dec 2026') >= 0, true);
 
   console.log('5) summary chips reflect totals');
   App.renderAll();

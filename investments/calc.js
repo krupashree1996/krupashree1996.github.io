@@ -110,25 +110,27 @@ var Calc = (function () {
   function fdEntries(fd, today) {
     var out = [], base0 = fd.amount || 0, mode = normInterestMode(fd);
     var rate = (fd.rate || 0) / 100;
-    var entries = (fd.entries || []).slice();
+    // Sort by date so the ledger is chronologically ordered no matter in which
+    // order the payouts were entered; day counts and the running base then
+    // follow the timeline.
+    var entries = (fd.entries || []).slice().sort(function (a, b) {
+      return String(a.date || '') < String(b.date || '') ? -1 : String(a.date || '') > String(b.date || '') ? 1 : 0;
+    });
+    var accNet = 0;
     entries.forEach(function (e, idx) {
       var prevDate = idx === 0 ? (fd.issueDate || '') : (entries[idx - 1].date || '');
       var days = daysBetweenISO(prevDate, e.date);
       var int = e.int || 0, tax = e.tax || 0, net = int - tax;
-      var base = mode === 'compound' ? (fd.amount || 0) + sumNet(entries, idx) : (fd.amount || 0);
+      var base = mode === 'compound' ? (fd.amount || 0) + accNet : (fd.amount || 0);
       var after = base + net; // compound: credited in; payout: principal + paid-out
       var expected = days != null && base > 0 ? Math.round(base * rate * (days / 365)) : null;
       out.push({
         idx: idx, date: e.date || '', days: days, base: base, expected: expected,
         int: int, tax: tax, net: net, after: after
       });
+      accNet += net;
     });
     return out;
-  }
-  function sumNet(entries, upToIdx) {
-    var s = 0;
-    for (var i = 0; i < upToIdx; i++) s += (entries[i].int || 0) - (entries[i].tax || 0);
-    return s;
   }
   function fdEntrySummary(fd) {
     var s = { count: 0, gross: 0, tax: 0, net: 0, lastDate: '', after: (fd.amount || 0) };
@@ -278,6 +280,50 @@ var Calc = (function () {
     if (!p && !(o.name || '').trim()) e.push('Give a name or a PAN for this holder.');
     return e;
   }
+  /* File-name maturity (Y_PNB_FD_YYYYMMDD_...) if the slip was imported with a
+   * matching name — used to disambiguate a tenure/date mismatch. */
+  function fdFileMaturity(fd) {
+    var n = fd && fd.notes ? String(fd.notes) : '';
+    var m = n.match(/_([0-9]{8})_/);
+    if (!m) return '';
+    var s = m[1];
+    return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8);
+  }
+
+  /* Cross-check issue date, tenure (days) and maturity date. Returns a warning
+   * string when they disagree by more than the month-rounding slack, else null.
+   * (A "60 Months" FD is stored as 1800 days but matures ~26 days later, so the
+   * tolerance is 60 days — a full-year slip is still caught.) */
+  function fdDateCheck(fd) {
+    if (!fd || !fd.issueDate || !fd.maturityDate) return null;
+    var fileM = fdFileMaturity(fd);
+    var implied = '';
+    if (fd.days) implied = dateAdd(fd.issueDate, fd.days);
+    // Primary signal: stated maturity vs issue + tenure.
+    if (implied && implied !== fd.maturityDate) {
+      var diff = Math.round((parseISO(fd.maturityDate) - parseISO(implied)) / 86400000);
+      if (Math.abs(diff) > 60) {
+        var suggested = implied;
+        if (fileM) {
+          var fdiff = Math.round((parseISO(fileM) - parseISO(implied)) / 86400000);
+          if (Math.abs(fdiff) <= 10) suggested = fileM; // tenure and file name agree
+        }
+        return 'Maturity date ' + fmtDate(fd.maturityDate) + ' doesn\u2019t match the ' + fd.days +
+          '-day tenure (issue ' + fmtDate(fd.issueDate) + ' \u2192 ' + fmtDate(implied) +
+          '). Looks like a year error \u2014 should it be ' + fmtDate(suggested) + '?';
+      }
+    }
+    // Fallback (no tenure): stated maturity vs the file-name maturity.
+    if (!implied && fileM && fileM !== fd.maturityDate) {
+      var d2 = Math.round((parseISO(fd.maturityDate) - parseISO(fileM)) / 86400000);
+      if (Math.abs(d2) > 60) {
+        return 'Maturity date ' + fmtDate(fd.maturityDate) + ' differs from the file name\u2019s ' +
+          fmtDate(fileM) + ' by ' + d2 + ' days. Check the year.';
+      }
+    }
+    return null;
+  }
+
   function validFd(fd) {
     var e = [];
     if (!(fd.account || '').trim()) e.push('Account number is required.');
@@ -304,7 +350,8 @@ var Calc = (function () {
     normInterestMode: normInterestMode, entryNet: entryNet, fdEntries: fdEntries, fdEntrySummary: fdEntrySummary,
     fdStatus: fdStatus, fdAutoRemove: fdAutoRemove, fdStatusRank: fdStatusRank,
     xirr: xirr, fdXirr: fdXirr, sortFds: sortFds, fdSummary: fdSummary,
-    validFd: validFd, validPan: validPan, normPan: normPan, holderLabel: holderLabel,
+    validFd: validFd, fdDateCheck: fdDateCheck, fdFileMaturity: fdFileMaturity,
+    validPan: validPan, normPan: normPan, holderLabel: holderLabel,
     parseDDMMYYYY: parseDDMMYYYY, isoToDDMMYYYY: isoToDDMMYYYY
   };
 })();

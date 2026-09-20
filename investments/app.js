@@ -288,9 +288,23 @@
     var actions = f.actions;
     var ff = fdFields(o);
     f.form.appendChild(ff.form);
+    var dWarn = el('div', 'dateWarn');
+    dWarn.style.display = 'none';
+    f.form.appendChild(dWarn);
+    function refreshDateCheck() {
+      var chk = Calc.fdDateCheck(ff.read());
+      dWarn.textContent = chk ? ('Date / tenure mismatch: ' + chk) : '';
+      dWarn.style.display = chk ? 'block' : 'none';
+    }
+    ['fIssue', 'fMaturity', 'fDays'].forEach(function (id) {
+      var e = document.getElementById(id);
+      if (e) { e.addEventListener('input', refreshDateCheck); e.addEventListener('change', refreshDateCheck); }
+    });
+    if (edit) refreshDateCheck();
     var save = el('button', 'primary', edit ? 'Save changes' : 'Add FD');
     save.onclick = function () {
       var rec = ff.read();
+      refreshDateCheck(); // non-blocking date/tenure sanity check
       var errs = Calc.validFd(rec).concat(dateErrors(['fIssue', 'fMaturity']));
       if (errs.length) { f.err.textContent = errs.join('  |  '); return; }
       var dup = duplicateFd(rec, edit, o);
@@ -426,6 +440,9 @@
       var t = num('imTax');
       if (fd.entries == null) fd.entries = [];
       fd.entries.push({ date: d, int: g, tax: t || 0 });
+      // Keep the ledger chronologically ordered on disk too, so a refresh shows
+      // the same date-sorted table (earliest first).
+      fd.entries.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
       fd.interestMode = val('imMode') || mode;
       persist(); renderAll(); buildInterestForm(fd);
       toast('Payout added.', 'ok');
@@ -727,9 +744,34 @@
       notes: 'Imported from ' + fname,
       entries: []
     };
-    rec.days = rec.issueDate && rec.maturityDate ? daysBetween(rec.issueDate, rec.maturityDate) : null;
+    // Keep the slip's printed tenure when present (it's what reveals a maturity
+    // year typo); only fall back to the date span when the slip had no tenure.
+    rec.days = parsed.days || (rec.issueDate && rec.maturityDate ? daysBetween(rec.issueDate, rec.maturityDate) : null);
     var probs = Calc.validFd(rec);
     if (probs.length) { toast('Complete read but invalid: ' + probs.join(' '), 'warn'); importPreview(parsed, fname); return; }
+
+    // A complete slip whose printed maturity contradicts issue + tenure. When the
+    // tenure-implied date also matches the file name, the printed year is a typo —
+    // correct to the file name and say so. Otherwise hand off to the review screen.
+    if (rec.days) {
+      var implied = Calc.dateAdd(rec.issueDate, rec.days);
+      var fileM = Calc.fdFileMaturity(rec);
+      var off = Math.abs(Math.round((Calc.parseISO(rec.maturityDate) - Calc.parseISO(implied)) / 86400000));
+      if (off > 60) {
+        if (fileM && Math.abs(Math.round((Calc.parseISO(fileM) - Calc.parseISO(implied)) / 86400000)) <= 10) {
+          rec.maturityDate = fileM;
+          rec.days = parsed.days;
+          commitFd(rec, false, {});
+          persist(); renderAll();
+          toast('Corrected maturity from \u2018' + fname + '\u2019: ' + Calc.fmtDate(rec.maturityDate) +
+                ' (issue ' + Calc.fmtDate(rec.issueDate) + ' + ' + rec.days + ' days).', 'warn');
+          return;
+        }
+        toast('Complete read but date/tenure mismatch \u2014 opening review: ' + Calc.fdDateCheck(rec), 'warn');
+        importPreview(parsed, fname);
+        return;
+      }
+    }
     var dup = duplicateFd(rec, false, {});
     if (dup) { toast('\u2018' + fname + '\u2019 already imported (account ' + dup.account + ').', 'warn'); return; }
     commitFd(rec, false, {});
@@ -751,6 +793,19 @@
     f.form.appendChild(ff.form);
     if (parsed.holder) f.form.appendChild(el('p', 'hint', 'Holder on slip: ' + parsed.holder));
     if (parsed.fromFile && parsed.fromFile.length) f.form.appendChild(el('p', 'hint', 'Taken from the file name: ' + parsed.fromFile.join(', ') + '.'));
+
+    // Date / tenure consistency: flag a slip whose maturity date doesn't match
+    // its issue date + tenure (e.g. a year typo in the printed maturity).
+    var chk = Calc.fdDateCheck({
+      issueDate: parsed.issueDate, maturityDate: parsed.maturityDate, days: parsed.days,
+      notes: 'Imported from ' + fname
+    });
+    if (chk) {
+      var warn = el('div', 'dateWarn');
+      warn.appendChild(el('strong', '', 'Date / tenure mismatch: '));
+      warn.appendChild(document.createTextNode(chk));
+      f.form.appendChild(warn);
+    }
 
     var save = el('button', 'primary', 'Add FD');
     save.onclick = function () {
