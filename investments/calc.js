@@ -149,6 +149,31 @@ var Calc = (function () {
     if (!x || !y) return null;
     return Math.round((y - x) / 86400000);
   }
+  /* Accept DD/MM/YYYY (Indian) or YYYY-MM-DD; return ISO or null if invalid. */
+  function parseDDMMYYYY(s) {
+    s = (s == null ? '' : String(s)).trim();
+    if (!s) return null;
+    var m;
+    if ((m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/))) {
+      var dd = +m[1], mm = +m[2], yy = +m[3];
+      if (yy < 100) yy += 2000;
+      var d = new Date(yy, mm - 1, dd);
+      if (d.getFullYear() !== yy || d.getMonth() !== mm - 1 || d.getDate() !== dd) return null;
+      return yy + '-' + pad(mm) + '-' + pad(dd);
+    }
+    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) {
+      var iso = parseISO(s);
+      if (!iso) return null;
+      return m[1] + '-' + pad(+m[2]) + '-' + pad(+m[3]);
+    }
+    return null;
+  }
+  function isoToDDMMYYYY(iso) {
+    if (!iso) return '';
+    var p = String(iso).split('-');
+    if (p.length < 3) return String(iso);
+    return p[2] + '/' + p[1] + '/' + p[0];
+  }
   function fdStatus(fd, today) {
     today = today || todayISO();
     if (!fd || !fd.maturityDate) return 'unknown';
@@ -217,7 +242,8 @@ var Calc = (function () {
     fdTax: fdTax, fdNetTotal: fdNetTotal, fdMaturityValue: fdMaturityValue,
     normInterestMode: normInterestMode, entryNet: entryNet, fdEntries: fdEntries, fdEntrySummary: fdEntrySummary,
     fdStatus: fdStatus, fdStatusRank: fdStatusRank, sortFds: sortFds, fdSummary: fdSummary,
-    validFd: validFd, validPan: validPan, normPan: normPan, holderLabel: holderLabel
+    validFd: validFd, validPan: validPan, normPan: normPan, holderLabel: holderLabel,
+    parseDDMMYYYY: parseDDMMYYYY, isoToDDMMYYYY: isoToDDMMYYYY
   };
 })();
 
