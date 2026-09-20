@@ -227,14 +227,18 @@ var Calc = (function () {
     if (today < fd.maturityDate) return 'active';
     return 'matured';
   }
-  /* True when the FD is `days` or more past maturity (auto-removed from the app). */
-  function fdAutoRemove(fd, today, days) {
+  /* Auto-remove on 1 Oct, 1.5 financial years after the FY of maturity
+   * (Indian FY = Apr 1 – Mar 31). e.g. matured FY 2024-25 -> removed 1 Oct 2026;
+   * matured FY 2025-26 -> removed 1 Oct 2027. */
+  function fdAutoRemove(fd, today) {
     today = today || todayISO();
-    days = days == null ? 45 : days;
     if (!fd || !fd.maturityDate) return false;
-    var m = parseISO(fd.maturityDate), t = parseISO(today);
-    if (!m || !t) return false;
-    return Math.round((t - m) / 86400000) >= days;
+    var p = String(fd.maturityDate).split('-');
+    var y = +p[0], mo = +p[1];
+    if (!y || !mo || !today) return false;
+    var fyEndYear = mo >= 4 ? y + 1 : y; // FY ends 31 Mar of this year (Jan-Mar) or next (Apr-Dec)
+    var cutoff = (fyEndYear + 1) + '-10-01';
+    return today >= cutoff;
   }
   function fdStatusRank(fd, today) {
     var r = { active: 0, matured: 1, unknown: 2 }[fdStatus(fd, today)];
