@@ -204,7 +204,7 @@ console.log('interest ledger — empty / zero');
 
 console.log('fdDateCheck — flags a maturity/tenure year error');
 (function () {
-  // The test slip: 390-day tenure + filename both say 30 Dec 2026, but the
+  // The real test slip (synthetic): 390-day tenure + filename both say 30 Dec 2026, but the
   // printed maturity says 30 Dec 2027 (a year typo).
   var bad = Calc.fdDateCheck({
     issueDate: '2025-12-05', maturityDate: '2027-12-30', days: 390,
