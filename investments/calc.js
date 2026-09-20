@@ -90,6 +90,65 @@ var Calc = (function () {
     if (fd && fd.maturityValue > 0) return fd.maturityValue;
     return fdExpectedTotal(fd);
   }
+  /* ---- Interest ledger (per-payout rows) ----
+   * Each FD has entries [{date, int, tax}] = the interest paid out per period
+   * (net = int - tax). Two modes:
+   *   'compound' (FD)  — net is credited into the principal; interest accrues on the running amount.
+   *   'payout'   (floating bond) — net is paid out; interest accrues on the original principal. */
+  function normInterestMode(fd) {
+    var m = fd && fd.interestMode;
+    return m === 'payout' ? 'payout' : 'compound';
+  }
+  function entryNet(e) {
+    if (!e) return 0;
+    return (e.int || 0) - (e.tax || 0);
+  }
+  /* One entry -> { idx, date, days, base, expected, int, tax, net, after }.
+   * `base` is the principal the period's interest is computed on (running for
+   * compound, constant for payout). `expected` is the simple-interest estimate
+   * for that period, to cross-check against the bank figure (`int`). */
+  function fdEntries(fd, today) {
+    var out = [], base0 = fd.amount || 0, mode = normInterestMode(fd);
+    var rate = (fd.rate || 0) / 100;
+    var entries = (fd.entries || []).slice();
+    entries.forEach(function (e, idx) {
+      var prevDate = idx === 0 ? (fd.issueDate || '') : (entries[idx - 1].date || '');
+      var days = daysBetweenISO(prevDate, e.date);
+      var int = e.int || 0, tax = e.tax || 0, net = int - tax;
+      var base = mode === 'compound' ? (fd.amount || 0) + sumNet(entries, idx) : (fd.amount || 0);
+      var after = base + net; // compound: credited in; payout: principal + paid-out
+      var expected = days != null && base > 0 ? Math.round(base * rate * (days / 365)) : null;
+      out.push({
+        idx: idx, date: e.date || '', days: days, base: base, expected: expected,
+        int: int, tax: tax, net: net, after: after
+      });
+    });
+    return out;
+  }
+  function sumNet(entries, upToIdx) {
+    var s = 0;
+    for (var i = 0; i < upToIdx; i++) s += (entries[i].int || 0) - (entries[i].tax || 0);
+    return s;
+  }
+  function fdEntrySummary(fd) {
+    var s = { count: 0, gross: 0, tax: 0, net: 0, lastDate: '', after: (fd.amount || 0) };
+    var entries = fd.entries || [];
+    entries.forEach(function (e) {
+      if (!(e.int > 0)) return;
+      s.count++;
+      s.gross += e.int;
+      s.tax += e.tax || 0;
+      s.net += (e.int || 0) - (e.tax || 0);
+      if (e.date > s.lastDate) s.lastDate = e.date;
+    });
+    s.after = (fd.amount || 0) + s.net;
+    return s;
+  }
+  function daysBetweenISO(a, b) {
+    var x = parseISO(a), y = parseISO(b);
+    if (!x || !y) return null;
+    return Math.round((y - x) / 86400000);
+  }
   function fdStatus(fd, today) {
     today = today || todayISO();
     if (!fd || !fd.maturityDate) return 'unknown';
@@ -156,6 +215,7 @@ var Calc = (function () {
     groupIn: groupIn, fmtNum: fmtNum, inr: inr, compact: compact, uid: uid,
     fdDays: fdDays, fdInterest: fdInterest, fdExpectedTotal: fdExpectedTotal,
     fdTax: fdTax, fdNetTotal: fdNetTotal, fdMaturityValue: fdMaturityValue,
+    normInterestMode: normInterestMode, entryNet: entryNet, fdEntries: fdEntries, fdEntrySummary: fdEntrySummary,
     fdStatus: fdStatus, fdStatusRank: fdStatusRank, sortFds: sortFds, fdSummary: fdSummary,
     validFd: validFd, validPan: validPan, normPan: normPan, holderLabel: holderLabel
   };

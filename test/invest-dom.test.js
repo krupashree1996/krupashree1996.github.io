@@ -108,6 +108,35 @@ whenReady(function run() {
   var chips = $('#sumChips').textContent;
   eq('chip shows 2 FDs', chips.indexOf('2 FDs') >= 0, true);
 
+  console.log('6) interest ledger modal — add payout, compound running');
+  // Open the interest modal for the first FD (the one added in step 2).
+  var fd0 = App.DATA.fds[0];
+  App.buildInterestForm(fd0);
+  eq('interest modal opened', !!$('#interestModal'), true);
+  eq('mode selector present', !!$('#imMode'), true);
+  eq('no payouts yet', !!$('#interestModal .muted'), true);
+
+  // Add two payouts (compound is the default).
+  setValue('#imDate', '2026-06-28');
+  setValue('#imInt', '8108');
+  setValue('#imTax', '811');
+  $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
+  setValue('#imDate', '2026-09-24');
+  setValue('#imInt', '8282');
+  setValue('#imTax', '829');
+  $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
+
+  eq('two entries stored', fd0.entries.length, 2);
+  eq('mode defaulted to compound', fd0.interestMode, 'compound');
+  eq('table rendered with 2 rows', $$('#interestModal .intTable tr').length - 1, 2);
+  // Compound running: first after = 400000 + (8108-811) = 407297.
+  var rows = $$('#interestModal .intTable tr');
+  eq('first row worth-after', rows[1].cells[5].textContent.indexOf('4,07,297') >= 0, true);
+  // Row shows interest (paid) + worth now cells.
+  App.renderAll();
+  eq('row shows interest (paid) cell', $$('#sec-fd .fdCell').some(function (c) { return c.querySelector('small').textContent === 'Interest (paid)'; }), true);
+  eq('summary shows interest received', $('#sec-fd .kv').textContent.indexOf('Interest (received)') >= 0, true);
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exit(1);
 });

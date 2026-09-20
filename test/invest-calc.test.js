@@ -83,5 +83,63 @@ eq('validPan bad format', Calc.validPan({ pan: 'BADPAN', name: 'X' }).length, 1)
 eq('holderLabel', Calc.holderLabel({ name: 'TEST NAME', pan: 'ABCDE1234F' }), 'TEST NAME · ABCDE1234F');
 eq('holderLabel empty', Calc.holderLabel(null), '—');
 
+console.log('interest ledger — compound (credited in)');
+(function () {
+  // Mirrors the 130910DP00004005 slip in 202608_consolidated.xlsx (8.1%, issue 2025-08-27).
+  var fd = {
+    amount: 400000, rate: 8.1, issueDate: '2025-08-27',
+    entries: [
+      { date: '2025-09-28', int: 3060, tax: 306 },
+      { date: '2025-12-28', int: 8232, tax: 823 },
+      { date: '2026-03-29', int: 8305, tax: 830 }
+    ]
+  };
+  var rows = Calc.fdEntries(fd);
+  eq('three rows', rows.length, 3);
+  eq('row0 base = original principal', rows[0].base, 400000);
+  eq('row0 days (issue->1st)', rows[0].days, 32);
+  eq('row0 net (3060-306)', rows[0].net, 2754);
+  eq('row0 after (400000+2754)', rows[0].after, 402754);
+  close('row0 calc est ~ bank 2840', rows[0].expected, 2840, 40);
+  eq('row1 base = running (402754)', rows[1].base, 402754);
+  eq('row1 after', rows[1].after, 410163);
+  close('row1 calc est ~ bank 8155', rows[1].expected, 8155, 60);
+  var s = Calc.fdEntrySummary(fd);
+  eq('summary count', s.count, 3);
+  eq('summary gross', s.gross, 3060 + 8232 + 8305);
+  eq('summary tax', s.tax, 306 + 823 + 830);
+  eq('summary net', s.net, 2754 + 7409 + 7475);
+  eq('summary after (worth now)', s.after, 400000 + 2754 + 7409 + 7475);
+  eq('summary lastDate', s.lastDate, '2026-03-29');
+})();
+
+console.log('interest ledger — payout (principal fixed)');
+(function () {
+  var fd = {
+    amount: 1000000, rate: 8.2, issueDate: '2026-02-19', interestMode: 'payout',
+    entries: [
+      { date: '2026-03-31', int: 9211, tax: 921 },
+      { date: '2026-06-30', int: 20500, tax: 2050 }
+    ]
+  };
+  var rows = Calc.fdEntries(fd);
+  eq('mode normalized to payout', Calc.normInterestMode(fd), 'payout');
+  eq('row0 base = principal', rows[0].base, 1000000);
+  eq('row1 base = principal (not running)', rows[1].base, 1000000);
+  var s = Calc.fdEntrySummary(fd);
+  eq('summary net', s.net, (9211 - 921) + (20500 - 2050));
+  eq('summary after (principal + net)', s.after, 1000000 + (9211 - 921) + (20500 - 2050));
+})();
+
+console.log('interest ledger — empty / zero');
+(function () {
+  var fd = { amount: 400000, rate: 8.1, issueDate: '2025-08-27' };
+  eq('no entries -> empty rows', Calc.fdEntries(fd).length, 0);
+  var s = Calc.fdEntrySummary(fd);
+  eq('empty summary count', s.count, 0);
+  eq('empty summary after = principal', s.after, 400000);
+  eq('default mode is compound', Calc.normInterestMode({ amount: 1 }), 'compound');
+})();
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);
