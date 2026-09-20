@@ -110,6 +110,14 @@ label.chk input{width:auto}
 #interestModal .intAdd{border-top:1px solid var(--line,#e5e7eb);padding-top:12px;margin-top:8px}
 input.datein{font-variant-numeric:tabular-nums;letter-spacing:.5px}
 .archTable td:first-child{white-space:nowrap}
+.xirrChart{margin:14px 0 4px}
+.xirrChart h3{font-size:13px;margin:0 0 6px}
+.xirrSvg{width:100%;height:auto;display:block}
+.xirrSvg .grid{stroke:#e5e7eb;stroke-width:1}
+.xirrSvg .zero{stroke:var(--muted);stroke-width:1;stroke-dasharray:4 3}
+.xirrSvg .line{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round}
+.xirrSvg .dot{fill:var(--accent);stroke:#fff;stroke-width:1.5;cursor:default}
+.xirrSvg .ax{font:10.5px system-ui;fill:var(--muted)}
 #importModal .kv{margin:12px 0}
 #importModal .parseStatus{font-size:12.5px;margin:0 0 10px;padding:8px 10px;border-radius:8px}
 .parseStatus.ok{background:var(--ok-bg);color:var(--ok)}

@@ -163,6 +163,8 @@ whenReady(function run() {
   eq('history card shown', !!$('#sec-fd .archTable'), true);
   eq('history row shows account', $('#sec-fd .archTable').textContent.indexOf('130910DP00004005') >= 0, true);
   eq('history row shows xirr %', $('#sec-fd .archTable').textContent.indexOf('% p.a.') >= 0, true);
+  eq('xirr chart rendered', !!$('#sec-fd .xirrSvg'), true);
+  eq('chart has a line path', !!$('#sec-fd .xirrSvg path.line'), true);
 
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exit(1);
