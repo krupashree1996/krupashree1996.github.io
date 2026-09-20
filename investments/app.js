@@ -375,7 +375,7 @@
     var rd = new FileReader();
     rd.onload = function () {
       var buf = new Uint8Array(rd.result);
-      FdParse.parsePdf(buf, pdfjsLib).then(function (parsed) {
+      FdParse.parsePdf(buf, pdfjsLib, file.name).then(function (parsed) {
         setPdfBusy(false, 'Import PNB FD PDF');
         importPreview(parsed, file.name);
       }).catch(function (e) {
@@ -400,6 +400,7 @@
     var ff = fdFields(pre);
     f.form.appendChild(ff.form);
     if (parsed.holder) f.form.appendChild(el('p', 'hint', 'Holder on slip: ' + parsed.holder));
+    if (parsed.fromFile && parsed.fromFile.length) f.form.appendChild(el('p', 'hint', 'Taken from the file name: ' + parsed.fromFile.join(', ') + '.'));
 
     var save = el('button', 'primary', 'Add FD');
     save.onclick = function () {
