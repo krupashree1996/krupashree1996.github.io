@@ -186,6 +186,7 @@
     form.appendChild(field('Term (days, auto)', numInput('fDays', rec.days, 'blank = from dates')));
     form.appendChild(field('Maturity value (₹, bank)', numInput('fMv', rec.maturityValue, 'leave blank to compute')));
     form.appendChild(field('TDS rate (%)', numInput('fTds', rec.tdsRate == null ? 10 : rec.tdsRate, '10 = NRI slabs')));
+    form.appendChild(field('Interest type', selectControl('fImode', [{ v: 'compound', l: 'Compound (FD — credited in)' }, { v: 'payout', l: 'Payout (floating bond — paid out)' }], Calc.normInterestMode(rec))));
     form.appendChild(field('Repay account', textInput('fRepay', rec.repayAc, 'repayment a/c')));
     form.appendChild(field('Notes', textInput('fNotes', rec.notes, ''), true));
     function read() {
@@ -200,9 +201,11 @@
         maturityDate: val('fMaturity') || null,
         maturityValue: num('fMv'),
         tdsRate: num('fTds'),
+        interestMode: document.getElementById('fImode') ? val('fImode') : (rec.interestMode || 'compound'),
         repayAc: val('fRepay'),
         notes: val('fNotes')
       };
+      rec2.entries = rec.entries ? rec.entries.slice() : [];
       var d = num('fDays');
       rec2.days = d != null ? d : (rec2.issueDate && rec2.maturityDate ? daysBetween(rec2.issueDate, rec2.maturityDate) : (rec.days != null ? rec.days : null));
       rec2.holder = (holderOf(rec2.panId) && holderOf(rec2.panId).name) || (rec.holder || '');
@@ -283,23 +286,33 @@
     cells.style.justifyContent = 'flex-end';
     var exp = Calc.fdExpectedTotal(fd);
     var usedMv = fd.maturityValue > 0;
+    var eSum = Calc.fdEntrySummary(fd);
     cells.appendChild(fdCell('Invested', Calc.inr(fd.amount)));
     cells.appendChild(fdCell('Rate', fd.rate != null ? fd.rate + '%' : '—'));
-    cells.appendChild(fdCell('Interest', Calc.inr(Calc.fdInterest(fd)), !usedMv ? 'simple interest' : 'from PNB value'));
-    cells.appendChild(fdCell('Expected total', Calc.inr(exp), usedMv ? 'bank-stated maturity value' : 'computed (P + simple interest)'));
+    if (eSum.count) {
+      cells.appendChild(fdCell('Interest (paid)', Calc.inr(eSum.net), eSum.count + ' payout' + (eSum.count > 1 ? 's' : '') + ' · TDS ' + Calc.inr(eSum.tax)));
+      cells.appendChild(fdCell('Worth now', Calc.inr(eSum.after), 'invested + interest paid out'));
+    } else {
+      cells.appendChild(fdCell('Interest', Calc.inr(Calc.fdInterest(fd)), !usedMv ? 'simple interest (est.)' : 'from PNB value'));
+      cells.appendChild(fdCell('Expected total', Calc.inr(exp), usedMv ? 'bank-stated maturity value' : 'computed (P + simple interest)'));
+    }
     cells.appendChild(fdCell('Maturity', Calc.fmtDate(fd.maturityDate), fd.maturityDate ? ('issued ' + Calc.fmtDate(fd.issueDate)) : ''));
 
     var badges = el('div', 'rowCols');
     badges.appendChild(statusBadge(fd));
-    var tax = Calc.fdTax(fd);
-    if (tax > 0) badges.appendChild(el('span', 'badge b-partial', 'TDS ' + Calc.inr(tax)));
+    if (!eSum.count) {
+      var tax = Calc.fdTax(fd);
+      if (tax > 0) badges.appendChild(el('span', 'badge b-partial', 'TDS ' + Calc.inr(tax)));
+    }
 
     var acts = el('div', 'row-actions');
+    var intb = el('button', 'mini', 'interest');
+    intb.onclick = function () { buildInterestForm(fd); };
     var ed = el('button', 'mini', 'edit');
     ed.onclick = function () { buildFdForm(fd); };
     var del = el('button', 'mini danger', 'del');
     del.onclick = function () { deleteFd(fd); };
-    acts.appendChild(ed); acts.appendChild(del);
+    acts.appendChild(intb); acts.appendChild(ed); acts.appendChild(del);
 
     row.appendChild(main);
     row.appendChild(badges);
@@ -322,6 +335,89 @@
     });
   }
 
+  /* ---- Interest ledger (per-payout rows) ---- */
+  function fdById(id) { for (var i = 0; i < DATA.fds.length; i++) if (DATA.fds[i].id === id) return DATA.fds[i]; return null; }
+  function buildInterestForm(fd) {
+    var f = formShell('Interest \u2014 ' + (fd.account || 'No account'));
+    f.box.id = 'interestModal';
+    var mode = Calc.normInterestMode(fd);
+    f.form.appendChild(field('Interest type', selectControl('imMode', [
+      { v: 'compound', l: 'Compound (credited into principal)' },
+      { v: 'payout', l: 'Payout (paid out, principal fixed)' }
+    ], mode)));
+    f.form.appendChild(el('p', 'hint', mode === 'compound'
+      ? 'Each payout is credited into the running principal; the "calc" column is a simple-interest estimate on that running amount, to cross-check against the bank figure.'
+      : 'Each payout is paid out; the "calc" column is a simple-interest estimate on the original principal, to cross-check against the bank figure.'));
+    var box = el('div', 'intList');
+    f.form.appendChild(box);
+    renderInterestList(fd, box);
+
+    var addForm = el('div', 'intAdd');
+    addForm.appendChild(field('Date', dateInput('imDate', '')));
+    addForm.appendChild(field('Gross interest (₹)', numInput('imInt', '', 'e.g. 7589')));
+    addForm.appendChild(field('TDS (₹)', numInput('imTax', '', 'e.g. 759')));
+    addForm.appendChild(el('p', 'hint', 'Leave TDS blank for 0. Net = gross \u2212 TDS.'));
+    f.form.appendChild(addForm);
+    var add = el('button', 'primary', 'Add payout');
+    add.onclick = function () {
+      var d = val('imDate');
+      var g = num('imInt');
+      if (!d || !(g > 0)) { f.err.textContent = 'Enter a date and a gross interest amount.'; return; }
+      var t = num('imTax');
+      if (fd.entries == null) fd.entries = [];
+      fd.entries.push({ date: d, int: g, tax: t || 0 });
+      fd.interestMode = val('imMode') || mode;
+      persist(); renderAll(); buildInterestForm(fd);
+      toast('Payout added.', 'ok');
+    };
+    var cancel = el('button', 'ghost', 'Close');
+    cancel.onclick = closeModal;
+    f.actions.appendChild(add); f.actions.appendChild(cancel);
+    modal(f.box, true);
+  }
+  function renderInterestList(fd, box) {
+    box.textContent = '';
+    var rows = Calc.fdEntries(fd);
+    if (!rows.length) {
+      box.appendChild(el('p', 'muted', 'No payouts recorded yet.'));
+      return;
+    }
+    var tbl = el('table', 'intTable');
+    var thead = el('tr');
+    ['Date', 'Days', 'Gross', 'TDS', 'Net', 'Worth after', 'Calc (est.)', ''].forEach(function (h) { thead.appendChild(el('th', '', h)); });
+    tbl.appendChild(thead);
+    rows.forEach(function (r) {
+      var tr = el('tr');
+      tr.appendChild(el('td', '', Calc.fmtDate(r.date)));
+      tr.appendChild(el('td', '', r.days != null ? String(r.days) : '\u2014'));
+      tr.appendChild(el('td', '', Calc.inr(r.int)));
+      tr.appendChild(el('td', '', Calc.inr(r.tax)));
+      tr.appendChild(el('td', 'num', Calc.inr(r.net)));
+      tr.appendChild(el('td', 'num', Calc.inr(r.after)));
+      var calc = el('td', 'num', r.expected != null ? Calc.inr(r.expected) : '\u2014');
+      if (r.expected != null && r.int > 0) {
+        var diff = r.int - r.expected;
+        calc.title = 'bank \u2212 calc = ' + Calc.inr(diff);
+        calc.className = 'num ' + (Math.abs(diff) <= 5 ? 'ok' : 'warn');
+      }
+      tr.appendChild(calc);
+      var act = el('td', '');
+      var rm = el('button', 'mini danger', '\u00d7');
+      rm.onclick = function () {
+        confirmDel('Delete the payout on ' + Calc.fmtDate(r.date) + '?', function () {
+          fd.entries = fd.entries.filter(function (e) { return !(e.date === r.date && e.int === r.int); });
+          persist(); renderAll(); buildInterestForm(fd);
+        });
+      };
+      act.appendChild(rm);
+      tr.appendChild(act);
+      tbl.appendChild(tr);
+    });
+    box.appendChild(tbl);
+    var s = Calc.fdEntrySummary(fd);
+    box.appendChild(el('p', 'hint', 'Total: ' + s.count + ' payout' + (s.count > 1 ? 's' : '') + ' \u00b7 gross ' + Calc.inr(s.gross) + ' \u00b7 TDS ' + Calc.inr(s.tax) + ' \u00b7 net interest ' + Calc.inr(s.net) + ' \u00b7 worth now ' + Calc.inr(s.after)));
+  }
+
   function renderFd() {
     var sec = document.getElementById('sec-fd');
     sec.innerHTML = '';
@@ -339,12 +435,22 @@
 
     var s = Calc.fdSummary(filterFds(DATA.fds));
     if (s.count) {
+      var actual = 0, actualTax = 0, tracked = 0;
+      filterFds(DATA.fds).forEach(function (fd) {
+        var es = Calc.fdEntrySummary(fd);
+        if (es.count) { tracked++; actual += es.net; actualTax += es.tax; }
+      });
       var kv = el('div', 'kv inline');
       kv.appendChild(kvin('Invested', Calc.inr(s.invested)));
       kv.appendChild(kvin('Expected total', Calc.inr(s.expected)));
-      kv.appendChild(kvin('Interest', Calc.inr(s.interest), s.interest >= 0 ? 'pos' : ''));
-      kv.appendChild(kvin('Est. TDS', Calc.inr(s.tax)));
-      kv.appendChild(kvin('Net after TDS', Calc.inr(s.net)));
+      kv.appendChild(kvin('Interest (est.)', Calc.inr(s.interest), s.interest >= 0 ? 'pos' : ''));
+      if (tracked) {
+        kv.appendChild(kvin('Interest (received)', Calc.inr(actual), 'pos'));
+        kv.appendChild(kvin('TDS (received)', Calc.inr(actualTax)));
+      } else {
+        kv.appendChild(kvin('Est. TDS', Calc.inr(s.tax)));
+        kv.appendChild(kvin('Net after TDS', Calc.inr(s.net)));
+      }
       card.appendChild(kv);
     }
 
@@ -631,5 +737,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, importPdf: importPdf, importPreview: importPreview };
+  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, importPdf: importPdf, importPreview: importPreview };
 })();
