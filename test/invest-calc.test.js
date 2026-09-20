@@ -84,6 +84,51 @@ eq('validPan bad format', Calc.validPan({ pan: 'BADPAN', name: 'X' }).length, 1)
 eq('holderLabel', Calc.holderLabel({ name: 'TEST NAME', pan: 'ABCDE1234F' }), 'TEST NAME · ABCDE1234F');
 eq('holderLabel empty', Calc.holderLabel(null), '—');
 
+console.log('xirr / fdXirr');
+(function () {
+  // 400000 for 365 days -> 440000 at 1 year = 10% flat; XIRR should be ~10%.
+  var r = Calc.xirr([{ date: '2025-01-01', amt: -400000 }, { date: '2026-01-01', amt: 440000 }]);
+  close('two-flow xirr ~ 10%', r * 100, 10, 0.05);
+  // Payout: -100k, +5k at 6mo, +106k at 12mo.
+  var r2 = Calc.xirr([
+    { date: '2025-01-01', amt: -100000 },
+    { date: '2025-07-01', amt: 5000 },
+    { date: '2026-01-01', amt: 106000 }
+  ]);
+  close('payout xirr between 9-11%', r2 * 100, 10, 2);
+  eq('fewer than 2 flows -> null', Calc.xirr([{ date: '2025-01-01', amt: -1 }]), null);
+  eq('all-positive -> null', Calc.xirr([{ date: '2025-01-01', amt: 1 }, { date: '2025-02-01', amt: 2 }]), null);
+
+  var fd = {
+    amount: 400000, rate: 8.1, issueDate: '2025-01-01', maturityDate: '2025-04-01',
+    maturityValue: 407959, interestMode: 'compound',
+    entries: [{ date: '2025-02-01', int: 2700, tax: 270 }]
+  };
+  var x = Calc.fdXirr(fd);
+  eq('fdXirr returns a number', typeof x, 'number');
+  close('compound fdXirr ~ annualized 8.3% (mid credits ignored)', x * 100, 8.31, 0.15);
+
+  var fd2 = {
+    amount: 400000, rate: 8.1, issueDate: '2025-01-01', maturityDate: '2025-04-01',
+    maturityValue: 407959, interestMode: 'payout',
+    entries: [{ date: '2025-02-01', int: 2700, tax: 270 }]
+  };
+  var y = Calc.fdXirr(fd2);
+  eq('payout fdXirr returns a number', typeof y, 'number');
+  eq('payout fdXirr differs from compound', Math.abs(x - y) > 1e-6, true);
+  eq('no amount -> null', Calc.fdXirr({ maturityValue: 10 }), null);
+})();
+
+console.log('auto-remove (matured 45+ days)');
+(function () {
+  var today = '2026-08-21';
+  eq('44 days -> keep', Calc.fdAutoRemove({ maturityDate: '2026-07-08' }, today, 45), false);
+  eq('45 days -> remove', Calc.fdAutoRemove({ maturityDate: '2026-07-07' }, today, 45), true);
+  eq('not yet matured -> keep', Calc.fdAutoRemove({ maturityDate: '2027-01-01' }, today, 45), false);
+  eq('no maturity -> keep', Calc.fdAutoRemove({ amount: 1 }, today, 45), false);
+  eq('default is 45', Calc.fdAutoRemove({ maturityDate: '2026-07-07' }, today), true);
+})();
+
 console.log('day-first date parsing (DD/MM/YYYY)');
 eq('dd/mm/yyyy -> iso', Calc.parseDDMMYYYY('27/08/2025'), '2025-08-27');
 eq('single-digit dd/mm', Calc.parseDDMMYYYY('7/8/25'), '2025-08-07');
