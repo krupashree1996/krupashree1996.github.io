@@ -230,6 +230,11 @@
     $('commitBtn').disabled = pending.length > 0;
     $('raiseNote').textContent = Object.keys(S.decisions).length
       ? Object.keys(S.decisions).map(function (k) { return k + ' ✓'; }).join(', ') : 'no exceptions yet';
+    if (!pending.length && S.st && !S.autoScheduled) {
+      /* every check passed (or was accepted) — record the statement automatically */
+      S.autoScheduled = true;
+      setTimeout(function () { if (!pending.length && !S.committed) commitStatement(true); }, 900);
+    }
   }
   function acceptCheck(key) {
     S.decisions[key] = 'accepted by user';
@@ -274,6 +279,8 @@
 
   function openVerify(st) {
     S.st = st;
+    S.autoScheduled = false;
+    S.committed = false;
     var dup = DATA.records.filter(function (r) { return r.periodTo === st.periodTo; })[0];
     S.curRecord = dup || null;
     if (dup) toast('A record for this period already exists — verifying again will replace it.', 'warn');
@@ -309,13 +316,14 @@
       status: 'verified', reconciled: ''
     };
   }
-  function commitStatement() {
+  function commitStatement(auto) {
+    S.committed = true;
     var rec = buildRecord();
     var i = DATA.records.findIndex(function (r) { return r.id === rec.id; });
     if (i >= 0) DATA.records[i] = rec; else DATA.records.push(rec);
     DATA.records.sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); });
     persist();
-    toast('Statement recorded for ' + (rec.periodTo || rec.statementDate) + '.', 'ok');
+    toast(auto ? 'All checks passed — statement recorded automatically for ' + (rec.periodTo || rec.statementDate) + '.' : 'Statement recorded for ' + (rec.periodTo || rec.statementDate) + '.', 'ok');
     show('landing');
     renderAll();
     setTimeout(function () { openReconcile(rec); }, 60);
