@@ -7,7 +7,7 @@
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 11;
+  var APP_VERSION = 12;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
   /* Google Drive backup. Get a client id at Google Cloud Console
    * (APIs & Services > Credentials > Create OAuth client ID > Web application),
@@ -1145,9 +1145,13 @@
     rd.onload = function () {
       try {
         var s = String(rd.result);
-        if (s.indexOf('window.DATA =') < 0) throw new Error('not a bundle saved by this app (expected a window.DATA file)');
-        s = s.replace(/^[\s\S]*?window\.DATA\s*=\s*/, '').replace(/;\s*$/, '');
-        var d = JSON.parse(s);
+        var d;
+        if (s.indexOf('window.DATA =') >= 0) {
+          s = s.replace(/^[\s\S]*?window\.DATA\s*=\s*/, '').replace(/;\s*$/, '');
+          d = JSON.parse(s);
+        } else {
+          d = JSON.parse(s); // also accept a bare JSON bundle (e.g. renamed/extracted backups)
+        }
         if (!d || !Array.isArray(d.ipos) || !Array.isArray(d.applications)) throw new Error('missing ipos/applications arrays');
         if (typeof d.version === 'number' && d.version > SCHEMA_VERSION) {
           toast('This bundle is from a newer app version (schema ' + d.version + '). Update the app first — nothing was loaded.', 'warn');
