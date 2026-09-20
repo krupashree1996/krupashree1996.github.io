@@ -192,6 +192,36 @@ whenReady(function run() {
   $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
   eq('different amount on same date allowed', fd0.entries.length, 3);
   eq('table rendered with 3 rows', $$('#interestModal .intTable tr').length - 1, 3);
+
+  // Edit an existing payout: pencil prefills the form, "Save changes" updates it.
+  // Entries so far: 28/06 (8108, tds 811), 28/06 (9999), 24/09 (8282) — date-sorted,
+  // so row 0 is the 28/06/8108 entry.
+  var editBtns = $$('#interestModal .intTable button[title="Edit this payout"]');
+  eq('pencil buttons present (one per row)', editBtns.length, 3);
+  editBtns[0].click();
+  eq('save button switched to "Save changes"', $$('#interestModal .actions button').some(function (b) { return b.textContent === 'Save changes'; }), true);
+  eq('date prefilled', $('#imDate').value, '28/06/2026');
+  eq('gross prefilled', $('#imInt').value, '8108');
+  // Change the gross and save.
+  setValue('#imInt', '8200');
+  $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Save changes') b.click(); });
+  eq('entry count unchanged after edit', fd0.entries.length, 3);
+  eq('gross updated to 8200', fd0.entries.some(function (e) { return e.date === '2026-06-28' && e.int === 8200; }), true);
+  // Editing a row to another payout's date + gross is still flagged as a duplicate.
+  var editBtns2 = $$('#interestModal .intTable button[title="Edit this payout"]');
+  editBtns2[0].click(); // row 0 = 28/06, 8200
+  setValue('#imDate', '24/09/2026'); // = the 8282 entry's date
+  setValue('#imInt', '8282');
+  $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Save changes') b.click(); });
+  eq('edit collision still blocked', fd0.entries.length, 3);
+  eq('collision error shown', $('#interestModal .err').textContent.indexOf('already recorded') >= 0, true);
+  // Reset the row back to 28/06 / 8108 so the earlier "worth-after" assertion holds.
+  var editBtns3 = $$('#interestModal .intTable button[title="Edit this payout"]');
+  editBtns3[0].click();
+  setValue('#imDate', '28/06/2026');
+  setValue('#imInt', '8108');
+  $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Save changes') b.click(); });
+
   // Compound running: first after = 400000 + (8108-811) = 407297.
   var rows = $$('#interestModal .intTable tr');
   eq('first row worth-after', rows[1].cells[5].textContent.indexOf('4,07,297') >= 0, true);
