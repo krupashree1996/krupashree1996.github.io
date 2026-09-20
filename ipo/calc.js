@@ -223,7 +223,8 @@ var Calc = (function () {
     if (!ipo) return false;
     for (var i = 0; i < (apps || []).length; i++) {
       var st = apps[i].status;
-      if (st !== 'allotted' && st !== 'rejected') return false;
+      if (st === 'allotted') return false; // retain realized allotments (allotted/sold) forever
+      if (st !== 'rejected') return false;
     }
     var ref = ipo.listingDate || ipo.closeDate || ipo.openDate;
     if (!ref) return false;

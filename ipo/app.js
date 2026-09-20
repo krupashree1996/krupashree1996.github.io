@@ -7,8 +7,14 @@
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 9;
+  var APP_VERSION = 11;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
+  /* Google Drive backup. Get a client id at Google Cloud Console
+   * (APIs & Services > Credentials > Create OAuth client ID > Web application),
+   * add your site origin to "Authorized JavaScript origins", then paste the
+   * client id below (looks like 1234-abc.apps.googleusercontent.com). */
+  var DRIVE_CLIENT_ID = '';
+  var DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -83,6 +89,7 @@
     clearTimeout(persisting);
     persisting = setTimeout(flush, 250);
     if (DATA.meta.wdav && DATA.meta.wdav.url) scheduleBackup();
+    if (DATA.meta.drive && DATA.meta.drive.connected) scheduleDriveBackup();
   }
 
   function holderOf(id) {
@@ -1237,25 +1244,30 @@
     var min = Math.round((Date.now() - t) / 60000);
     return min < 1 ? 'now' : min + 'm ago';
   }
-  function setSyncChip() {
-    var chip = document.getElementById('syncchip');
-    if (!chip) return;
-    if (!navigator.onLine) { chip.textContent = 'offline'; chip.title = 'No network — auto-fetch is paused. Everything else works offline.'; return; }
-    if (!lastSync.at) { chip.textContent = 'not synced yet'; chip.title = 'Auto-fetch runs on page load (and when you click Fetch Online). Configure in the settings chip.'; return; }
-    chip.textContent = (lastSync.ok ? 'synced' : 'fetch failed') + ' ' + relTime(lastSync.at);
-    chip.title = lastSync.ok ? 'Last successful fetch: ' + new Date(lastSync.at).toLocaleString() : 'Last fetch failed: ' + lastSync.msg;
-  }
+  function setSyncChip() { /* sync chip removed; offline/fetch failures surface as toasts */ }
   function setBackupChip() {
     var chip = document.getElementById('backupchip');
     if (!chip) return;
-    var w = DATA.meta.wdav;
-    if (!w || !w.url) { chip.textContent = 'backup off'; chip.title = 'Enable WebDAV auto-backup in the settings chip.'; return; }
-    if (w.state === 'ok') chip.textContent = 'backed up ' + relTime(w.at);
-    else if (w.state === 'err') chip.textContent = 'backup failed';
-    else if (w.state === 'busy') chip.textContent = 'backing up\u2026';
+    var w = DATA.meta.wdav, d = DATA.meta.drive;
+    var wOn = w && w.url, dOn = d && d.connected;
+    if (!wOn && !dOn) { chip.textContent = 'backup off'; chip.title = 'Enable WebDAV auto-backup or Google Drive backup in the settings chip.'; return; }
+    var targets = [];
+    if (wOn) targets.push(w);
+    if (dOn) targets.push(d);
+    var busy = targets.some(function (t) { return t.state === 'busy'; });
+    var latest = targets.slice().sort(function (a, b) { return (b.at || 0) - (a.at || 0); })[0];
+    var isD = latest === d;
+    if (busy) chip.textContent = 'backing up\u2026';
+    else if (latest.state === 'err') chip.textContent = (latest === d ? 'drive: ' : '') + 'backup failed';
+    else if (latest.state === 'ok' && latest.at) chip.textContent = (isD ? 'drive backed up ' : 'backed up ') + relTime(latest.at);
     else chip.textContent = 'backup idle';
-    chip.title = w.state === 'ok' ? 'Last backup to ' + w.url + ': ' + new Date(w.at).toLocaleString()
-      : (w.state === 'err' ? 'Last backup failed: ' + (w.err || 'network error') : 'Waiting for the first backup\u2026');
+    var parts = targets.map(function (t) {
+      var name = t === d ? 'Google Drive' : 'WebDAV';
+      if (t.state === 'ok') return name + ' ok (' + new Date(t.at).toLocaleString() + ')';
+      if (t.state === 'err') return name + ' failed: ' + (t.err || 'network error');
+      return name + ' waiting';
+    });
+    chip.title = parts.join('  |  ');
   }
   function fetchCalendar(manual) {
     if (typeof fetch !== 'function') return;
@@ -1312,6 +1324,7 @@
     backupBusy = setTimeout(pushBackup, 30000);
   }
   function pushBackup(force) {
+    if (newerSession || corruptSession) return; // never overwrite the backup with an empty/unrelated session
     if (typeof fetch !== 'function') return;
     var url = wdavUrl();
     if (!url) return;
@@ -1357,6 +1370,162 @@
       .catch(function (e) { toast('Restore failed: ' + e.message, 'bad'); });
   }
 
+  /* ---------- Google Drive backup (OAuth 2.0 via Google Identity Services) ---------- */
+  var DRIVE_API = 'https://www.googleapis.com/drive/v3';
+  var DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
+  var driveToken = null, driveTokenExp = 0;
+  var driveBusy = 0, lastDriveBackup = 0;
+  function driveConnected() { return !!(DATA.meta.drive && DATA.meta.drive.connected); }
+  function driveState() { return DATA.meta.drive || {}; }
+  function setDriveMeta(patch) {
+    var d = DATA.meta.drive = DATA.meta.drive || {};
+    for (var k in patch) d[k] = patch[k];
+    return d;
+  }
+  function driveStatusText() {
+    var w = driveState();
+    if (!w.connected) return 'Google Drive: off.';
+    if (w.state === 'ok') return 'Google Drive: ok \u2014 last upload ' + relTime(w.at) + '.';
+    if (w.state === 'err') return 'Google Drive: failed \u2014 ' + (w.err || 'network error') + '.';
+    if (w.state === 'busy') return 'Google Drive: uploading\u2026';
+    return 'Google Drive: connected, waiting for the first change\u2026';
+  }
+  function updateDriveStatus() {
+    var s = document.getElementById('setDriveStatus');
+    if (s) s.textContent = driveStatusText();
+  }
+  function loadGsi() {
+    return new Promise(function (resolve, reject) {
+      if (typeof window.google !== 'undefined' && window.google.accounts) { resolve(); return; }
+      if (typeof DRIVE_CLIENT_ID !== 'string' || !DRIVE_CLIENT_ID) { reject(new Error('Set DRIVE_CLIENT_ID in ipo/app.js first')); return; }
+      var s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.async = true;
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error('Could not load Google Identity Services (blocked?)')); };
+      document.head.appendChild(s);
+    });
+  }
+  var tokenClient = null;
+  function requestDriveToken(silent) {
+    return loadGsi().then(function () {
+      return new Promise(function (resolve, reject) {
+        if (driveToken && driveTokenExp > Date.now() + 60000) { resolve(driveToken); return; }
+        if (!tokenClient) {
+          tokenClient = window.google.accounts.oauth2.initTokenClient({
+            client_id: DRIVE_CLIENT_ID,
+            scope: DRIVE_SCOPE,
+            callback: function (resp) {
+              if (resp && resp.error) { reject(new Error(resp.error_description || resp.error)); return; }
+              driveToken = resp.access_token;
+              driveTokenExp = (resp.expires_in ? Date.now() + resp.expires_in * 1000 : 0);
+              resolve(driveToken);
+            }
+          });
+        }
+        tokenClient.requestAccessToken({ prompt: silent ? '' : undefined });
+      });
+    });
+  }
+  function driveBundle() {
+    return JSON.stringify({ version: SCHEMA_VERSION, savedAt: new Date().toISOString(),
+      pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, ipos: DATA.ipos, applications: DATA.applications });
+  }
+  function driveUpload(body) {
+    var d = driveState();
+    if (d.fileId) {
+      return fetch(DRIVE_UPLOAD + '/' + encodeURIComponent(d.fileId) + '?uploadType=media', {
+        method: 'PATCH', mode: 'cors',
+        headers: { Authorization: 'Bearer ' + driveToken, 'Content-Type': 'application/json' }, body: body })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+    }
+    return fetch(DRIVE_UPLOAD + '?uploadType=media', {
+      method: 'POST', mode: 'cors',
+      headers: { Authorization: 'Bearer ' + driveToken, 'Content-Type': 'application/json' }, body: body })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (f) {
+        setDriveMeta({ fileId: f.id });
+        return fetch(DRIVE_API + '/files/' + encodeURIComponent(f.id), {
+          method: 'PATCH', mode: 'cors',
+          headers: { Authorization: 'Bearer ' + driveToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: BACKUP_NAME }) });
+      })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  }
+  function drivePush(force) {
+    if (newerSession || corruptSession) return; // never overwrite the backup with an empty/unrelated session
+    if (typeof fetch !== 'function') return;
+    if (!driveConnected()) return;
+    var now = Date.now();
+    if (!force && (now - lastDriveBackup < 15 * 60000)) return;
+    lastDriveBackup = now;
+    setDriveMeta({ state: 'busy', err: '' });
+    setBackupChip();
+    requestDriveToken(true)
+      .then(function () { return driveUpload(driveBundle()); })
+      .then(function () {
+        setDriveMeta({ state: 'ok', at: Date.now(), err: '' });
+        persist(); setBackupChip(); updateDriveStatus();
+      })
+      .catch(function (e) {
+        setDriveMeta({ state: 'err', err: (e && e.message) || 'network error' });
+        persist(); setBackupChip(); updateDriveStatus();
+        toast('Drive backup failed: ' + ((e && e.message) || 'network error') + ' (reconnect Google in settings if needed).', 'bad');
+      });
+  }
+  function scheduleDriveBackup() {
+    clearTimeout(driveBusy);
+    driveBusy = setTimeout(function () { drivePush(false); }, 30000);
+  }
+  function driveConnect() {
+    if (!DRIVE_CLIENT_ID) {
+      toast('Set DRIVE_CLIENT_ID in ipo/app.js (Google OAuth web client id), save, reload, then connect.', 'bad');
+      return;
+    }
+    requestDriveToken(false)
+      .then(function () {
+        setDriveMeta({ connected: true, state: 'ok', at: Date.now(), err: '' });
+        persist(); setBackupChip(); updateDriveStatus();
+        toast('Google Drive connected.', 'ok');
+        drivePush(true);
+      })
+      .catch(function (e) {
+        setDriveMeta({ state: 'err', err: (e && e.message) || 'auth error' });
+        persist(); setBackupChip(); updateDriveStatus();
+        toast('Google auth failed: ' + ((e && e.message) || 'error'), 'bad');
+      });
+  }
+  function driveRestore() {
+    if (!driveConnected()) { toast('Connect Google Drive first (settings chip).', 'warn'); return; }
+    requestDriveToken(true)
+      .then(function () {
+        var q = encodeURIComponent("name='" + BACKUP_NAME + "' and trashed=false");
+        return fetch(DRIVE_API + '/files?q=' + q + '&spaces=drive&fields=files(id,name,modifiedTime)', { mode: 'cors', headers: { Authorization: 'Bearer ' + driveToken } });
+      })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (j) {
+        var list = (j && j.files) || [];
+        if (!list.length) throw new Error('no backup file found in Google Drive');
+        list.sort(function (a, b) { return String(b.modifiedTime).localeCompare(String(a.modifiedTime)); });
+        var w = driveState();
+        var pick = (w.fileId && list.filter(function (f) { return f.id === w.fileId; })[0]) || list[0];
+        setDriveMeta({ fileId: pick.id });
+        return fetch(DRIVE_API + '/files/' + encodeURIComponent(pick.id) + '?alt=media', { mode: 'cors', headers: { Authorization: 'Bearer ' + driveToken } });
+      })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) {
+        if (!d || !Array.isArray(d.ipos) || !Array.isArray(d.applications)) throw new Error('backup file is not a valid bundle');
+        if (typeof d.version === 'number' && d.version > SCHEMA_VERSION) { toast('Drive backup is from a newer app version (schema ' + d.version + '). Update the app first — nothing was restored.', 'warn'); return; }
+        DATA.ipos = d.ipos; DATA.applications = d.applications;
+        if (Array.isArray(d.pans)) DATA.pans = d.pans;
+        DATA.profile = d.profile || DATA.profile;
+        if (d.meta && typeof d.meta === 'object') DATA.meta = d.meta;
+        flush(); renderAll();
+        toast('Restored data from Google Drive backup (' + (d.savedAt ? new Date(d.savedAt).toLocaleString() : 'unknown time') + ').', 'ok');
+      })
+      .catch(function (e) { toast('Drive restore failed: ' + e.message, 'bad'); });
+  }
+
   /* ---------- settings (auto-fetch + backup) ---------- */
   function settingsModal() {
     var f = formShell('Auto-sync & backup');
@@ -1386,6 +1555,25 @@
       if (w.state === 'busy') return 'Backup: uploading\u2026';
       return 'Backup: waiting for the first change\u2026';
     }
+    form.appendChild(el('hr', 'seam'));
+    form.appendChild(el('h4', '', 'Google Drive backup'));
+    form.appendChild(el('p', 'muted small wide', 'Backs up the same private bundle to your Google Drive (holds it privately under your account). One-time Connect in a popup, then it auto-saves exactly like WebDAV. Requires a Google Cloud OAuth web client id \u2014 set DRIVE_CLIENT_ID in ipo/app.js first. The access token is kept in memory and silently renewed; nothing is stored in the browser.'));
+    var ds = el('p', 'hint', driveStatusText());
+    ds.id = 'setDriveStatus';
+    form.appendChild(ds);
+    var dbtns = el('div', 'actions');
+    var dConnect = el('button', 'ghost', driveConnected() ? 'Reconnect Google' : 'Connect Google');
+    dConnect.id = 'btnDriveConnect';
+    dConnect.type = 'button';
+    dConnect.onclick = function () { driveConnect(); setTimeout(updateDriveStatus, 400); };
+    var dPush = el('button', 'ghost', 'Back up now');
+    dPush.type = 'button';
+    dPush.onclick = function () { if (driveConnected()) drivePush(true); else toast('Connect Google first.', 'warn'); };
+    var dRestore = el('button', 'ghost', 'Restore from Drive');
+    dRestore.type = 'button';
+    dRestore.onclick = driveRestore;
+    dbtns.appendChild(dConnect); dbtns.appendChild(dPush); dbtns.appendChild(dRestore);
+    form.appendChild(dbtns);
     var save = el('button', 'primary', 'Save');
     save.onclick = function () {
       DATA.meta.autoFetch = afCk.checked;
@@ -1431,7 +1619,9 @@
     });
     setSyncChip(); setBackupChip();
     setInterval(function () {
-      if (DATA.meta.wdav && DATA.meta.wdav.url && navigator.onLine && document.visibilityState === 'visible') pushBackup(false);
+      if (!navigator.onLine || document.visibilityState !== 'visible') return;
+      if (DATA.meta.wdav && DATA.meta.wdav.url) pushBackup(false);
+      if (driveConnected()) drivePush(false);
     }, 10 * 60000);
   }
 

@@ -68,5 +68,18 @@ var r = Calc.normRemote({ companyName: 'Acme', priceBand: { max: 250 }, lotSize:
 eq('external SME minLots', r.minLots, 1);
 eq('external bandHi', r.bandHi, 250);
 
+console.log('cleanup — realized allotments/sales retained forever');
+(function () {
+  var today = '2026-09-20';
+  var oldListing = { id: 'i1', listingDate: '2024-03-01', closeDate: '2024-02-10', openDate: '2024-02-01' };
+  var appOf = function (status) { return { ipoId: 'i1', status: status, soldPrice: status === 'allotted' ? 300 : null }; };
+  eq('allotted app → retained (no cleanup)', Calc.cleanupDue(oldListing, [appOf('allotted')], 45, today), false);
+  eq('allotted + sold app → retained (no cleanup)', Calc.cleanupDue(oldListing, [appOf('allotted'), appOf('rejected')], 45, today), false);
+  eq('only rejected apps → cleaned after 45 days', Calc.cleanupDue(oldListing, [appOf('rejected')], 45, today), true);
+  eq('still-applied app → never cleaned', Calc.cleanupDue(oldListing, [appOf('applied')], 45, today), false);
+  eq('no apps → cleaned after 45 days', Calc.cleanupDue(oldListing, [], 45, today), true);
+  eq('fresh listing within 45 days → retained', Calc.cleanupDue({ id: 'i2', listingDate: '2026-09-10' }, [appOf('rejected')], 45, today), false);
+})();
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
