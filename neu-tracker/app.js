@@ -18,7 +18,7 @@
 
   var STORE_KEY = 'ne.tracker.data';
   var PW_KEY = 'ne.tracker.pw';
-  var APP_VERSION = 5;
+  var APP_VERSION = 2;
 
   /* ---------------- tiny DOM helpers ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -66,7 +66,7 @@
   function download(name, text, mime) { saveFile(name, text, mime || 'application/octet-stream'); }
 
   function show(id) {
-    ['landing', 'verify', 'ledger', 'reconcile', 'rewards', 'bills'].forEach(function (x) {
+    ['landing', 'verify', 'ledger', 'reconcile', 'rewards'].forEach(function (x) {
       var n = $(x);
       if (!n) return;
       n.style.display = (x === id ? 'block' : 'none');
@@ -239,8 +239,8 @@
       /* every check passed (or was accepted) — record automatically after a
        * short, visible countdown so the checks can be read first. */
       S.autoScheduled = true;
-      p.textContent = 'All checks passed — recording automatically in 5s.';
-      var left = 5;
+      p.textContent = 'All checks passed — recording automatically in 15s.';
+      var left = 15;
       S.autoTimer = setInterval(function () {
         if (S.committed) { clearInterval(S.autoTimer); S.autoTimer = null; return; }
         if ($('verify').style.display !== 'block') { clearInterval(S.autoTimer); S.autoTimer = null; return; }
@@ -332,7 +332,10 @@
       closingNeuCoins: st.closingNeuCoins,
       bonusPrograms: st.bonusPrograms, bonusTotal: st.bonusTotal, txns: st.txns,
       accepted: Object.keys(S.decisions).map(function (k) { return { key: k, note: S.decisions[k] }; }),
-      status: 'verified', reconciled: ''
+      status: 'verified',
+      /* re-importing a recorded period must not wipe its reconciled flag or
+       * previously noted exceptions */
+      reconciled: S.curRecord && S.curRecord.reconciled ? S.curRecord.reconciled : ''
     };
   }
   function commitStatement(auto) {
@@ -341,10 +344,23 @@
     var i = DATA.records.findIndex(function (r) { return r.id === rec.id; });
     if (i >= 0) DATA.records[i] = rec; else DATA.records.push(rec);
     DATA.records.sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); });
+    /* importing this statement proves the previous bill's dues were paid →
+     * auto-record that payment so the old bill shows 'settled'. */
+    if (Calc.autoSettlePrior(DATA.records, DATA.payments, rec) > 0) {
+      toast('Previous bill marked paid (auto).', 'ok');
+    }
     persist();
     toast(auto ? 'All checks passed — statement recorded automatically for ' + (rec.periodTo || rec.statementDate) + '.' : 'Statement recorded for ' + (rec.periodTo || rec.statementDate) + '.', 'ok');
     show('landing');
     renderAll();
+    /* auto-reconcile when the ledger fully matches the bill (nothing unmatched on
+     * either side) → home. Otherwise the user must close the cycle out: stay on
+     * the reconcile page until they click "Mark as reconciled (anyway)". */
+    var res = Calc.reconcile(rec, DATA.ledger, prevRecordOf(rec));
+    if (!rec.reconciled && res.matchedCount > 0 && !res.bookOnlyCount && !res.stmtOnlyCount) {
+      markReconciled(rec, res);
+      return;
+    }
     setTimeout(function () { openReconcile(rec); }, 60);
   }
 
@@ -411,8 +427,12 @@
     var groups = {};
     var byCat = { upi: 0, grocery: 0, base: 0, tata: 0, nocoins: 0, payment: 0 };
     DATA.ledger.forEach(function (e) {
-      if (groups[e.date.slice(0, 7)] == null) groups[e.date.slice(0, 7)] = [];
-      groups[e.date.slice(0, 7)].push(e);
+      /* dates are dd/mm/yyyy → group key "yyyy-mm" (e.g. "2025-12"); string
+       * sort on that key is chronological across year boundaries too.
+       * Entries within a month are re-sorted below by real timestamp. */
+       var mk = e.date.slice(6, 10) + '-' + e.date.slice(3, 5); // "yyyy-mm"
+      if (groups[mk] == null) groups[mk] = [];
+      groups[mk].push(e);
       byCat[e.category] = (byCat[e.category] || 0) + (e.category === 'payment' ? -e.amount : e.amount);
     });
     $('ledgerTotals').replaceChildren();
@@ -428,13 +448,15 @@
     $('ledgerList').replaceChildren();
     var months = Object.keys(groups).sort().reverse();
     months.forEach(function (m) {
-      var h = el('div', 'lg-h', m.replace(/-/, '/'));
+      var mnames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      var h = el('div', 'lg-h', mnames[+m.slice(5) - 1] + ' ' + m.slice(0, 4));
       $('ledgerList').appendChild(h);
-      groups[m].slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).forEach(function (e) {
+      groups[m].slice().sort(function (a, b) { return (Calc.pdate(b.date) || 0) - (Calc.pdate(a.date) || 0); }).forEach(function (e) {
         $('ledgerList').appendChild(ledgerEntryRow(e));
       });
     });
     if (!months.length) $('ledgerList').appendChild(el('p', 'muted', 'No entries yet. Add your card spends here and reconcile each statement after importing it.'));
+    renderPayments();
   }
 
   /* ---------------- reconcile ---------------- */
@@ -462,6 +484,58 @@
     }
     renderReconcile();
     show('reconcile');
+  }
+  /* Book every "on statement, not in ledger" row into the ledger (payments as
+   * Payment · 0 coins, spends guessed by merchant). Shared by the Reconcile
+   * page and Home so the user can bulk-book a recorded statement from
+   * anywhere — not only while sitting on the Reconcile screen. Returns the
+   * number of ledger entries added. If the bill now fully matches, it
+   * auto-reconciles (→ home); otherwise the current view is refreshed. */
+  function bookStmtOnly(rec) {
+    var res = Calc.reconcile(rec, DATA.ledger, prevRecordOf(rec));
+    /* count-based dedupe: a statement can carry N identical rows (same
+     * day + amount + merchant). Book exactly as many ledger entries as there
+     * are statement rows, and no more — so re-clicking never duplicates, and
+     * every identical row can be matched. */
+    var want = {}; // key -> number of statement-only rows
+    res.stmtOnly.forEach(function (tx) {
+      var k = tx.date + '|' + Math.round(tx.amount * 100) / 100 + '|' + tx.desc;
+      want[k] = (want[k] || 0) + 1;
+    });
+    var have = {}; // key -> entries already in the ledger
+    DATA.ledger.forEach(function (e) {
+      var k = e.date + '|' + Math.round((e.amount || 0) * 100) / 100 + '|' + e.desc;
+      if (want[k]) have[k] = (have[k] || 0) + 1;
+    });
+    var added = 0;
+    res.stmtOnly.forEach(function (tx) {
+      var k = tx.date + '|' + Math.round(tx.amount * 100) / 100 + '|' + tx.desc;
+      if ((have[k] || 0) >= want[k]) return; // this key is already fully booked
+      DATA.ledger.push({
+        id: 'e-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+        date: tx.date, desc: tx.desc,
+        category: Calc.guessCategory(tx),
+        amount: Math.round(tx.amount * 100) / 100, reconciled: '',
+        /* which statement this row came from — lets the NEXT statement's
+         * reconcile ignore it as "not on statement" (its date may fall in that
+         * window without belonging to it) */
+        sourcePeriod: rec.periodTo
+      });
+      have[k] = (have[k] || 0) + 1;
+      added++;
+    });
+    persist();
+    renderLedger();
+    /* re-run reconcile and follow the usual path: if the bill now fully
+     * matches, auto-reconcile and return home; else refresh the current view. */
+    var res2 = Calc.reconcile(rec, DATA.ledger, prevRecordOf(rec));
+    if (!rec.reconciled && res2.matchedCount > 0 && !res2.bookOnlyCount && !res2.stmtOnlyCount) {
+      markReconciled(rec, res2);
+      return added;
+    }
+    renderAll();
+    toast(added ? 'Added ' + added + ' ledger entries from the statement.' : 'No new entries — every row is already booked.', 'ok');
+    return added;
   }
   function renderReconcile() {
     var sel = $('rcSel');
@@ -509,7 +583,7 @@
       body.appendChild(b2);
     }
     if (res.stmtOnly.length) {
-      body.appendChild(el('h4', '', 'On statement, not in ledger'));
+      body.appendChild(el('h4', '', 'On statement, not in ledger (' + res.stmtOnly.length + ')'));
       var s = el('div', 'table');
       res.stmtOnly.forEach(function (tx) {
         var r = el('div', 'lrow');
@@ -520,8 +594,13 @@
         s.appendChild(r);
       });
       body.appendChild(s);
+      var addAll = el('button', '', 'Add all ' + res.stmtOnly.length + ' to ledger');
+      addAll.title = 'Book every statement-only row into the ledger (payments as Payment · 0 coins, spends guessed by merchant). Review categories in the Ledger afterwards.';
+      addAll.onclick = function () { bookStmtOnly(rec); };
+      body.appendChild(el('div', 'form'));
+      body.lastChild.appendChild(addAll);
     }
-    if (res.payInBook !== res.payInStmt) {
+    if (Math.abs(Calc.round2(res.payInBook) - Calc.round2(res.payInStmt)) > 0.02) {
       body.appendChild(el('div', 'pending', 'Payment amounts differ: ledger ' + fmtMoney(res.payInBook) + ' vs statement ' + fmtMoney(res.payInStmt) + '.'));
     }
 
@@ -559,7 +638,8 @@
     persist();
     toast('Reconciled ' + rec.periodTo + ' — ' + res.matchedCount + ' entries matched.', 'ok');
     renderLedger();
-    openReconcile(rec);
+    show('landing');
+    renderAll();
   }
 
   /* ---------------- rewards ---------------- */
@@ -692,22 +772,17 @@
     setTimeout(function () { inp.focus(); }, 30);
   }
 
-  /* ---------------- bills ---------------- */
+  /* ---------------- dues, payments & interest (merged into Home + Ledger) --- */
   function blForOptions() {
     var sel = $('blFor');
     sel.replaceChildren();
     if (!DATA.records.length) { sel.appendChild(el('option', '', 'No statements yet')); return; }
     DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); }).forEach(function (r) {
-      var o = el('option', '', r.periodTo);
+      var o = el('option', '', r.periodTo + (r.reconciled ? ' ✓' : ''));
       o.value = r.periodTo;
       sel.appendChild(o);
     });
-  }
-  function renderBills() {
-    blForOptions();
-    renderDueBoard();
-    renderPayments();
-    renderInterest();
+    if (sel.selectedIndex === -1) sel.selectedIndex = 0;
   }
   function renderDueBoard() {
     var body = el('div');
@@ -744,17 +819,20 @@
     DATA.payments.push({ id: 'p-' + Date.now().toString(36), date: date, amount: Math.round(amount * 100) / 100, forPeriod: forPeriod, method: method, note: '' });
     persist();
     $('blAmt').value = ''; $('blMethod').value = '';
-    renderBills();
+    renderLedger();
+    renderDueBoard();
   }
   function delPayment(id) {
     DATA.payments = DATA.payments.filter(function (p) { return p.id !== id; });
     persist();
-    renderBills();
+    renderLedger();
+    renderDueBoard();
   }
   function renderPayments() {
+    blForOptions();
     var body = el('div');
     if (!DATA.payments.length) {
-      body.appendChild(el('p', 'muted', 'No payments logged. Record what you actually paid each cycle.'));
+      body.appendChild(el('p', 'muted', 'No payments logged. Record what you actually paid the bank each cycle.'));
       $('blPayments').replaceChildren(body);
       return;
     }
@@ -805,6 +883,13 @@
 
   /* ---------------- charts ---------------- */
   var chartMonthly = null, chartCats = null, chartEarned = null, chartBalance = null, chartUtil = null;
+  /* the <h4> title sits inside the .card, a level above the canvas (.cv > canvas) */
+  function setH4(canvas, show) {
+    var card = canvas && canvas.closest('.card');
+    if (!card) return;
+    var h4 = card.querySelector('h4');
+    if (h4) h4.style.display = show ? '' : 'none';
+  }
   function destroyCharts() {
     if (chartMonthly) { chartMonthly.destroy(); chartMonthly = null; }
     if (chartCats) { chartCats.destroy(); chartCats = null; }
@@ -819,11 +904,11 @@
     var recs = DATA.records.slice().sort(function (a, b) { return a.periodTo < b.periodTo ? -1 : 1; }).filter(function (r) { return isFinite(r.purchases); });
     var cv1 = $('chartMonthly');
     var has1 = recs.length > 0;
-    cv1.parentNode.querySelector('h4').style.display = has1 ? '' : 'none';
+    setH4(cv1, has1);
     if (has1) {
       chartMonthly = new Chart(cv1, {
-        type: 'bar',
-        data: { labels: recs.map(function (r) { return shortMonth(r.periodTo); }), datasets: [{ label: 'Purchases', data: recs.map(function (r) { return r.purchases; }), backgroundColor: '#b8860b' }] },
+        type: 'line',
+        data: { labels: recs.map(function (r) { return shortMonth(r.periodTo); }), datasets: [{ label: 'Purchases', data: recs.map(function (r) { return r.purchases; }), borderColor: '#b8860b', backgroundColor: 'rgba(184,134,11,.15)', fill: true, tension: .25, pointRadius: 3 }] },
         options: { responsive: true, plugins: { legend: { display: false } } }
       });
     }
@@ -835,7 +920,7 @@
     });
     var cv2 = $('chartCats');
     var has2 = Object.keys(cats).length > 0;
-    cv2.parentNode.querySelector('h4').style.display = has2 ? '' : 'none';
+    setH4(cv2, has2);
     if (has2) {
       var palette = { upi: '#2e86de', grocery: '#27ae60', base: '#8e8e8e', tata: '#e67e22', nocoins: '#bdc3c7', payment: '#6c757d' };
       var labels = Object.keys(cats).map(function (k) { return Calc.CATEGORIES[k].label; });
@@ -852,7 +937,7 @@
       var tl = Calc.rewardsTimeline(DATA.records);
       var cvE = $('chartEarned'), cvB = $('chartBalance');
       var hasE = tl.earned.length > 0;
-      cvE.parentNode.querySelector('h4').style.display = hasE ? '' : 'none';
+      setH4(cvE, hasE);
       if (hasE) {
         chartEarned = new Chart(cvE, {
           type: 'bar',
@@ -861,7 +946,7 @@
         });
       }
       var hasB = tl.balance.length > 0;
-      cvB.parentNode.querySelector('h4').style.display = hasB ? '' : 'none';
+      setH4(cvB, hasB);
       if (hasB) {
         chartBalance = new Chart(cvB, {
           type: 'line',
@@ -871,20 +956,17 @@
       }
     }
 
-    /* bills: utilization line (only when the tab is open) */
-    var blVis = $('bills').style.display === 'block';
-    if (blVis) {
-      var utRecs = DATA.records.filter(function (r) { return Calc.utilizationOf(r) != null; }).sort(function (a, b) { return a.periodTo < b.periodTo ? -1 : 1; });
-      var cvU = $('chartUtil');
-      var hasU = utRecs.length > 0;
-      cvU.parentNode.querySelector('h4').style.display = hasU ? '' : 'none';
-      if (hasU) {
-        chartUtil = new Chart(cvU, {
-          type: 'line',
-          data: { labels: utRecs.map(function (r) { return shortMonth(r.periodTo); }), datasets: [{ label: 'Utilization %', data: utRecs.map(function (r) { return Calc.utilizationOf(r); }), borderColor: '#27ae60', backgroundColor: 'rgba(39,174,96,.15)', fill: true, tension: .25, pointRadius: 3 }] },
-          options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { suggestedMax: 100 } } }
-        });
-      }
+    /* utilization line (home chart, from records) */
+    var utRecs = DATA.records.filter(function (r) { return Calc.utilizationOf(r) != null; }).sort(function (a, b) { return a.periodTo < b.periodTo ? -1 : 1; });
+    var cvU = $('chartUtil');
+    var hasU = utRecs.length > 0;
+    setH4(cvU, hasU);
+    if (hasU) {
+      chartUtil = new Chart(cvU, {
+        type: 'line',
+        data: { labels: utRecs.map(function (r) { return shortMonth(r.periodTo); }), datasets: [{ label: 'Utilization %', data: utRecs.map(function (r) { return Calc.utilizationOf(r); }), borderColor: '#27ae60', backgroundColor: 'rgba(39,174,96,.15)', fill: true, tension: .25, pointRadius: 3 }] },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { suggestedMax: 100 } } }
+      });
     }
   }
   function shortMonth(periodTo) {
@@ -904,8 +986,9 @@
     renderLanding();
     renderLedger();
     if (window.Chart) requestAnimationFrame(drawCharts); else drawCharts();
+    renderDueBoard();
+    renderInterest();
     if ($('rewards').style.display === 'block') renderRewards();
-    if ($('bills').style.display === 'block') renderBills();
     if (S.recId && $('rcSel') && $('reconcile').style.display === 'block') renderReconcile();
   }
   function renderLanding() {
@@ -921,6 +1004,7 @@
     h.appendChild(kw);
 
     if (DATA.records.length) {
+      $('heroImport').textContent = 'Import another statement';
       h.appendChild(el('h4', '', 'History'));
       var t = el('div', 'table');
       DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); }).forEach(function (r) {
@@ -930,9 +1014,18 @@
         if (r.reconciled) dsc.appendChild(el('span', 'tick', ' ✓ reconciled'));
         if (r.accepted && r.accepted.length) dsc.appendChild(el('span', 'meta', r.accepted.length + ' exception(s)'));
         row.appendChild(dsc);
-        var btn = el('button', 'small', 'Reconcile');
-        btn.onclick = function () { openReconcile(r); };
-        row.appendChild(btn);
+        if (!r.reconciled) {
+          var btn = el('button', 'small', 'Reconcile');
+          btn.onclick = function () { openReconcile(r); };
+          row.appendChild(btn);
+          var res = Calc.reconcile(r, DATA.ledger, prevRecordOf(r));
+          if (res.stmtOnly.length) {
+            var addBtn = el('button', 'small', 'Add ' + res.stmtOnly.length + ' to ledger');
+            addBtn.title = 'Book every statement-only row into the ledger from here — no need to open Reconcile.';
+            addBtn.onclick = function () { bookStmtOnly(r); };
+            row.appendChild(addBtn);
+          }
+        }
         var del = el('button', 'danger small', '✕');
         del.title = 'Remove this record';
         del.onclick = function () { removeRecord(r); };
@@ -941,6 +1034,7 @@
       });
       h.appendChild(t);
     } else {
+      $('heroImport').textContent = 'Import your first statement';
       h.appendChild(el('p', 'muted', 'No statements recorded. Import your HDFC Neu statement PDF below to start verifying.'));
     }
     $('landingStats').replaceChildren(h);
@@ -1017,9 +1111,9 @@
       if (f) importFile(f);
       e.target.value = '';
     });
+    $('homeGo').addEventListener('click', function () { showView('landing'); });
     $('ledgerGo').addEventListener('click', function () { showView('ledger'); });
     $('rewardsGo').addEventListener('click', function () { showView('rewards'); });
-    $('billsGo').addEventListener('click', function () { showView('bills'); });
     $('importGo').addEventListener('click', function () { showView('landing'); $('importFile').click(); });
     $('addBtn').addEventListener('click', addEntry);
     renderCategoryOptions($('leCat'));

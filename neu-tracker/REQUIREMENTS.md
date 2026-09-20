@@ -12,7 +12,9 @@ alone. Keep it up to date when behaviour changes.
 
 - One credit card: HDFC **Tata Neu Infinity** (₹5,00,000 limit). No multi-card support.
 - NeuCoins value model: 1 NeuCoin = ₹0.25 by default (`rewardsConfig.valuePerCoin`).
-- "Rewards" = NeuCoin ledger reconciled per category; "Bills" = due/payment dashboard.
+- "Rewards" = NeuCoin ledger reconciled per category. The "Bills" dashboard
+  (due dates, payment log, interest, utilization) is merged into **Home** +
+  **Ledger** — there is no separate Bills tab.
 - Completely offline (no network). pdf.js runs in-browser (legacy build) reading
   the user's own PDFs. No personal data ever sent anywhere (privacy guard tests
   enforce this).
@@ -60,8 +62,8 @@ Endpoints exposed by `Calc`: `Calc.migrateBundle`, `Calc.SCHEMA_VERSION=2`,
 `Calc.DEFAULT_COIN_VALUE=0.25`, `Calc.verifyStatement`, `Calc.applyExceptions`,
 `Calc.hasBlocking`, `Calc.statusSummary`, `Calc.redemptionReconcile`,
 `Calc.rewardsReconcile`, `Calc.dueStatus`, `Calc.utilizationOf`,
-`Calc.predictedCoins`, `Calc.classifyMerchant`, `Calc.accountSummary` (via parser),
-categories table in `Calc.CATEGORIES`.
+`Calc.predictedCoins`, `Calc.classifyMerchant`, `Calc.guessCategory`,
+`Calc.accountSummary` (via parser), categories table in `Calc.CATEGORIES`.
 
 ---
 
@@ -149,16 +151,18 @@ configurable fail/warn to `accepted` when the user supplies a matching exception
 `hasBlocking` = any non-configurable `fail` without exception (hard block).
 
 Checks (key → meaning → configurable):
-- `total` — total due read (configurable)
+- `balance` — **the primary check**: printed total due = prev dues + purchases
+  + finance − payments (configurable)
 - `mad` — minimum due = 5% formula (configurable)
 - `purchases` — transactions sum to printed purchases (configurable)
 - `payments` — credits sum to printed payments (configurable)
-- `balance` — running balance ≈ printed total (configurable)
 - `coins` — coins closing = opening + earned − transferred − adjusted (configurable)
 - `coins_prev` — opening coins match previous closing (configurable)
 - `bonus` — bonus program list adds to earned (configurable)
 - `identity` — card number matches profile (configurable)
-- `limit` — credit limit ≈ printed (configurable)
+- `limit` — available credit ≤ limit − total (configurable; a *lower* printed
+  available is normal — the bank deducts un-billed spends too; a *higher* one
+  flags a possible limit-block misread)
 - `finance` — finance charges (NOT configurable → hard block)
 
 Tolerances (`deltas`): purchases/payments error ≤ ₹2; balance ≤ ₹20;
@@ -190,17 +194,31 @@ no non-configurable check fails; configurable fails surface to the user to accep
 
 ## 7. UI/views & behavior (`app.js`)
 
+**Views:** Home (landing), Import/Verify, Ledger, Reconcile, Rewards. There is
+**no separate Bills tab** — the bills functionality was merged:
+
+- **Home (landing):** stats + history, the monthly-purchases & spend-by-category
+  charts, **credit-utilization trend** (`utilizationOf = used/limit`), the
+  **finance/interest summary** (`interestSummary`), and the **due-dates board**
+  (`dueStatus`: due date, days left, overdue, full/min/partial, outstanding).
 - **Import:** `readPdf` reads ALL pages of a multi-page statement (merges page
   text, offsetting each page's y by +10000 so coordinates stay unique), runs the
   parser, then `Calc.verifyStatement`.
-- **Statements list:** each statement row shows period, total, minimum due, due
-  date, coins closing, import status, verify icon; clicking opens verify dialog.
+- **Verify:** check list with accept/raise-concern; when every check passes it
+  records automatically after a short visible countdown (15s).
+- **Statements list (Home):** each statement row shows period, total, purchases,
+  coins closing, ✓ reconciled / exception count; an un-reconciled row has a
+  **Reconcile** button. Re-importing a recorded period keeps its reconciled flag.
+- **Ledger:** manual spend entries (category, date, amount) grouped by month,
+  category totals, plus the **payment log** (what was actually paid the bank:
+  date / period / amount / method) with full/min/partial classification.
+- **Reconcile:** matches the ledger to the statement (amount + date); auto-
+  reconciles and returns home when the bill fully matches (nothing unmatched on
+  either side). A "Add all N to ledger" button books every statement-only row
+  (`Calc.guessCategory`: credit→Payment, base=0→NoCoins, else merchant-guessed).
 - **Rewards view:** NeuCoin balance timeline + coins-earned per category; monthly
-  redemption/transfer ledger (add/delete redemptions, `createRedemption`);
-  rupee value = coins × `valuePerCoin`; bonuses (e.g. Tata 3.5% next statement).
-- **Bills view:** monthly due dashboard, payment log (full/min/partial), MD 5%
-  formula, finance-charge summary, credit-limit utilization trend
-  (`utilizationOf = used/limit`).
+  redemption/transfer ledger (add/delete redemptions); rupee value = coins ×
+  `valuePerCoin`; bonuses (e.g. Tata 3.5% next statement).
 - **Persistence:** statements + bundle localStorage key; schema v2 with migration.
 - **Password:** session-only — stored in `sessionStorage` (survives reload of the open
   tab, wiped when the browser/tab closes). Never in `localStorage`, bundle.js, or the
@@ -211,11 +229,12 @@ no non-configurable check fails; configurable fails surface to the user to accep
 
 ## 8. Tests & how to run
 
-- Unit/Calc: `node test/cc-calc.test.js` (172 checks — includes old/new layout
-  fixtures + Calc reconciliation).
-- DOM boot: `node test/cc-dom.test.js` (23 checks; jsdom; strips external scripts
-  & SW registration; injects a stub `window.pdfjsLib`).
-- Harness for real PDFs (password `TESTPW01`, dir `Downloads/Neu_statement`):
+- Unit/Calc: `node test/cc-calc.test.js` (191 checks — includes old/new layout
+  fixtures + Calc reconciliation + `guessCategory`).
+- DOM boot: `node test/cc-dom.test.js` (jsdom; strips external scripts & SW
+  registration; injects stub `window.pdfjsLib` + `window.Chart` so chart draws
+  are asserted; exercises the merged Home/Ledger layout and the payment log).
+- Harness for real PDFs (password `PDFPW01`, dir `Downloads/Neu_statement`):
   `node /tmp/opencode/run_merge.js` (ever merged result of 20 files, prints
   period/total/mad/due/limit/avail + verify status per statement).
 

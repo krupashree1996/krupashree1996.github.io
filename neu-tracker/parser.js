@@ -220,23 +220,56 @@ const Parser = (function () {
 
   /* ---- bonus NeuCoins program list ---- */
   function parseBonusPrograms(lines) {
-    var start = -1;
-    for (var i = 0; i < lines.length; i++) {
-      if (/Bonus NeuCoins Summary/i.test(lines[i])) { start = i; break; }
+    /* Title is an exact line — the fine-print note also contains the phrase
+     * mid-sentence ("...the 'Bonus NeuCoins Summary' will have following..."). */
+    var starts = [];
+    for (var i = 0; i < lines.length; i++) if (/^Bonus NeuCoins Summary$/i.test((lines[i] || '').trim())) starts.push(i);
+    if (!starts.length) return { programs: [], total: NaN };
+
+    /* Ends a bonus table. The "Sr No." / "SR NO." column header is NOT a
+     * terminator (it sits right under the title) — it's skipped naturally. */
+    function isTerminator(l) {
+      return /Important Information/i.test(l) || /^Page \d+ of \d+/.test(l) || /^HSN/i.test(l) ||
+        /Tata Neu Infinity HDFC Bank Credit Card Statement/i.test(l) || /^For HDFC Bank/i.test(l) ||
+        /CONVERT TO EMI/i.test(l) || /^\d{2}\/\d{2}\/\d{4}/.test(l);
     }
+
+    /* Collect rows from EVERY "Bonus NeuCoins Summary" section (the table can
+     * be split across two pages, e.g. 20260519) and merge by program name. */
+    var byName = {};
+    var total = NaN, lastBare = NaN;
+    function addProgram(name, coins) {
+      if (!isFinite(coins)) return;
+      name = String(name).replace(/\s+/g, ' ').trim();
+      if (!name) return;
+      byName[name] = (byName[name] || 0) + coins;
+    }
+    starts.forEach(function (start) {
+      for (var j = start + 1; j < lines.length && j < start + 80; j++) {
+        var l = (lines[j] || '').trim();
+        if (!l) continue;
+        if (isTerminator(l)) break;
+        /* new layout: "1 Add_BigBasket 18" — sr no, name, coins on one line */
+        var mNew = l.match(/^(\d+)\s+(.+?)\s+([+\-]?[\d,]+)\s*$/);
+        if (mNew) { addProgram(mNew[2], num(mNew[3])); continue; }
+        /* "Total 122" */
+        var mTot = l.match(/^Total\s+([+\-]?[\d,]+)\s*$/i);
+        if (mTot) { total = num(mTot[1]); lastBare = total; continue; }
+        /* "Total" with the value on the previous bare-number line (20251219) */
+        if (/^Total$/i.test(l)) { total = isFinite(lastBare) ? lastBare : total; continue; }
+        /* a bare number line — the total value when "Total" is split (20251219) */
+        var mBare = l.match(/^([+\-]?[\d,]+)\s*$/);
+        if (mBare) { lastBare = num(mBare[1]); continue; }
+        /* old layout: program name on this line, "N coins" on the next */
+        var nx = (lines[j + 1] || '').trim();
+        var mOld = nx.match(/^\d+\s+([+\-]?[\d,]+)\s*$/);
+        if (mOld && /[A-Za-z]/.test(l)) { addProgram(l, num(mOld[1])); j++; continue; }
+      }
+    });
     var out = [];
-    var total = NaN, sum = 0;
-    for (var j = start + 1; j < lines.length && j < start + 60; j++) {
-      var m = lines[j].match(/^\s*(\d+)\s+(.+?)\s+([+\-]?[\d,]+)\s*$/);
-      if (!m) continue;
-      var prog = m[2].trim();
-      var coins = num(m[3]);
-      if (/^total$/i.test(prog)) { total = coins; continue; }
-      out.push({ program: prog, coins: coins });
-      sum += coins;
-    }
-    if (!isFinite(total)) total = sum;
-    return { programs: out, total: isFinite(total) ? total : sum };
+    Object.keys(byName).forEach(function (n) { out.push({ program: n, coins: byName[n] }); });
+    if (!isFinite(total)) { var s = 0; out.forEach(function (p) { s += p.coins; }); total = s; }
+    return { programs: out, total: total };
   }
 
   /* ---- account summary ----
@@ -368,7 +401,11 @@ const Parser = (function () {
     var coins = coinsBlock(lines, 'old');
     var bonus = parseBonusPrograms(lines);
     var st;
-    var sd = (text.match(/Statement\s*Date:?\s*(\d{2}\/\d{2}\/\d{4})/) || [])[1] || '';
+    /* old layout: 'Statement Date:18/08/2025'. On some (duplicate) statements
+     * 'Statement' and 'Date:..' are on separate lines with AAN/Address between,
+     * so fall back to the standalone 'Date:dd/mm/yyyy' label. */
+    var sd = (text.match(/Statement\s*Date:?\s*(\d{2}\/\d{2}\/\d{4})/) || [])[1] ||
+      (text.match(/Date:\s*(\d{2}\/\d{2}\/\d{4})/) || [])[1] || '';
     if (!sum) {
       /* dropped rows / pauses: account summary split across lines */
       var label = -1;

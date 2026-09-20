@@ -35,6 +35,9 @@ var html = fs.readFileSync(path.join(ROOT, 'neu-tracker', 'index.html'), 'utf8')
 var dom = new JSDOM(html, { runScripts: 'dangerously', url: 'http://localhost/neu-tracker/', pretendToBeVisual: true });
 var document = dom.window.document;
 dom.window.eval('window.pdfjsLib = { GlobalWorkerOptions: {} };');
+/* Chart stub: records constructions so we can assert drawCharts runs without
+ * throwing (it used to crash on canvas.parentNode.querySelector('h4') = null). */
+dom.window.eval('window.__chartCalls = []; window.Chart = function (el, cfg) { window.__chartCalls.push({ el: el.id || String(el), data: cfg && cfg.data }); return { destroy: function () {} }; };');
 dom.window.eval(fs.readFileSync(path.join(ROOT, 'neu-tracker', 'parser.js'), 'utf8'));
 dom.window.eval(fs.readFileSync(path.join(ROOT, 'neu-tracker', 'calc.js'), 'utf8'));
 dom.window.eval(fs.readFileSync(path.join(ROOT, 'neu-tracker', 'data', 'bundle.js'), 'utf8'));
@@ -52,8 +55,8 @@ whenReady(function run() {
   var Calc = dom.window.Calc;
   var DATA = dom.window.DATA;
 
-  console.log('1) boot — schema v2 bundle migrated on load');
-  eq('data version 2', DATA.version, 2);
+  console.log('1) boot — bundle migrated to schema v3 on load');
+  eq('data version 4', DATA.version, 4);
   ok('redemptions array', Array.isArray(DATA.redemptions));
   ok('payments array', Array.isArray(DATA.payments));
   eq('coin value default', DATA.rewardsConfig.valuePerCoin, 0.25);
@@ -83,27 +86,63 @@ whenReady(function run() {
   eq('redemption coins stored', DATA.redemptions[0].coins, 100);
   eq('redemption listed', $('#rwList').textContent.indexOf('100 coins') >= 0, true);
 
-  console.log('5) bills view');
-  $('#billsGo').click();
-  eq('bills visible', $('#bills').style.display, 'block');
-  eq('due board empty state', $('#blDue').textContent.indexOf('No statements yet') >= 0, true);
-  eq('interest empty state', $('#blInterest').textContent.indexOf('No statements yet') >= 0, true);
+  console.log('5) home — due board + interest (merged in from Bills)');
+  $('#homeGo').click();
+  eq('landing visible', $('#landing').style.display, 'block');
+  eq('due board on home', $('#blDue').textContent.indexOf('No statements yet') >= 0, true);
+  eq('interest on home', $('#blInterest').textContent.indexOf('No statements yet') >= 0, true);
+  eq('payment log on ledger', $('#ledger').style.display !== 'block', true);
+  $('#ledgerGo').click();
+  eq('payment log form on ledger', $('#ledger').textContent.indexOf('Payments to the bank') >= 0, true);
 
   console.log('6) reconcile engine against the in-app ledger');
   DATA.records.push({ id: 's-1', periodTo: '18/11/2025', periodFrom: '19/10/2025', total: 200, minimumDue: 10, prevDues: 0, payments: 0, purchases: 200, finance: 0, creditLimit: 100000, availLimit: 99800, dueDate: '08/12/2025', earnedNeuCoins: 3, transferredNeuCoins: 0, openingNeuCoins: 0, adjustedNeuCoins: 0, closingNeuCoins: 3, bonusPrograms: [{ program: 'Base_Grocery', coins: 3 }], txns: [{ date: '10/11/2025', desc: 'DMART', amount: 200, credit: false, base: 0 }] });
   $('#rewardsGo').click();
   eq('cycle breakdown expected grocery', $('#rwCycle').textContent.indexOf('expected +3') >= 0, true);
   eq('redeem reconcile shows net −97 (3 earned − 0 transferred − 100 redeemed)', $('#rwReconcile').textContent.indexOf('more redeemed than earned') >= 0 && $('#rwReconcile').textContent.indexOf('-97') >= 0, true);
-  $('#billsGo').click();
-  eq('due board row rendered', $('#blDue').textContent.indexOf('due 08/12/2025') >= 0, true);
+  $('#homeGo').click();
+  eq('due board row rendered (home)', $('#blDue').textContent.indexOf('due 08/12/2025') >= 0, true);
+  setValue('#blDate', '12/11/2025');
+  setValue('#blAmt', '200');
+  $('#blAddBtn').click();
+  eq('payment logged', DATA.payments.length, 1);
+  $('#homeGo').click();
+  eq('due board shows payment', $('#blDue').textContent.indexOf('paid') >= 0, true);
+  $('#ledgerGo').click();
+  eq('payment listed on ledger', $('#blPayments').textContent.indexOf('for 18/11/2025') >= 0, true);
 
-  console.log('7) persistence round-trip');
-  var saved = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
-  eq('persisted version', saved.version, 2);
-  eq('persisted ledger entries', saved.ledger.length, 1);
-  eq('persisted redemptions', saved.redemptions.length, 1);
-  ok('no password persisted', !('password' in saved));
+  console.log('6c) home — bulk-book statement rows into the ledger (no Reconcile needed)');
+  /* isolated record: one statement row not yet in the ledger, and (because
+   * it is the oldest record) no statement row falls inside its window — so
+   * stmtOnly is exactly that one row and the Home booking button is shown. */
+  DATA.records.push({ id: 's-9', periodTo: '18/09/2025', periodFrom: '19/08/2025', total: 150, minimumDue: 10, prevDues: 0, payments: 0, purchases: 150, finance: 0, creditLimit: 100000, availLimit: 99850, dueDate: '08/10/2025', earnedNeuCoins: 1, transferredNeuCoins: 0, openingNeuCoins: 0, adjustedNeuCoins: 0, closingNeuCoins: 1, bonusPrograms: [{ program: 'Base_Grocery', coins: 1 }], txns: [{ date: '05/09/2025', desc: 'BIGBAZZAR', amount: 150, credit: false, base: 0 }] });
+  $('#homeGo').click();
+  var addBtns = $$('#landingStats button', document).filter(function (b) { return b.textContent.trim() === 'Add 1 to ledger'; });
+  ok('home shows an "Add N to ledger" button for an un-reconciled statement', addBtns.length >= 1, true);
+  if (addBtns.length) {
+    var beforeLedger = DATA.ledger.length;
+    addBtns[0].click();
+    eq('clicking it books the statement-only row into the ledger', DATA.ledger.length, beforeLedger + 1);
+    /* after booking, that row is matched (no longer statement-only), so the button vanishes */
+    eq('button is gone once the row is booked', $$('#landingStats button', document).filter(function (b) { return b.textContent.trim() === 'Add 1 to ledger'; }).length, 0);
+  }
 
-  console.log('\n' + passed + ' passed, ' + failed + ' failed');
-  process.exit(failed ? 1 : 0);
+  console.log('6b) home charts draw without crashing (regression: h4 lookup)');
+  $('#homeGo').click();
+  /* drawCharts runs on requestAnimationFrame — wait a frame */
+  setTimeout(function () {
+    var calls = (dom.window.__chartCalls || []).map(function (c) { return c.el; });
+    ok('monthly purchases chart drawn (records present)', calls.indexOf('chartMonthly') >= 0, true);
+    ok('spend-by-category chart drawn (ledger present)', calls.indexOf('chartCats') >= 0, true);
+
+    console.log('7) persistence round-trip');
+    var saved = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
+    eq('persisted version', saved.version, 4);
+    eq('persisted ledger entries', saved.ledger.length, 2); // 1 payment log + 1 bulk-booked statement row (6c)
+    eq('persisted redemptions', saved.redemptions.length, 1);
+    ok('no password persisted', !('password' in saved));
+
+    console.log('\n' + passed + ' passed, ' + failed + ' failed');
+    process.exit(failed ? 1 : 0);
+  }, 60);
 });

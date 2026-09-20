@@ -69,10 +69,25 @@ const Calc = (function () {
   function classifyMerchant(desc, credit) {
     if (credit) return 'payment';
     var d = String(desc || '').toUpperCase();
-    if (/GROCERY|SUPERMARKET|BIGBASKET|DMART|NOVEM|FRESH|ORGCHANDRACOMPLEX|GREEN|KIRANA|MEGA/.test(d)) return 'grocery';
+    if (/GROCERY|SUPERMARKET|BIGBASKET|DMART|NOVEM|FRESH|ORGCHANDRACOMPLEX|GREEN|KIRANA|MEGA|RELIANCE\s*(MARKET|FRESH|MART)/.test(d)) return 'grocery';
     if (/TATAPAYMENT|TATA\b/.test(d)) return 'tata';
     if (/^UPI/.test(d)) return 'upi';
     return 'base';
+  }
+
+  /* Pick the ledger category for a statement transaction. The printed 'base'
+   * column is the 1.5% base on eligible spend (the 3.5% Tata bonus is a
+   * separate bonus column), so base>0 means coin-earning → disambiguate by
+   * merchant; base=0 → NoCoins; credit → Payment. */
+  function guessCategory(tx) {
+    if (!tx) return 'base';
+    if (tx.credit) return 'payment';
+    /* UPI rows earn the 1.5% UPI bonus even when the statement prints no
+     * base-coin column (base=0), so classify by the UPI-… descriptor before
+     * the base=0 → NoCoins fallback. */
+    if (/^UPI/i.test(String(tx.desc || ''))) return 'upi';
+    if (!isFinite(tx.base) || tx.base <= 0) return 'nocoins';
+    return classifyMerchant(tx.desc, false);
   }
 
   /* ---------- verifyStatement ---------- */
@@ -95,11 +110,15 @@ const Calc = (function () {
       if (t.credit) sumCredit += t.amount; else sumDebit += t.amount;
     });
 
-    /* 1 total present */
+    /* 1 the real check: printed total must equal the sum of the bill's items */
+    var bal = st.prevDues + st.purchases + st.finance - st.payments;
+    var balMiss = Math.abs(round2(bal) - round2(st.total));
     push(checks, {
-      key: 'total', label: 'Total amount due read from statement',
-      status: isFinite(st.total) && st.total > 0 ? 'pass' : 'fail',
-      expected: isFinite(st.total) ? fmtMoney(st.total) : 'n/a', actual: isFinite(st.total) ? fmtMoney(st.total) : 'not read',
+      key: 'balance', label: 'Total amount due = prev dues + purchases + finance − payments',
+      status: !isFinite(st.total) ? 'fail' : (!isFinite(bal) ? 'info' : (balMiss <= deltas.balance ? 'pass' : 'fail')),
+      expected: isFinite(bal) ? fmtMoney(bal) : '—', actual: isFinite(st.total) ? fmtMoney(st.total) : 'not read',
+      delta: isFinite(bal) && isFinite(st.total) ? round2(balMiss) : null,
+      message: balMiss > deltas.balance ? 'Opening + purchases + finance − payments ≠ printed total. Check for unpicked lines.' : '',
       configurable: true
     });
 
@@ -137,19 +156,6 @@ const Calc = (function () {
       actual: fmtMoney(sumCredit),
       delta: isFinite(st.payments) ? round2(creditMiss) : null,
       message: isFinite(st.payments) && creditMiss > deltas.payments ? 'Credit rows do not add up to the printed payments.' : '',
-      configurable: true
-    });
-
-    /* 5 running balance */
-    var bal = st.prevDues + st.purchases + st.finance - st.payments;
-    var balMiss = Math.abs(round2(bal) - round2(st.total));
-    push(checks, {
-      key: 'balance', label: 'Running balance matches printed total',
-      status: !isFinite(bal) || !isFinite(st.total) ? 'info' : (balMiss <= deltas.balance ? 'pass' : 'fail'),
-      expected: isFinite(bal) ? fmtMoney(bal) : '—',
-      actual: isFinite(st.total) ? fmtMoney(st.total) : '—',
-      delta: isFinite(bal) && isFinite(st.total) ? round2(balMiss) : null,
-      message: balMiss > deltas.balance ? 'Opening + purchases + finance − payments ≠ total. Check for unpicked lines.' : '',
       configurable: true
     });
 
@@ -214,15 +220,19 @@ const Calc = (function () {
       configurable: true
     });
 
-    /* 10 credit limit */
-    var limOk = isFinite(st.creditLimit) && isFinite(st.availLimit) && isFinite(st.total) &&
-      Math.abs(st.creditLimit - st.total - st.availLimit) <= 1000;
+    /* 10 credit limit — available credit is expected to be <= limit − total
+     * (the bank deducts unbilled spend too). A printed available HIGHER than
+     * expected is the misread signal; a lower one is normal. */
+    var limGap = isFinite(st.creditLimit) && isFinite(st.availLimit) && isFinite(st.total)
+      ? st.availLimit - (st.creditLimit - st.total) : NaN;
+    var limOk = isFinite(limGap) && limGap <= 500;
     push(checks, {
-      key: 'limit', label: 'Available credit ≈ credit limit − outstanding',
+      key: 'limit', label: 'Available credit ≤ credit limit − outstanding',
       status: isFinite(st.creditLimit) && isFinite(st.availLimit) ? (limOk ? 'pass' : 'warn') : 'info',
       expected: isFinite(st.creditLimit) && isFinite(st.total) ? fmtMoney(st.creditLimit - st.total) : '—',
       actual: isFinite(st.availLimit) ? fmtMoney(st.availLimit) : '—',
-      message: !isFinite(st.creditLimit) ? 'Credit limit not printed on this statement.' : 'Available credit excludes todays’s un-billed spends.',
+      message: !isFinite(st.creditLimit) ? 'Credit limit not printed on this statement.'
+        : (limOk ? (isFinite(limGap) && limGap < 0 ? 'Lower than expected — includes un-billed spends.' : '') : 'Available credit exceeds limit − outstanding; limit block may be misread.'),
       configurable: true
     });
 
@@ -277,17 +287,29 @@ const Calc = (function () {
     return st.periodFrom || '';
   }
 
-  /* Match every ledger entry (date > windowStart && <= st.periodTo) to a
-   * statement txn by exact amount + same day. */
+  /* Match every ledger entry (date >= windowStart && <= st.periodTo) to a
+   * statement txn by exact amount + same day. The lower bound is INCLUSIVE so
+   * a spend dated on the previous period-end stays matchable on the NEXT
+   * statement (bank boundary posting, e.g. an 18/06 spend on the 18/07
+   * statement). Such a boundary entry, however, belongs to the previous cycle:
+   * if it does NOT match a txn here it must not be listed as "in ledger, not
+   * on statement". */
   function reconcile(st, ledger, prevRecord) {
+    var prevEnd = (prevRecord && isFinite(pdate(prevRecord.periodTo))) ? prevRecord.periodTo : '';
     var winFrom = prevPeriodTo(st, prevRecord);
     var winTo = st.periodTo || st.statementDate;
     var active = (ledger || []).filter(function (e) {
       if (e.reconciled && e.reconciled === winTo) return true; // already matched this window
+      if (e.reconciled) return false; // consumed by another statement's cycle
+      /* an entry booked by "Add all" from ANOTHER statement (sourcePeriod set
+       * and ≠ this window) may have a date inside this window without
+       * belonging to it — it can neither match here nor be listed as
+       * "not on statement". Legacy entries have no sourcePeriod. */
+      if (e.sourcePeriod && e.sourcePeriod !== winTo) return false;
       var t = pdate(e.date);
       var lo = winFrom && isFinite(pdate(winFrom)) ? pdate(winFrom) : -Infinity;
       var hi = winTo && isFinite(pdate(winTo)) ? pdate(winTo) : Infinity;
-      return isFinite(t) && t > lo && t <= hi;
+      return isFinite(t) && t >= lo && t <= hi;
     });
     var used = {}; // entry index -> true
     var matched = [];
@@ -307,7 +329,12 @@ const Calc = (function () {
         used[idx] = true;
       }
     });
-    var bookOnly = active.filter(function (e, i) { return !used[i]; });
+    /* a boundary entry (dated exactly on the previous period-end) that did not
+     * match belongs to the previous statement — exclude from "not on statement" */
+    var bookOnly = active.filter(function (e, i) {
+      if (used[i]) return false;
+      return !(prevEnd && e.date === prevEnd);
+    });
     var stmtOnly = [];
     (st.txns || []).forEach(function (tx) {
       var k = keyOf(tx.date, tx.amount);
@@ -431,12 +458,43 @@ const Calc = (function () {
     return {
       dueDate: rec.dueDate,
       daysLeft: daysLeft,
-      overdue: isFinite(due) && due < startOfDay(ref),
+      overdue: isFinite(due) && due < startOfDay(ref) && pay.kind !== 'full',
       kind: pay.kind,
       paid: pay.totalPaid,
       outstanding: pay.outstanding,
       settled: pay.kind !== 'none'
     };
+  }
+
+  /* A statement's 'payments' column is the payment the customer made against the
+   * immediately preceding bill's dues — proof that bill was paid. Auto-record it
+   * (capped at that bill's total) so the old bill shows 'settled' without manual
+   * entry. The `auto` flag makes this idempotent: a re-import or schema re-run
+   * never double-counts. Returns the number of payments added. */
+  function autoSettlePrior(records, payments, newRecord) {
+    if (!newRecord || !Array.isArray(records) || !Array.isArray(payments)) return 0;
+    var nt = pdate(newRecord.periodTo);
+    if (!nt || !isFinite(newRecord.payments) || newRecord.payments <= 0) return 0;
+    // the single most-recent bill strictly before the new statement
+    var prior = null, best = -Infinity;
+    records.forEach(function (rec) {
+      if (rec.id === newRecord.id) return;
+      var dt = pdate(rec.periodTo);
+      if (dt && dt < nt && dt > best) { best = dt; prior = rec; }
+    });
+    if (!prior || !isFinite(prior.total) || prior.total <= 0) return 0;
+    // already covered (by a prior auto-settle or a manual entry) → skip
+    var covered = 0;
+    payments.forEach(function (p) { if (p.forPeriod === prior.periodTo && isFinite(p.amount)) covered += p.amount; });
+    if (covered >= prior.total - 1) return 0;
+    var amount = round2(Math.min(newRecord.payments, prior.total));
+    if (!(amount > 0)) return 0;
+    payments.push({
+      id: 'auto-' + prior.id + '-paid', date: newRecord.statementDate || prior.dueDate || '',
+      amount: amount, forPeriod: prior.periodTo, method: 'statement',
+      note: 'auto: paid off in the ' + (newRecord.periodTo || newRecord.statementDate || 'next') + ' statement', auto: true
+    });
+    return 1;
   }
 
   /* outstanding ÷ credit limit as a percentage; null when unknowable. */
@@ -456,7 +514,7 @@ const Calc = (function () {
   }
 
   /* ---------- schema migration ---------- */
-  var SCHEMA_VERSION = 2;
+  var SCHEMA_VERSION = 4;
   var MIGRATIONS = {
     0: function (d) { d.version = 1; if (!Array.isArray(d.records)) d.records = []; if (!Array.isArray(d.ledger)) d.ledger = []; return d; },
     1: function (d) {
@@ -465,6 +523,33 @@ const Calc = (function () {
       if (!Array.isArray(d.payments)) d.payments = [];
       if (!d.rewardsConfig || typeof d.rewardsConfig !== 'object') d.rewardsConfig = {};
       if (!isFinite(Number(d.rewardsConfig.valuePerCoin))) d.rewardsConfig.valuePerCoin = DEFAULT_COIN_VALUE;
+      return d;
+    },
+    /* UPI rows earn the 1.5% bonus even when the statement prints no base
+     * column; older app versions classified those (base=0) as 'nocoins'.
+     * Re-classify any existing UPI-descriptor nocoins entries so already
+     * booked ledger rows also count toward UPI rewards. Reliance Market is
+     * a supermarket — older versions classified it 'base'; move it to
+     * grocery too. */
+    2: function (d) {
+      d.version = 3;
+      if (Array.isArray(d.ledger)) d.ledger.forEach(function (e) {
+        var desc = String(e && e.desc || '');
+        if (!e) return;
+        if (e.category === 'nocoins' && /^UPI/i.test(desc)) e.category = 'upi';
+        if (e.category === 'base' && /RELIANCE\s*(MARKET|MART|FRESH)/i.test(desc)) e.category = 'grocery';
+      });
+      return d;
+    },
+    /* Backfill auto-settlement for bills already imported before this feature:
+     * for every statement except the first, the next statement's payments prove
+     * the previous bill was paid. Idempotent — guarded by the `auto` flag. */
+    3: function (d) {
+      d.version = 4;
+      if (!Array.isArray(d.records)) d.records = [];
+      if (!Array.isArray(d.payments)) d.payments = [];
+      var recs = d.records.slice().sort(function (a, b) { return (pdate(a.periodTo) || 0) - (pdate(b.periodTo) || 0); });
+      for (var i = 1; i < recs.length; i++) autoSettlePrior(recs, d.payments, recs[i]);
       return d;
     }
   };
@@ -504,6 +589,7 @@ const Calc = (function () {
     e.amount = isFinite(Number(e.amount)) ? round2(Number(e.amount)) : NaN;
     e.category = CATEGORIES[e.category] ? e.category : (e.amount < 0 ? 'payment' : classifyMerchant(e.desc, false));
     e.reconciled = e.reconciled || '';
+    e.sourcePeriod = String(e.sourcePeriod || '');
     return e;
   }
 
@@ -549,13 +635,13 @@ const Calc = (function () {
     round2: round2, close: close, cleanAmount: cleanAmount,
     fmtMoney: fmtMoney, fmtNum: fmtNum, fmtCoins: fmtCoins,
     madFor: madFor, CATEGORIES: CATEGORIES, predictedCoins: predictedCoins,
-    classifyMerchant: classifyMerchant,
+    classifyMerchant: classifyMerchant, guessCategory: guessCategory,
     verifyStatement: verifyStatement, applyExceptions: applyExceptions,
     hasBlocking: hasBlocking, statusSummary: statusSummary,
     reconcile: reconcile, pdate: pdate,
     rewardsValue: rewardsValue, rewardsByCategory: rewardsByCategory,
     redemptionReconcile: redemptionReconcile, rewardsTimeline: rewardsTimeline,
-    paymentForRecord: paymentForRecord, dueStatus: dueStatus,
+    paymentForRecord: paymentForRecord, dueStatus: dueStatus, autoSettlePrior: autoSettlePrior,
     utilizationOf: utilizationOf, interestSummary: interestSummary,
     DEFAULT_COIN_VALUE: DEFAULT_COIN_VALUE,
     SCHEMA_VERSION: SCHEMA_VERSION, migrateBundle: migrateBundle, BLOCKING: BLOCKING

@@ -21,10 +21,10 @@
     <span id="verBadge" class="chip ver" hidden title="App version"></span>
   </div>
   <nav class="nav">
+    <button id="homeGo" class="btn">Home</button>
     <button id="importGo" class="btn primary">Import statement</button>
     <button id="ledgerGo" class="btn">Ledger</button>
     <button id="rewardsGo" class="btn">Rewards</button>
-    <button id="billsGo" class="btn">Bills</button>
     <button id="saveBundleBtn" class="btn ghost" title="Download this folder's data as bundle.js">Save bundle</button>
     <button id="openBundleBtn" class="btn ghost" title="Restore a downloaded bundle.js">Open bundle</button>
     <input id="openBundleInput" type="file" accept=".js" hidden>
@@ -48,7 +48,11 @@
       <div class="card" id="landingStats"></div>
       <div class="card chart"><h4>Monthly purchases</h4><div class="cv"><canvas id="chartMonthly"></canvas></div></div>
       <div class="card chart"><h4>Spend by category</h4><div class="cv tall"><canvas id="chartCats"></canvas></div></div>
+      <div class="card chart"><h4>Credit utilization per cycle</h4><div class="cv"><canvas id="chartUtil"></canvas></div></div>
+      <div class="card"><h4>Interest</h4><div id="blInterest"></div></div>
     </div>
+    <h4>Due dates</h4>
+    <div id="blDue"></div>
     <p id="importCounter" class="muted"></p>
     <p id="importHint" class="muted" style="min-height:1.2em"></p>
   </section>
@@ -85,6 +89,16 @@
     <div id="ledgerTotals"></div>
     <h4>Entries</h4>
     <div id="ledgerList"></div>
+    <h4>Payments to the bank</h4>
+    <div class="form ledger-form">
+      <div><label>Date</label><input id="blDate" type="text" placeholder="dd/mm/yyyy"></div>
+      <div><label>For period</label><select id="blFor"></select></div>
+      <div><label>Amount (₹)</label><input id="blAmt" type="number" min="0" step="0.01" placeholder="0.00"></div>
+      <div><label>Method</label><input id="blMethod" type="text" placeholder="netbanking / UPI / auto" list="blMethods"></div>
+      <div class="align-end"><button id="blAddBtn" class="btn primary">Add payment</button></div>
+    </div>
+    <datalist id="blMethods"><option value="Netbanking"></option><option value="UPI"></option><option value="Autopay"></option></datalist>
+    <div id="blPayments"></div>
   </section>
 
   <section id="reconcile" class="panel" style="display:none">
@@ -116,25 +130,6 @@
     <div id="rwList"></div>
   </section>
 
-  <section id="bills" class="panel" style="display:none">
-    <h2>Bills &amp; payments</h2>
-    <div class="cards">
-      <div class="card chart"><h4>Credit utilization per cycle</h4><div class="cv"><canvas id="chartUtil"></canvas></div></div>
-      <div class="card"><h4>Interest</h4><div id="blInterest"></div></div>
-    </div>
-    <h4>Due dates</h4>
-    <div id="blDue"></div>
-    <h4>Payment log</h4>
-    <div class="form ledger-form">
-      <div><label>Date</label><input id="blDate" type="text" placeholder="dd/mm/yyyy"></div>
-      <div><label>For period</label><select id="blFor"></select></div>
-      <div><label>Amount (₹)</label><input id="blAmt" type="number" min="0" step="0.01" placeholder="0.00"></div>
-      <div><label>Method</label><input id="blMethod" type="text" placeholder="netbanking / UPI / auto" list="blMethods"></div>
-      <datalist id="blMethods"><option value="Netbanking"></option><option value="UPI"></option><option value="Autopay"></option></datalist>
-      <div class="align-end"><button id="blAddBtn" class="btn primary">Add payment</button></div>
-    </div>
-    <div id="blPayments"></div>
-  </section>
 </main>
 
 <footer>
