@@ -91,5 +91,44 @@ eq('money groups', FdParse.money('₹5,10,000.00'), 510000);
 eq('money plain', FdParse.money('400000'), 400000);
 eq('money null', FdParse.money(null), null);
 
+console.log('parseFilename');
+(function () {
+  eq('standard name', JSON.stringify(FdParse.parseFilename('Y_PNB_FD_20270528_4001_510000.pdf')),
+    JSON.stringify({ maturityDate: '2027-05-28', account: '130910DP4001', maturityValue: 510000 }));
+  eq('name with path', FdParse.parseFilename('C:\\x\\Y_PNB_FD_20261230_4002_500000.pdf').maturityDate, '2026-12-30');
+  eq('no match', FdParse.parseFilename('random.pdf'), null);
+  eq('missing maturity group', FdParse.parseFilename('Y_PNB_FD_20270528_4143.pdf'), null);
+})();
+
+console.log('parse — legacy slip filled from file name + derived dates');
+(function () {
+  var legacy = [
+    { x: 100, y: 560, str: 'CONFIRMATION OF DEPOSIT' },
+    { x: 83, y: 221, str: '4,00,000.00Rs.' },
+    { x: 306, y: 226, str: '390' }, { x: 325, y: 224, str: 'days' },
+    { x: 106, y: 106, str: 'ABCDE1234F' }
+  ];
+  var f = FdParse.parse(legacy, 'Y_PNB_FD_20261230_4002_500000.pdf');
+  eq('account from file name', f.account, '130910DP4002');
+  eq('maturity date from file name', f.maturityDate, '2026-12-30');
+  eq('maturity value from file name', f.maturityValue, 500000);
+  eq('amount from lakh figure', f.amount, 400000);
+  eq('days read', f.days, 390);
+  eq('issue date derived (maturity - 390d)', f.issueDate, '2025-12-05');
+  eq('pan read', f.pan, 'ABCDE1234F');
+  eq('incomplete (no rate)', f.complete, false);
+  eq('fromFile notes present', f.fromFile.indexOf('account') >= 0, true);
+})();
+
+console.log('parse — lone amount equal to maturity is not the principal');
+(function () {
+  var legacy = [
+    { x: 100, y: 560, str: 'CONFIRMATION OF DEPOSIT' },
+    { x: 83, y: 221, str: '4,35,802.00' } // only figure == maturity value
+  ];
+  var f = FdParse.parse(legacy, 'Y_PNB_FD_20261001_4007_610000.pdf');
+  eq('amount left blank', f.amount, 0);
+})();
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);
