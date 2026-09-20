@@ -115,6 +115,25 @@ whenReady(function run() {
   eq('auto-imported account stored', App.DATA.fds[before].account, '130910DP00004004');
   eq('days computed', App.DATA.fds[before].days, 396);
 
+  console.log('4c) importing the same slip twice is blocked (duplicate account)');
+  // Re-run the exact same auto-import: same account number => duplicate, ignored.
+  var beforeDup = App.DATA.fds.length;
+  App.autoImport({
+    account: '130910DP00004004', holder: 'TEST HOLDER', pan: '', amount: 500000,
+    rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 551000,
+    repayAc: '05582191003046', format: 'epos', complete: true
+  }, 'Y_PNB_FD_20260701_4004_551000.pdf');
+  eq('no second FD created', App.DATA.fds.length, beforeDup);
+  // Same slip via the preview path is also rejected and shows the error.
+  App.importPreview({
+    account: '130910DP00004004', holder: '', pan: '', amount: 500000,
+    rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 551000,
+    repayAc: '05582191003046', format: 'epos', complete: true
+  }, 'Y_PNB_FD_20260701_4004_551000.pdf');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
+  eq('preview save blocked too', App.DATA.fds.length, beforeDup);
+  eq('duplicate error shown', $('#importModal .err').textContent.indexOf('already in your list') >= 0, true);
+
   console.log('5) summary chips reflect totals');
   App.renderAll();
   var chips = $('#sumChips').textContent;

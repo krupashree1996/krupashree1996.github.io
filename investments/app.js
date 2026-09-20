@@ -258,6 +258,18 @@
     return { form: form, read: read };
   }
 
+  /* Same slip twice = same account number, so a duplicate import is detected by
+   * account. Returns the existing FD or null. Ignored when editing (edit path). */
+  function duplicateFd(rec, edit, o) {
+    if (edit) return null;
+    var a = (rec.account || '').trim().toUpperCase();
+    if (!a) return null;
+    var hit = null;
+    DATA.fds.forEach(function (x) { if ((x.account || '').trim().toUpperCase() === a) hit = x; });
+    if (!hit) (DATA.archived || []).forEach(function (x) { if ((x.account || '').trim().toUpperCase() === a) hit = x; });
+    return hit;
+  }
+
   function commitFd(rec, edit, o) {
     if (edit) {
       var idx = -1;
@@ -281,6 +293,8 @@
       var rec = ff.read();
       var errs = Calc.validFd(rec).concat(dateErrors(['fIssue', 'fMaturity']));
       if (errs.length) { f.err.textContent = errs.join('  |  '); return; }
+      var dup = duplicateFd(rec, edit, o);
+      if (dup) { f.err.textContent = 'This FD is already in your list (account ' + dup.account + '). Open it to edit instead.'; return; }
       commitFd(rec, edit, o);
       persist(); closeModal(); renderAll();
       toast(edit ? 'FD updated.' : 'FD added.', 'ok');
@@ -716,6 +730,8 @@
     rec.days = rec.issueDate && rec.maturityDate ? daysBetween(rec.issueDate, rec.maturityDate) : null;
     var probs = Calc.validFd(rec);
     if (probs.length) { toast('Complete read but invalid: ' + probs.join(' '), 'warn'); importPreview(parsed, fname); return; }
+    var dup = duplicateFd(rec, false, {});
+    if (dup) { toast('\u2018' + fname + '\u2019 already imported (account ' + dup.account + ').', 'warn'); return; }
     commitFd(rec, false, {});
     persist(); renderAll();
     toast('Added ' + rec.account + ' from \u2018' + fname + '\u2019.', 'ok');
@@ -741,6 +757,8 @@
       var rec = ff.read();
       var probs = Calc.validFd(rec).concat(dateErrors(['fIssue', 'fMaturity']));
       if (probs.length) { err.textContent = probs.join('  |  '); return; }
+      var dup = duplicateFd(rec, false, {});
+      if (dup) { err.textContent = 'This FD is already in your list (account ' + dup.account + '). Open it to edit, or correct the account number if it\u2019s a different FD.'; return; }
       commitFd(rec, false, {});
       persist(); closeModal(); renderAll();
       toast('FD imported from ' + fname + '.', 'ok');
