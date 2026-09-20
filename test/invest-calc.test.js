@@ -202,5 +202,47 @@ console.log('interest ledger — empty / zero');
   eq('default mode is compound', Calc.normInterestMode({ amount: 1 }), 'compound');
 })();
 
+console.log('fdDateCheck — flags a maturity/tenure year error');
+(function () {
+  // The test slip: 390-day tenure + filename both say 30 Dec 2026, but the
+  // printed maturity says 30 Dec 2027 (a year typo).
+  var bad = Calc.fdDateCheck({
+    issueDate: '2025-12-05', maturityDate: '2027-12-30', days: 390,
+    notes: 'Imported from Y_PNB_FD_20261230_4002_500000.pdf'
+  });
+  eq('year error flagged', /30 Dec 2027/.test(bad), true);
+  eq('suggests the tenure-implied date', /should it be 30 Dec 2026/.test(bad), true);
+  // A correct slip is not flagged.
+  eq('correct slip not flagged', Calc.fdDateCheck({
+    issueDate: '2026-03-10', maturityDate: '2027-05-28', days: 444,
+    notes: 'Imported from Y_PNB_FD_20270528_4001_510000.pdf'
+  }), null);
+  // "60 Months" stored as 1800 days drifts ~26 days from the real span — must NOT flag.
+  eq('month-rounded tenure not flagged', Calc.fdDateCheck({
+    issueDate: '2022-03-15', maturityDate: '2027-03-15', days: 1800,
+    notes: 'Imported from Y_PNB_FD_20270315_0009_52000.pdf'
+  }), null);
+})();
+
+console.log('fdEntries — reverse-ordered input is date-sorted');
+(function () {
+  // Payout FD; entries added later-first. Must render earliest first with
+  // correct day counts and running worth.
+  var fd = {
+    amount: 800000, rate: 8.1, issueDate: '2026-03-24', interestMode: 'payout',
+    entries: [
+      { date: '2026-06-28', int: 16053, tax: 1605 },
+      { date: '2026-03-29', int: 697, tax: 69 }
+    ]
+  };
+  var rows = Calc.fdEntries(fd);
+  eq('sorted by date', rows[0].date < rows[1].date, true);
+  eq('first is 29 Mar', rows[0].date, '2026-03-29');
+  eq('first day count from issue', rows[0].days, 5);
+  eq('second day count from first payout', rows[1].days, 91);
+  eq('running worth after 1st', rows[0].after, 800628);
+  eq('running worth after 2nd', rows[1].after, 814448);
+})();
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);
