@@ -967,9 +967,13 @@
     rd.onload = function () {
       try {
         var s = String(rd.result);
-        if (s.indexOf('window.DATA =') < 0) throw new Error('not a bundle saved by this app (expected a window.DATA file)');
-        s = s.replace(/^[\s\S]*?window\.DATA\s*=\s*/, '').replace(/;\s*$/, '');
-        var d = JSON.parse(s);
+        var d;
+        if (s.indexOf('window.DATA =') >= 0) {
+          s = s.replace(/^[\s\S]*?window\.DATA\s*=\s*/, '').replace(/;\s*$/, '');
+          d = JSON.parse(s);
+        } else {
+          d = JSON.parse(s); // also accept a bare JSON bundle (renamed/extracted backup)
+        }
         if (!d || !Array.isArray(d.fds)) throw new Error('missing fds array');
         if (typeof d.version === 'number' && d.version > SCHEMA_VERSION) {
           toast('This bundle is from a newer app version (schema ' + d.version + '). Update the app first.', 'warn');

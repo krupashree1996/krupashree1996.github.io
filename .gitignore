@@ -2,6 +2,7 @@
 # These files describe the apps' internals and may reference real personal
 # data (PII). They must never reach the live Pages site.
 **/AGENTS.md
+scripts/pii-scan.js
 **/design.md
 **/session_handoff.md
 **/requirements.md

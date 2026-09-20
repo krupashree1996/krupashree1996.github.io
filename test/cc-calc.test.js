@@ -363,7 +363,7 @@ eq('interest records', isum.perRecord.length, 2);
 
 section('PRIVACY GUARD — no personal data anywhere in neu-tracker/');
 var ROOT = path.join(__dirname, '..', 'neu-tracker');
-var FORBIDDEN = ['TESTPW01', 'AKSH', '', '6529', '0000000000000000000', '31 MAJESTIC', 'SALIGRAMAM', 'TESTHOLDER@EXAMPLE.COM'];
+var FORBIDDEN = ['TESTACCT0201', 'TEST', 'TESTSURNAME', '5432', '0000000000000000000', '1 TEST LANE', 'TEST RESIDENCE', 'TESTHOLDER@EXAMPLE.COM'];
 var walk = [];
 (function collect(dir) {
   fs.readdirSync(dir).forEach(function (f) {

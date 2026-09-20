@@ -141,7 +141,7 @@ console.log('parseFilename');
     JSON.stringify({ maturityDate: '2027-05-28', account: '130910DP4001', maturityValue: 510000 }));
   eq('name with path', FdParse.parseFilename('C:\\x\\Y_PNB_FD_20261230_4002_500000.pdf').maturityDate, '2026-12-30');
   eq('no match', FdParse.parseFilename('random.pdf'), null);
-  eq('missing maturity group', FdParse.parseFilename('Y_PNB_FD_20270528_4143.pdf'), null);
+  eq('missing maturity group', FdParse.parseFilename('Y_PNB_FD_20270528_4001.pdf'), null);
 })();
 
 console.log('parse — legacy slip filled from file name + derived dates');
@@ -168,7 +168,7 @@ console.log('parse — lone amount equal to maturity is not the principal');
 (function () {
   var legacy = [
     { x: 100, y: 560, str: 'CONFIRMATION OF DEPOSIT' },
-    { x: 83, y: 221, str: '4,35,802.00' } // only figure == maturity value
+    { x: 83, y: 221, str: '6,10,000.00' } // only figure == maturity value
   ];
   var f = FdParse.parse(legacy, 'Y_PNB_FD_20261001_4007_610000.pdf');
   eq('amount left blank', f.amount, 0);

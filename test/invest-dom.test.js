@@ -107,9 +107,9 @@ whenReady(function run() {
   var before = App.DATA.fds.length;
   App.autoImport({
     account: '130910DP00004004', holder: 'TEST HOLDER', pan: '', amount: 500000,
-    rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 551000,
+    rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 600000,
     repayAc: '05582191003046', format: 'epos', complete: true
-  }, 'Y_PNB_FD_20260701_4004_551000.pdf');
+  }, 'Y_PNB_FD_20260701_4004_600000.pdf');
   eq('no modal opened for complete read', !!document.getElementById('importModal'), false);
   eq('FD added directly', App.DATA.fds.length, before + 1);
   eq('auto-imported account stored', App.DATA.fds[before].account, '130910DP00004004');
@@ -120,16 +120,16 @@ whenReady(function run() {
   var beforeDup = App.DATA.fds.length;
   App.autoImport({
     account: '130910DP00004004', holder: 'TEST HOLDER', pan: '', amount: 500000,
-    rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 551000,
+    rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 600000,
     repayAc: '05582191003046', format: 'epos', complete: true
-  }, 'Y_PNB_FD_20260701_4004_551000.pdf');
+  }, 'Y_PNB_FD_20260701_4004_600000.pdf');
   eq('no second FD created', App.DATA.fds.length, beforeDup);
   // Same slip via the preview path is also rejected and shows the error.
   App.importPreview({
     account: '130910DP00004004', holder: '', pan: '', amount: 500000,
-    rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 551000,
+    rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 600000,
     repayAc: '05582191003046', format: 'epos', complete: true
-  }, 'Y_PNB_FD_20260701_4004_551000.pdf');
+  }, 'Y_PNB_FD_20260701_4004_600000.pdf');
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
   eq('preview save blocked too', App.DATA.fds.length, beforeDup);
   eq('duplicate error shown', $('#importModal .err').textContent.indexOf('already in your list') >= 0, true);
@@ -137,7 +137,7 @@ whenReady(function run() {
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
 
   console.log('4d) import-preview flags a maturity/tenure year error');
-  // The test slip: 390-day tenure + filename say 30 Dec 2026, printed maturity 30 Dec 2027.
+  // The test slip (synthetic): 390-day tenure + filename say 30 Dec 2026, printed maturity 30 Dec 2027.
   App.importPreview({
     account: '130910DP00004002', holder: 'TEST HOLDER', pan: '', amount: 400000,
     rate: 8, issueDate: '2025-12-05', maturityDate: '2027-12-30', maturityValue: 500000,
