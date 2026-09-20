@@ -41,6 +41,64 @@ var FdParse = (function () {
     return null;
   }
 
+  /* Value on the same line as the label (newer slips print "Label : value").
+   * Takes the NEAREST item to the right — the value always directly follows
+   * its label, so a neighbour's far-off header is never chosen. Callers still
+   * validate the returned string (money / date / account) and fall back to
+   * valueBelow for the older layout. */
+  function valueOnLine(label, items) {
+    var best = null, bestDx = Infinity;
+    items.forEach(function (it) {
+      if (it === label) return;
+      if (Math.abs(label.y - it.y) > 8) return;
+      if (it.x <= label.x + 5) return;
+      var dx = it.x - label.x;
+      if (dx < bestDx) { bestDx = dx; best = it; }
+    });
+    return best;
+  }
+
+  /* Newer e-Fixed Deposit slips use a table: a header row (Deposit Amount |
+   * Tenure | Fixed Rate Interest | Date of Issue | Date Of Maturity | Maturity
+   * Value) with the values on the row below. Reads that band. */
+  function parseTable(items) {
+    var ten = null, rateH = null;
+    items.forEach(function (it) {
+      if (/^Tenure$/i.test(it.str) && !ten) ten = it;
+      if (/^Fixed Rate$/i.test(it.str) && !rateH) rateH = it;
+    });
+    if (!ten || !rateH) return null;
+    var band = items.filter(function (it) {
+      return it.y < ten.y - 5 && it.y > ten.y - 60 && it.y > rateH.y - 60;
+    });
+    /* Merge into x-adjacent cells (a value may span two lines, e.g. "15 Mar"
+     * over "2022"); within a cell, top line first. */
+    band.sort(function (a, b) { return a.x - b.x || b.y - a.y; });
+    var cells = [], cur = null, cx = -1;
+    band.forEach(function (it) {
+      if (cur && it.x - cx < 20) cur.push(it);
+      else { cur = [it]; cells.push(cur); }
+      cx = it.x;
+    });
+    var row = cells.map(function (c) {
+      c.sort(function (a, b) { return b.y - a.y; });
+      return c.map(function (i) { return i.str; }).join(' ');
+    }).join('  ');
+    var out = { amount: 0, days: 0, rate: 0, issueDate: '', maturityDate: '', maturityValue: 0 };
+    var amts = row.match(/₹\s*[\d,]+(?:\.\d{2})?/g) || [];
+    if (amts.length) out.amount = money(amts[0]) || 0;
+    if (amts.length > 1) out.maturityValue = money(amts[amts.length - 1]) || 0;
+    var t = row.match(/(\d{2,4})\s*(Months?|Days?)/i);
+    if (t) out.days = /month/i.test(t[2]) ? Math.round(+t[1] * 30) : +t[1];
+    var r = row.match(/(\d{1,2}\.\d{1,4})\s*%/);
+    if (r) out.rate = +r[1];
+    var dates = [], dm = /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})/gi, m;
+    while ((m = dm.exec(row))) dates.push(isoFromMon(m[0]));
+    if (dates.length >= 2) { out.issueDate = dates[0]; out.maturityDate = dates[1]; }
+    else if (dates.length === 1) out.maturityDate = dates[0];
+    return (out.amount || out.days || out.rate || out.issueDate) ? out : null;
+  }
+
   /* items: [{x, y, str}] from pdf.js text content; name: file name (optional). */
   function parse(items, name) {
     var f = {
@@ -50,42 +108,66 @@ var FdParse = (function () {
     };
     var all = items.map(function (i) { return i.str; }).join('\n');
 
-    if (/Confirmation of e-Fixed Deposit/i.test(all)) f.format = 'epos';
+    if (/Confirmation of e-Fixed Deposit/i.test(all) || /e-Fixed Deposit/i.test(all)) f.format = 'epos';
     else if (/CONFIRMATION OF DEPOSIT/i.test(all)) f.format = 'legacy';
     else f.format = 'unknown';
 
     var acc = all.match(/130910DP\d{8}/) || all.match(/130910SCSS\d{6}/) || all.match(/130910[A-Z]{2}\d{6,8}/);
     if (acc) f.account = acc[0];
 
-    var cust = findLabel(items, /Customer Name/i);
+    var cust = findLabel(items, /Customer Name|Consumer Name/i);
     if (cust) {
-      var h = valueBelow(cust, items);
-      if (h && /^[A-Z][A-Z .]{2,}$/.test(h.str)) f.holder = h.str;
+      var h = valueOnLine(cust, items) || valueBelow(cust, items);
+      if (h && /^[A-Z](?:[A-Z ]+)$/.test(h.str.replace(/\s+/g, ' '))) f.holder = h.str;
+    }
+
+    /* Same-row value only when it looks like the field's value; otherwise the
+     * value sits below the label (older format). */
+    function pick(label, validate) {
+      var v = valueOnLine(label, items);
+      if (v && validate(v.str)) return v.str;
+      v = valueBelow(label, items);
+      if (v && validate(v.str)) return v.str;
+      return null;
+    }
+    var isMoney = function (s) { return /[\d,]+(\.\d+)?/.test(s) && /\d/.test(s); };
+    var isDate = function (s) { return /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})/i.test(s); };
+    var isAcct = function (s) { return /^\d{9,}$/.test((s || '').replace(/\s/g, '')); };
+
+    /* Newer table layout: read the header+value band first. */
+    var tbl = parseTable(items);
+    if (tbl) {
+      f.amount = tbl.amount; f.days = tbl.days; f.rate = tbl.rate;
+      f.issueDate = tbl.issueDate; f.maturityDate = tbl.maturityDate; f.maturityValue = tbl.maturityValue;
     }
 
     var amtLabel = findLabel(items, /Deposit Amount/i);
-    if (amtLabel) {
-      var a = valueBelow(amtLabel, items);
-      if (a) f.amount = money(a.str) || 0;
+    if (amtLabel && !f.amount) {
+      var a = pick(amtLabel, isMoney);
+      if (a) f.amount = money(a) || 0;
     }
 
     var period = all.match(/for a period of\s+(\d{2,4})\s+Days/i) || all.match(/\b(\d{2,3})\s*days\b/i);
-    if (period) f.days = +period[1];
+    if (period && !f.days) f.days = +period[1];
     var rateM = all.match(/at the rate of\s+(\d{1,2}(?:\.\d+)?)\s*%/i) || all.match(/\b(\d{1,2}\.\d{2})\s*%\s*per\s+annum/i);
-    if (rateM) f.rate = +rateM[1];
+    if (rateM && !f.rate) f.rate = +rateM[1];
 
     ['Date of Issue', 'Date of Maturity', 'Maturity Value'].forEach(function (label) {
+      if (f.issueDate && f.maturityDate && f.maturityValue) return;
       var li = findLabel(items, new RegExp('^' + label.replace(/ /g, '\\s+') + '$', 'i'), 20);
       if (!li) return;
-      var v = valueBelow(li, items);
-      if (!v) return;
-      if (/Date of Issue/i.test(label)) f.issueDate = isoFromMon(v.str) || '';
-      else if (/Date of Maturity/i.test(label)) f.maturityDate = isoFromMon(v.str) || '';
-      else f.maturityValue = money(v.str) || 0;
+      var s = /^Maturity Value/i.test(label) ? pick(li, isMoney) : pick(li, isDate);
+      if (s == null) return;
+      if (/Date of Issue/i.test(label) && !f.issueDate) f.issueDate = isoFromMon(s) || '';
+      else if (/Date of Maturity/i.test(label) && !f.maturityDate) f.maturityDate = isoFromMon(s) || '';
+      else if (/^Maturity Value/i.test(label) && !f.maturityValue) f.maturityValue = money(s) || 0;
     });
 
     var rep = findLabel(items, /Repayment Account Number|Debit Account Number/i);
-    if (rep) { var r = valueBelow(rep, items); if (r) f.repayAc = (r.str || '').replace(/\s/g, ''); }
+    if (rep) {
+      var r = pick(rep, isAcct);
+      if (r) f.repayAc = r.replace(/\s/g, '');
+    }
 
     var panM = all.match(/\b([A-Z]{5}\d{4}[A-Z])\b/);
     if (panM) f.pan = panM[1];
