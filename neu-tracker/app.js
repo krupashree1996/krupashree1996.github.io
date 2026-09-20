@@ -18,7 +18,7 @@
 
   var STORE_KEY = 'ne.tracker.data';
   var PW_KEY = 'ne.tracker.pw';
-  var APP_VERSION = 4;
+  var APP_VERSION = 5;
 
   /* ---------------- tiny DOM helpers ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -75,7 +75,7 @@
 
   /* ---------------- state ---------------- */
   var DATA = null;      // migrated copy of window.DATA / localStorage
-  var S = { st: null, checks: null, decisions: {}, curRecord: null, recId: null, rwRec: null, chartB: null, chartC: null };
+  var S = { st: null, checks: null, decisions: {}, curRecord: null, recId: null, rwRec: null, chartB: null, chartC: null, autoScheduled: false, committed: false, autoTimer: null };
   var importing = false;
 
   function persist() {
@@ -234,10 +234,24 @@
     $('commitBtn').disabled = pending.length > 0;
     $('raiseNote').textContent = Object.keys(S.decisions).length
       ? Object.keys(S.decisions).map(function (k) { return k + ' ✓'; }).join(', ') : 'no exceptions yet';
+    if (S.autoTimer) { clearInterval(S.autoTimer); S.autoTimer = null; }
     if (!pending.length && S.st && !S.autoScheduled) {
-      /* every check passed (or was accepted) — record the statement automatically */
+      /* every check passed (or was accepted) — record automatically after a
+       * short, visible countdown so the checks can be read first. */
       S.autoScheduled = true;
-      setTimeout(function () { if (!pending.length && !S.committed) commitStatement(true); }, 900);
+      p.textContent = 'All checks passed — recording automatically in 5s.';
+      var left = 5;
+      S.autoTimer = setInterval(function () {
+        if (S.committed) { clearInterval(S.autoTimer); S.autoTimer = null; return; }
+        if ($('verify').style.display !== 'block') { clearInterval(S.autoTimer); S.autoTimer = null; return; }
+        left -= 1;
+        if (left <= 0) {
+          clearInterval(S.autoTimer); S.autoTimer = null;
+          if (!S.committed) commitStatement(true);
+        } else {
+          p.textContent = 'All checks passed — recording automatically in ' + left + 's.';
+        }
+      }, 1000);
     }
   }
   function acceptCheck(key) {
@@ -285,6 +299,7 @@
     S.st = st;
     S.autoScheduled = false;
     S.committed = false;
+    if (S.autoTimer) { clearInterval(S.autoTimer); S.autoTimer = null; }
     var dup = DATA.records.filter(function (r) { return r.periodTo === st.periodTo; })[0];
     S.curRecord = dup || null;
     if (dup) toast('A record for this period already exists — verifying again will replace it.', 'warn');
