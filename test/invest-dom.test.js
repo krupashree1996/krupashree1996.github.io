@@ -103,10 +103,22 @@ whenReady(function run() {
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
   eq('two FDs after import', App.DATA.fds.length, 2);
 
+  console.log('4b) complete read auto-imports (no confirm step)');
+  var before = App.DATA.fds.length;
+  App.autoImport({
+    account: '130910DP00004004', holder: 'TEST HOLDER', pan: '', amount: 500000,
+    rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 551000,
+    repayAc: '05582191003046', format: 'epos', complete: true
+  }, 'Y_PNB_FD_20260701_4004_551000.pdf');
+  eq('no modal opened for complete read', !!document.getElementById('importModal'), false);
+  eq('FD added directly', App.DATA.fds.length, before + 1);
+  eq('auto-imported account stored', App.DATA.fds[before].account, '130910DP00004004');
+  eq('days computed', App.DATA.fds[before].days, 396);
+
   console.log('5) summary chips reflect totals');
   App.renderAll();
   var chips = $('#sumChips').textContent;
-  eq('chip shows 2 FDs', chips.indexOf('2 FDs') >= 0, true);
+  eq('chip shows 3 FDs', chips.indexOf('3 FDs') >= 0, true);
 
   console.log('6) interest ledger modal — add payout, compound running');
   // Open the interest modal for the first FD (the one added in step 2).
@@ -153,11 +165,12 @@ whenReady(function run() {
   });
   App.renderAll();
   var today = dom.window.Calc.todayISO();
-  eq('matured FD visible before archive', $$('#sec-fd .fdRow').length, 3);
-  eq('is matured', dom.window.Calc.fdStatus(App.DATA.fds[2], today), 'matured');
-  eq('not yet past 1.5-FY cutoff', dom.window.Calc.fdAutoRemove(App.DATA.fds[2], today), false);
+  var fdOld = App.DATA.fds.filter(function (f) { return f.id === 'fdOld'; })[0];
+  eq('matured FD visible before archive', $$('#sec-fd .fdRow').length, 4);
+  eq('is matured', dom.window.Calc.fdStatus(fdOld, today), 'matured');
+  eq('not yet past 1.5-FY cutoff', dom.window.Calc.fdAutoRemove(fdOld, today), false);
   App.archiveMatured(today);
-  eq('matured FD moved to history', App.DATA.fds.length, 2);
+  eq('matured FD moved to history', App.DATA.fds.length, 3);
   eq('archived row created (full record)', App.DATA.archived.length, 1);
   eq('archived keeps entries', App.DATA.archived[0].entries.length, 1);
   eq('archived has xirr', typeof App.DATA.archived[0].xirr, 'number');
