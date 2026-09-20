@@ -186,9 +186,10 @@ var Calc = (function () {
   }
   function sortFds(list, today) {
     return (list || []).slice().sort(function (a, b) {
-      var ra = fdStatusRank(a, today), rb = fdStatusRank(b, today);
-      if (ra !== rb) return ra - rb;
-      var da = a.maturityDate || '9999', db = b.maturityDate || '9999';
+      var da = a.maturityDate, db = b.maturityDate;
+      if (!da && !db) return (a.account || '').localeCompare(b.account || '');
+      if (!da) return 1;
+      if (!db) return -1;
       if (da !== db) return da < db ? -1 : 1;
       return (a.account || '').localeCompare(b.account || '');
     });

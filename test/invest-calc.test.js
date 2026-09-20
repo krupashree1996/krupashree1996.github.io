@@ -55,8 +55,9 @@ console.log('fdStatus / sort / summary');
   eq('past maturity -> matured', Calc.fdStatus(matured, today), 'matured');
   eq('no maturity -> unknown', Calc.fdStatus({ amount: 1, rate: 1 }, today), 'unknown');
 
-  var sorted = Calc.sortFds([matured, active], today);
-  eq('sort puts active before matured', sorted[0].id, 'a');
+  var sorted = Calc.sortFds([active, matured], today);
+  eq('sort: nearest maturity first (matured 2021)', sorted[0].id, 'b');
+  eq('sort: farthest maturity second (active 2028)', sorted[1].id, 'a');
   eq('sort order length', sorted.length, 2);
 
   var s = Calc.fdSummary([active, matured], today);
