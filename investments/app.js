@@ -439,6 +439,8 @@
       if (!d || !(g > 0)) { f.err.textContent = 'Enter a date (DD/MM/YYYY) and a gross interest amount.'; return; }
       var t = num('imTax');
       if (fd.entries == null) fd.entries = [];
+      var dupE = fd.entries.some(function (e) { return e.date === d && e.int === g; });
+      if (dupE) { f.err.textContent = 'A payout for ' + d + ' (₹' + Calc.inr(g) + ') is already recorded. Delete it first to change it.'; return; }
       fd.entries.push({ date: d, int: g, tax: t || 0 });
       // Keep the ledger chronologically ordered on disk too, so a refresh shows
       // the same date-sorted table (earliest first).

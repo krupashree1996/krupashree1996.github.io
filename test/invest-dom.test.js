@@ -179,7 +179,19 @@ whenReady(function run() {
 
   eq('two entries stored', fd0.entries.length, 2);
   eq('mode defaulted to compound', fd0.interestMode, 'compound');
-  eq('table rendered with 2 rows', $$('#interestModal .intTable tr').length - 1, 2);
+
+  // Re-adding the exact same payout (date + gross) is blocked.
+  setValue('#imDate', '28/06/2026');
+  setValue('#imInt', '8108');
+  setValue('#imTax', '811');
+  $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
+  eq('duplicate payout blocked', fd0.entries.length, 2);
+  eq('duplicate error shown', $('#interestModal .err').textContent.indexOf('already recorded') >= 0, true);
+  // A different amount on the same date is allowed.
+  setValue('#imInt', '9999');
+  $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
+  eq('different amount on same date allowed', fd0.entries.length, 3);
+  eq('table rendered with 3 rows', $$('#interestModal .intTable tr').length - 1, 3);
   // Compound running: first after = 400000 + (8108-811) = 407297.
   var rows = $$('#interestModal .intTable tr');
   eq('first row worth-after', rows[1].cells[5].textContent.indexOf('4,07,297') >= 0, true);
