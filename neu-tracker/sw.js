@@ -1,6 +1,6 @@
 /* HDFC Tata Neu Credit Card Tracker — offline-first service worker. */
 'use strict';
-var VERSION = 'neu-tracker-v2';
+var VERSION = 'neu-tracker-v3';
 var ASSETS = [
   './',
   './index.html',
@@ -21,6 +21,12 @@ var ASSETS = [
 self.addEventListener('install', function (e) {
   self.skipWaiting();
   e.waitUntil(caches.open(VERSION).then(function (c) { return c.addAll(ASSETS); }));
+});
+
+self.addEventListener('message', function (e) {
+  if (e.data && e.data.type === 'GET_VERSION' && e.ports && e.ports[0]) {
+    e.ports[0].postMessage({ version: VERSION });
+  }
 });
 
 self.addEventListener('activate', function (e) {

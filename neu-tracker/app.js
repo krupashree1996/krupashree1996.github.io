@@ -18,6 +18,7 @@
 
   var STORE_KEY = 'ne.tracker.data';
   var PW_KEY = 'ne.tracker.pw';
+  var APP_VERSION = 3;
 
   /* ---------------- tiny DOM helpers ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -26,6 +27,11 @@
     if (cls) n.className = cls;
     if (text != null) n.textContent = text;
     return n;
+  }
+  function statChip(label, count) {
+    var d = el('div', 'stat', label + ' ');
+    d.appendChild(el('b', '', String(count)));
+    return d;
   }
   function fmtMoney(x) { return Calc.fmtMoney(x); }
   function fmtNum(x) { return Calc.fmtNum(x); }
@@ -458,9 +464,9 @@
     body.appendChild(head);
 
     var stats = el('div', 'stats');
-    stats.appendChild(el('div', 'stat', 'Matched <b>' + res.matchedCount + '</b>'));
-    stats.appendChild(el('div', 'stat', 'Ledger only <b>' + res.bookOnlyCount + '</b>'));
-    stats.appendChild(el('div', 'stat', 'Statement only <b>' + res.stmtOnlyCount + '</b>'));
+    stats.appendChild(statChip('Matched', res.matchedCount));
+    stats.appendChild(statChip('Ledger only', res.bookOnlyCount));
+    stats.appendChild(statChip('Statement only', res.stmtOnlyCount));
     body.appendChild(stats);
 
     if (res.matched.length) {
@@ -972,8 +978,27 @@
   /* ---------------- wiring ---------------- */
   function showView(id) { show(id); renderAll(); }
 
+  function showVersion() {
+    var badge = $('verBadge');
+    if (!badge) return;
+    var v = 'v' + APP_VERSION;
+    badge.hidden = false;
+    badge.textContent = v;
+    badge.title = 'Build ' + v;
+    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+    try {
+      var ch = new MessageChannel();
+      ch.port1.onmessage = function (ev) {
+        var swv = ev.data && ev.data.version;
+        if (swv) badge.title = 'Build ' + v + ' · SW cache ' + swv;
+      };
+      navigator.serviceWorker.controller.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+    } catch (e) {}
+  }
+
   function init() {
     loadData();
+    showVersion();
     $('importFile').addEventListener('change', function (e) {
       var f = e.target.files && e.target.files[0];
       if (f) importFile(f);
