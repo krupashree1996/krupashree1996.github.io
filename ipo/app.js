@@ -7,7 +7,7 @@
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 14;
+  var APP_VERSION = 15;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
   /* Google Drive backup. Get a client id at Google Cloud Console
    * (APIs & Services > Credentials > Create OAuth client ID > Web application),
@@ -1244,6 +1244,9 @@
         }
         if (r.gmp != null && match.gmp == null) match.gmp = r.gmp;
         if (r.subs != null && match.subs == null) match.subs = r.subs;
+      } else if (Calc.cleanupDue(r, [], CLEANUP_DAYS)) {
+        /* old, completed IPO with no application — auto-cleanup would
+         * delete it anyway; don't resurrect it on every fetch. */
       } else {
         var rec = { id: Calc.uid('ipo'), createdAt: new Date().toISOString(), src: 'remote' };
         REMOTE_CORE.forEach(function (k) { rec[k] = r[k] != null ? r[k] : null; });
