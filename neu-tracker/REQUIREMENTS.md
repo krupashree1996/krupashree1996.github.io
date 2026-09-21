@@ -58,7 +58,7 @@ alone. Keep it up to date when behaviour changes.
 }
 ```
 
-Endpoints exposed by `Calc`: `Calc.migrateBundle`, `Calc.SCHEMA_VERSION=2`,
+Endpoints exposed by `Calc`: `Calc.migrateBundle`, `Calc.SCHEMA_VERSION=4`,
 `Calc.DEFAULT_COIN_VALUE=0.25`, `Calc.verifyStatement`, `Calc.applyExceptions`,
 `Calc.hasBlocking`, `Calc.statusSummary`, `Calc.redemptionReconcile`,
 `Calc.rewardsReconcile`, `Calc.dueStatus`, `Calc.utilizationOf`,
