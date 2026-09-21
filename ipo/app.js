@@ -1,13 +1,13 @@
 (function () {
   var DATA = window.DATA || (window.DATA = { profile: { name: '' }, pans: [], meta: {}, ipos: [], applications: [] });
-  var S = { tab: 'cal', curPan: '' };
+  var S = { tab: 'cal', curPan: '', calQ: '', appQ: '' };
   var newerSession = false;
   var corruptSession = false;
   var LS = 'ipo.tracker.session';
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 12;
+  var APP_VERSION = 13;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
   /* Google Drive backup. Get a client id at Google Cloud Console
    * (APIs & Services > Credentials > Create OAuth client ID > Web application),
@@ -120,6 +120,28 @@
   function hasPrice(ipo) {
     if (ipo.listingPrice > 0) return true;
     return myAppsFor(ipo.id).some(function (a) { return a.soldPrice > 0; });
+  }
+  function searchIpo(ipo, q) {
+    q = (q || '').trim().toLowerCase();
+    if (!q) return true;
+    var hay = [ipo.name, ipo.symbol, ipo.registrar, ipo.notes, ipo.category].join(' ').toLowerCase();
+    return hay.indexOf(q) >= 0;
+  }
+  function searchApp(a, q) {
+    q = (q || '').trim().toLowerCase();
+    if (!q) return true;
+    var ipo = ipoOf(a.ipoId);
+    var h = holderOf(a.panId);
+    var hay = [ipo ? ipo.name : '', ipo ? ipo.symbol : '', h ? h.name : '', h ? h.pan : '', a.notes || ''].join(' ').toLowerCase();
+    return hay.indexOf(q) >= 0;
+  }
+  function searchBox(id, ph, oninput) {
+    var i = document.createElement('input');
+    i.id = id; i.type = 'search'; i.placeholder = ph;
+    i.setAttribute('aria-label', 'Search');
+    i.classList.add('search');
+    i.addEventListener('input', function () { oninput(this.value); });
+    return i;
   }
   function viewTitle() {
     var h = holderOf(S.curPan);
@@ -237,10 +259,17 @@
     var head = el('div', 'cardHead');
     var h2 = el('h2', '', 'IPO calendar');
     var hint = el('span', 'chip', 'view: ' + viewTitle());
+    var sb = searchBox('calSearch', 'Search name, symbol, registrar\u2026', function (v) {
+      S.calQ = v;
+      renderCal();
+      var e = document.getElementById('calSearch');
+      if (e) { e.focus(); e.setSelectionRange(e.value.length, e.value.length); }
+    });
+    sb.value = S.calQ;
     var spacer = el('div', 'spacer');
     var add = el('button', 'primary', '+ Add IPO');
     add.onclick = function () { buildIpoForm(null); };
-    head.appendChild(h2); head.appendChild(hint); head.appendChild(spacer); head.appendChild(add);
+    head.appendChild(h2); head.appendChild(hint); head.appendChild(sb); head.appendChild(spacer); head.appendChild(add);
     card.appendChild(head);
 
     if (!DATA.ipos.length) {
@@ -252,7 +281,11 @@
       card.appendChild(p);
     } else {
       var sorted = Calc.sortIpos(DATA.ipos);
-      sorted.forEach(function (ipo) { card.appendChild(ipoRow(ipo)); });
+      var shown = sorted.filter(function (ipo) { return searchIpo(ipo, S.calQ); });
+      if (!shown.length && S.calQ.trim()) {
+        card.appendChild(el('p', 'muted', 'No IPOs match \u2018' + S.calQ.trim() + '\u2019.'));
+      }
+      shown.forEach(function (ipo) { card.appendChild(ipoRow(ipo)); });
     }
     sec.appendChild(card);
   }
@@ -332,11 +365,18 @@
     var head = el('div', 'cardHead');
     var h2 = el('h2', '', 'Applications');
     var hint = el('span', 'chip', 'view: ' + viewTitle());
+    var sb = searchBox('appSearch', 'Search IPO, holder, notes\u2026', function (v) {
+      S.appQ = v;
+      renderApps();
+      var e = document.getElementById('appSearch');
+      if (e) { e.focus(); e.setSelectionRange(e.value.length, e.value.length); }
+    });
+    sb.value = S.appQ;
     var spacer = el('div', 'spacer');
     var add = el('button', 'primary', '+ Apply IPO');
     if (!DATA.ipos.length) { add.disabled = true; add.title = 'Add or fetch IPOs first'; }
     add.onclick = function () { buildAppForm(null, null); };
-    head.appendChild(h2); head.appendChild(hint); head.appendChild(spacer); head.appendChild(add);
+    head.appendChild(h2); head.appendChild(hint); head.appendChild(sb); head.appendChild(spacer); head.appendChild(add);
     card.appendChild(head);
 
     if (!DATA.ipos.length) {
@@ -356,8 +396,11 @@
       var list = filterApps(DATA.applications).slice().sort(function (a, b) {
         if (a.appliedOn !== b.appliedOn) return a.appliedOn < b.appliedOn ? 1 : -1;
         return (a.createdAt || '') < (b.createdAt || '') ? 1 : -1;
-      });
+      }).filter(function (a) { return searchApp(a, S.appQ); });
       list.forEach(function (a) { tb.appendChild(appRow(a)); });
+      if (!list.length && S.appQ.trim()) {
+        card.appendChild(el('p', 'muted', 'No applications match \u2018' + S.appQ.trim() + '\u2019.'));
+      }
       t.appendChild(tb);
       var tot = { lien: 0, lots: 0 };
       list.forEach(function (a) {
