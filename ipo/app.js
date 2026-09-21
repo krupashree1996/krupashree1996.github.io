@@ -7,7 +7,7 @@
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 17;
+  var APP_VERSION = 18;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
   /* Google Drive backup. Get a client id at Google Cloud Console
    * (APIs & Services > Credentials > Create OAuth client ID > Web application),
@@ -1246,7 +1246,12 @@
     for (var i = 0; i < DATA.ipos.length; i++) {
       var x = DATA.ipos[i];
       if (sym && x.symbol && String(x.symbol).toUpperCase() === sym && (x.openDate || null) === od) return x;
-      if (od && cd && (x.openDate || null) === od && (x.closeDate || null) === cd) return x;
+      if (od && cd && (x.openDate || null) === od && (x.closeDate || null) === cd) {
+        /* date pairs are not unique — many IPOs run in parallel; require
+         * the name to match too, or a new IPO silently "matches" an old one */
+        var nm = String(r.name || '').trim().toLowerCase();
+        if (nm && nm === String(x.name || '').trim().toLowerCase()) return x;
+      }
     }
     return null;
   }
@@ -1775,5 +1780,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, fetchCalendar: fetchCalendar, runCleanup: runCleanup };
+  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, fetchCalendar: fetchCalendar, runCleanup: runCleanup, findIpo: findIpo, applyRemote: applyRemote };
 })();

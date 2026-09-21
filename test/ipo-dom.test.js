@@ -167,7 +167,18 @@ whenReady(function run() {
   eq('persisted mainline minLots', saved.ipos.find(function (i) { return i.symbol === 'MAIN'; }).minLots, 1);
   eq('persisted sme minLots', saved.ipos.find(function (i) { return i.symbol === 'SMCO'; }).minLots, 100);
 
-    console.log('\n' + passed + ' passed, ' + failed + ' failed');
+   console.log('8) Fetch merge — parallel IPOs with identical dates are not collapsed');
+  var before = App.DATA.ipos.length;
+  App.DATA.ipos.push({ id: 'ipo-sona', name: 'Sona Test Co', symbol: 'SONAT', openDate: '2026-09-17', closeDate: '2026-09-21', bandHi: 99 });
+  App.applyRemote({ ipos: [
+    { companyName: 'Spectra Test Co', symbol: 'SPECTT', series: 'SME', priceBand: { max: 118 }, lotSize: 1200, issueStartDate: '2026-09-17', issueEndDate: '2026-09-21' },
+    { companyName: 'Sona Test Co', symbol: 'SONAT', series: 'Mainline', priceBand: { max: 99 }, lotSize: 100, issueStartDate: '2026-09-17', issueEndDate: '2026-09-21' }
+  ] });
+  eq('parallel IPO (same dates, new name) added', App.DATA.ipos.length, before + 2);
+  var sp = App.DATA.ipos.find(function (i) { return i.symbol === 'SPECTT'; });
+  eq('added record is the new IPO, not a match of the old one', sp && sp.name, 'Spectra Test Co');
+
+  console.log('\n' + passed + ' passed, ' + failed + ' failed');
     process.exit(failed ? 1 : 0);
   }, 300);
 });
