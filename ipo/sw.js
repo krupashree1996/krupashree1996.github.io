@@ -1,4 +1,4 @@
-var CACHE = 'ipo-v13';
+var CACHE = 'ipo-v14';
 var PRECACHE = ['index.html', 'style.css', 'calc.js', 'app.js', 'data/bundle.js', 'manifest.json', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', function (e) {
@@ -37,6 +37,9 @@ self.addEventListener('fetch', function (e) {
   var url;
   try { url = new URL(req.url); } catch (err) { return; }
   if (url.origin !== location.origin) return;
+  /* Data endpoints (e.g. the calendar JSON) must always hit the network —
+   * never serve or store them from the app cache. */
+  if (req.cache === 'no-store') return;
   var name = keyFor(url);
   if (req.mode === 'navigate' || name === '' || name === 'index.html') {
     e.respondWith(
