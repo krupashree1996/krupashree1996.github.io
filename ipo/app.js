@@ -7,7 +7,7 @@
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 16;
+  var APP_VERSION = 17;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
   /* Google Drive backup. Get a client id at Google Cloud Console
    * (APIs & Services > Credentials > Create OAuth client ID > Web application),
@@ -1350,7 +1350,8 @@
     var btn = document.getElementById('btnFetch');
     btn.disabled = true;
     btn.textContent = 'Fetching\u2026';
-    fetch(url, { mode: 'cors', cache: 'no-store' })
+    /* cache-bust: a unique query param defeats any HTTP/CDN/browser cache layer */
+    fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now(), { mode: 'cors', cache: 'no-store' })
       .then(function (r) {
         lastSync = { at: Date.now(), ok: r.ok, msg: r.ok ? '' : 'HTTP ' + r.status };
         if (!r.ok) throw new Error('HTTP ' + r.status);
