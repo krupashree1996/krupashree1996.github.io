@@ -49,6 +49,10 @@ function whenReady(fn) {
 whenReady(function run() {
   var App = dom.window.App;
 
+  /* fixture IPOs use fixed (now past) dates; show finished ones too so row
+   * assertions don't depend on the "hide finished" default. */
+  App.DATA.meta.calHideDone = false;
+
   console.log('1) IPO form — mainline min lots default');
   $$('#sec-cal button.primary').forEach(function (b) { if (b.textContent === '+ Add IPO') b.click(); });
   eq('IPO form opened', !!$('#iName'), true);

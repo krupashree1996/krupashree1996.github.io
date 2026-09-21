@@ -7,7 +7,7 @@
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 15;
+  var APP_VERSION = 16;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
   /* Google Drive backup. Get a client id at Google Cloud Console
    * (APIs & Services > Credentials > Create OAuth client ID > Web application),
@@ -126,6 +126,16 @@
     if (!q) return true;
     var hay = [ipo.name, ipo.symbol, ipo.registrar, ipo.notes, ipo.category].join(' ').toLowerCase();
     return hay.indexOf(q) >= 0;
+  }
+  function isFinished(ipo) {
+    var st = Calc.ipoStatus(ipo);
+    return st === 'closed' || st === 'listed';
+  }
+  function needsAttention(ipo) {
+    /* finished IPOs that still need user action stay visible in the calendar */
+    if (!myAppsFor(ipo.id).length) return false;
+    if (!hasPrice(ipo)) return true;
+    return myAppsFor(ipo.id).some(function (a) { return Calc.allotmentDue(a, ipo); });
   }
   function searchApp(a, q) {
     q = (q || '').trim().toLowerCase();
@@ -266,10 +276,18 @@
       if (e) { e.focus(); e.setSelectionRange(e.value.length, e.value.length); }
     });
     sb.value = S.calQ;
+    var hd = el('label', 'chip ckchip');
+    var hdCk = document.createElement('input');
+    hdCk.type = 'checkbox';
+    hdCk.checked = DATA.meta.calHideDone !== false;
+    hdCk.title = 'Hide closed & listed IPOs (they live in History); yours that still need a listing price or status check stay visible';
+    hdCk.onchange = function () { DATA.meta.calHideDone = hdCk.checked; persist(); renderCal(); };
+    hd.appendChild(hdCk);
+    hd.appendChild(document.createTextNode(' hide finished'));
     var spacer = el('div', 'spacer');
     var add = el('button', 'primary', '+ Add IPO');
     add.onclick = function () { buildIpoForm(null); };
-    head.appendChild(h2); head.appendChild(hint); head.appendChild(sb); head.appendChild(spacer); head.appendChild(add);
+    head.appendChild(h2); head.appendChild(hint); head.appendChild(sb); head.appendChild(hd); head.appendChild(spacer); head.appendChild(add);
     card.appendChild(head);
 
     if (!DATA.ipos.length) {
@@ -281,9 +299,15 @@
       card.appendChild(p);
     } else {
       var sorted = Calc.sortIpos(DATA.ipos);
-      var shown = sorted.filter(function (ipo) { return searchIpo(ipo, S.calQ); });
+      var hideDone = DATA.meta.calHideDone !== false;
+      var shown = sorted.filter(function (ipo) {
+        if (hideDone && isFinished(ipo) && !needsAttention(ipo)) return false;
+        return searchIpo(ipo, S.calQ);
+      });
       if (!shown.length && S.calQ.trim()) {
         card.appendChild(el('p', 'muted', 'No IPOs match \u2018' + S.calQ.trim() + '\u2019.'));
+      } else if (!shown.length) {
+        card.appendChild(el('p', 'muted', 'Nothing to show \u2014 uncheck \u201chide finished\u201d to see closed & listed IPOs.'));
       }
       shown.forEach(function (ipo) { card.appendChild(ipoRow(ipo)); });
     }

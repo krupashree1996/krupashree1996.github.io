@@ -24,7 +24,9 @@ button.danger{color:var(--bad)}
 .brand{font-weight:700;letter-spacing:.3px}
 .chip{display:inline-block;background:#eef2f6;border:1px solid var(--line);border-radius:999px;
   padding:2px 10px;font-size:12px;color:var(--muted)}
-.chip.ver{font-size:10px;padding:1px 8px;font-variant-numeric:tabular-nums}
+ .chip.ver{font-size:10px;padding:1px 8px;font-variant-numeric:tabular-nums}
+ .chip.ckchip{display:inline-flex;align-items:center;gap:5px;cursor:pointer;color:var(--ink);user-select:none}
+ .chip.ckchip input{margin:0;accent-color:var(--info);cursor:pointer}
  #profilechip{cursor:pointer;color:var(--ink)}
  #settingschip{cursor:pointer;color:var(--ink)}
  .chip.sync{font-variant-numeric:tabular-nums}
