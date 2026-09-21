@@ -1,4 +1,4 @@
-var CACHE = 'ipo-v12';
+var CACHE = 'ipo-v13';
 var PRECACHE = ['index.html', 'style.css', 'calc.js', 'app.js', 'data/bundle.js', 'manifest.json', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', function (e) {

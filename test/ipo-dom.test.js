@@ -133,7 +133,30 @@ whenReady(function run() {
   eq('stored min lots kept on price change (user value wins)', $('#iMin').value, '100');
   $$('#modalBox button.ghost').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
 
-  console.log('6) localStorage persistence round-trip (flush is debounced 250ms)');
+  console.log('6) Search — IPO calendar and Applications tabs');
+  document.querySelector('#tabs [data-tab="cal"]').click();
+  var cs = document.getElementById('calSearch');
+  eq('calendar search box exists', !!cs, true);
+  setValue('#calSearch', 'smco');
+  eq('search "smco" shows 1 row', $$('#sec-cal .ipoRow').length, 1);
+  eq('matched row is SMCO', $$('#sec-cal .ipoRow')[0].getAttribute('data-symbol'), 'SMCO');
+  setValue('#calSearch', 'zzz-nomatch');
+  eq('no-match shows hint', !!document.querySelector('#sec-cal .muted'), true);
+  eq('no rows on no-match', $$('#sec-cal .ipoRow').length, 0);
+  setValue('#calSearch', '');
+  eq('clearing restores 2 rows', $$('#sec-cal .ipoRow').length, 2);
+
+  document.querySelector('#tabs [data-tab="apps"]').click();
+  var as = document.getElementById('appSearch');
+  eq('apps search box exists', !!as, true);
+  setValue('#appSearch', 'MAIN');
+  eq('search "MAIN" shows 1 app row', $$('#sec-apps tbody tr').length, 1);
+  setValue('#appSearch', 'zzz-nomatch');
+  eq('apps no-match shows hint', !!document.querySelector('#sec-apps .muted'), true);
+  setValue('#appSearch', '');
+  eq('clearing restores app rows', $$('#sec-apps tbody tr').length, 1);
+
+  console.log('7) localStorage persistence round-trip (flush is debounced 250ms)');
   setTimeout(function () {
   var saved = JSON.parse(dom.window.localStorage.getItem('ipo.tracker.session'));
   eq('persisted applications', saved.applications.length, 1);

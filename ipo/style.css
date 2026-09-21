@@ -32,6 +32,10 @@ button.danger{color:var(--bad)}
 .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 #panSel.chipsel{font:12px system-ui;color:var(--ink);background:#eef2f6;border:1px solid var(--line);
   border-radius:999px;padding:2px 8px;max-width:260px}
+input.search{font:12px system-ui;color:var(--ink);background:#fff;border:1px solid var(--line);
+  border-radius:999px;padding:4px 12px;width:220px;max-width:60vw}
+input.search:focus{outline:2px solid #b9d9ff;border-color:var(--accent)}
+input.search::-webkit-search-cancel-button{-webkit-appearance:none}
 .chip.pnl.pos{color:var(--ok)}
 .chip.pnl.neg{color:var(--bad)}
 .chip.panchip{background:var(--info-bg);border-color:#b9d9ff;color:var(--info);font-weight:600}
