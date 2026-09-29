@@ -8,7 +8,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 2;
+  var APP_VERSION = 3;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -176,7 +176,7 @@
   function dateInput(id, value) {
     var i = document.createElement('input');
     i.id = id; i.type = 'text'; i.placeholder = 'DD/MM/YYYY'; i.maxLength = 10;
-    i.setAttribute('inputmode', 'numeric');
+    i.setAttribute('inputmode', 'text');
     i.value = Calc.isoToDDMMYYYY(value || '');
     i.classList.add('datein');
     return i;
