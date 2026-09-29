@@ -400,7 +400,7 @@ section('PRIVACY GUARD — investments/ + test/ use synthetic fixtures only');
 (function () {
   var ROOT2 = path.join(__dirname, '..');
   var TREES = ['investments', 'test'];
-  var SYNTHETIC_ACCTS = /^130910DP(00000001|00004001|00004002|00004003|00004004|00004006|00004007|00004009)$|^130910TR00000009$/;
+  var SYNTHETIC_ACCTS = /^130910DP(00000001|00004001|00004002|00004003|00004004|00004006|00004007|00004008|00004009)$|^130910TR00000009$/;
   var PNB_ACCT = /\b130910[A-Z]{2}\d{8}\b/g;
   var bad = [];
   TREES.forEach(function (tree) {

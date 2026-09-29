@@ -88,6 +88,25 @@ whenReady(function run() {
   eq('invested shown', !!$('#sec-fd .fdRow .fdCell b'), true);
   eq('active badge shown', $$('#sec-fd .badge.b-active').length, 1);
 
+  console.log('3b) duplicate FD prefills parameters, fresh account and no payouts');
+  $$('#sec-fd .fdRow button').forEach(function (b) { if (b.textContent === 'duplicate') b.click(); });
+  eq('duplicate form opened', !!$('#fAcc'), true);
+  eq('duplicate title', !!($('#modalBox h2') && $('#modalBox h2').textContent === 'Duplicate FD'), true);
+  eq('account left blank', $('#fAcc').value, '');
+  eq('rate prefilled', $('#fRate').value, '8.1');
+  eq('amount prefilled', $('#fAmt').value, '400000');
+  eq('holder prefilled', $('#fPanId').value, 'pan1');
+  eq('no issue date prefilled', $('#fIssue').value, '');
+  setValue('#fAcc', '130910DP00004008');
+  setValue('#fIssue', '15/04/2026');
+  setValue('#fMaturity', '15/04/2028');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
+  eq('duplicated FD added', App.DATA.fds.length, 2);
+  var dupFd = App.DATA.fds[1];
+  eq('duplicated account is the new one', dupFd.account, '130910DP00004008');
+  eq('duplicated FD has no payouts', dupFd.entries.length, 0);
+  eq('duplicated FD keeps rate', dupFd.rate, 8.1);
+
   console.log('4) import-preview path (synthetic parsed slip)');
   var parsed = {
     account: '130910DP00004003', holder: 'TEST HOLDER', pan: '', amount: 800000, days: 444,
@@ -101,7 +120,7 @@ whenReady(function run() {
   eq('amount prefilled', $('#fAmt').value, '800000');
   // Save it.
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
-  eq('two FDs after import', App.DATA.fds.length, 2);
+  eq('three FDs after import', App.DATA.fds.length, 3);
 
   console.log('4b) complete read auto-imports (no confirm step)');
   var before = App.DATA.fds.length;
@@ -150,7 +169,7 @@ whenReady(function run() {
   console.log('5) summary chips reflect totals');
   App.renderAll();
   var chips = $('#sumChips').textContent;
-  eq('chip shows 3 FDs', chips.indexOf('3 FDs') >= 0, true);
+  eq('chip shows 4 FDs', chips.indexOf('4 FDs') >= 0, true);
 
   console.log('6) interest ledger modal — add payout, compound running');
   // Open the interest modal for the first FD (the one added in step 2).
@@ -244,11 +263,11 @@ whenReady(function run() {
   App.renderAll();
   var today = dom.window.Calc.todayISO();
   var fdOld = App.DATA.fds.filter(function (f) { return f.id === 'fdOld'; })[0];
-  eq('matured FD visible before archive', $$('#sec-fd .fdRow').length, 4);
+  eq('matured FD visible before archive', $$('#sec-fd .fdRow').length, 5);
   eq('is matured', dom.window.Calc.fdStatus(fdOld, today), 'matured');
   eq('not yet past 1.5-FY cutoff', dom.window.Calc.fdAutoRemove(fdOld, today), false);
   App.archiveMatured(today);
-  eq('matured FD moved to history', App.DATA.fds.length, 3);
+  eq('matured FD moved to history', App.DATA.fds.length, 4);
   eq('archived row created (full record)', App.DATA.archived.length, 1);
   eq('archived keeps entries', App.DATA.archived[0].entries.length, 1);
   eq('archived has xirr', typeof App.DATA.archived[0].xirr, 'number');
@@ -256,6 +275,8 @@ whenReady(function run() {
   eq('history card shown', !!$('#sec-fd .archTable'), true);
   eq('history row shows account', $('#sec-fd .archTable').textContent.indexOf('130910DP00004009') >= 0, true);
   eq('history row shows xirr %', $('#sec-fd .archTable').textContent.indexOf('% p.a.') >= 0, true);
+  eq('history row has duplicate button', $$('#sec-fd .archTable button').filter(function (b) { return b.textContent === 'duplicate'; }).length >= 1, true);
+  eq('history TDS cell carries FY tooltip', (function () { var tds = $('#sec-fd .archTable tr:nth-child(2) td:nth-child(6)'); return tds && tds.title && tds.title.indexOf('financial year') >= 0; })(), true);
   eq('payouts toggle present', !!$('#sec-fd .archTable button.mini'), true);
   // expanding shows the payout ledger (the "payouts" button, not the new "interest" one)
   $$('#sec-fd .archTable button.mini').forEach(function (b) { if (b.textContent === 'payouts') b.click(); });

@@ -8,7 +8,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 9;
+  var APP_VERSION = 10;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -359,11 +359,17 @@
     }
   }
 
-  /* ---- FD add/edit form ---- */
-  function buildFdForm(fd) {
+  /* ---- FD add/edit form ----
+   * fd = record to edit (null for a new FD); dup = record to prefill from
+   * (new FD with the same parameters but a fresh account and no payouts). */
+  function buildFdForm(fd, dup) {
     var edit = !!fd;
-    var o = fd || {};
-    var f = formShell(edit ? 'Edit FD' : 'Add FD');
+    var o = fd || (dup ? {
+      panId: dup.panId, pan: dup.pan, amount: dup.amount, rate: dup.rate,
+      days: dup.days, tdsRate: dup.tdsRate, interestMode: dup.interestMode,
+      repayAc: dup.repayAc, holder: dup.holder, entries: []
+    } : {});
+    var f = formShell(edit ? 'Edit FD' : (dup ? 'Duplicate FD' : 'Add FD'));
     var actions = f.actions;
     var ff = fdFields(o);
     f.form.appendChild(ff.form);
@@ -465,9 +471,12 @@
     intb.onclick = function () { buildInterestForm(fd); };
     var ed = el('button', 'mini', 'edit');
     ed.onclick = function () { buildFdForm(fd); };
+    var dup = el('button', 'mini', 'duplicate');
+    dup.title = 'New FD with the same holder, rate, TDS and repayment details — set a new account number and dates';
+    dup.onclick = function () { buildFdForm(null, fd); };
     var del = el('button', 'mini danger', 'del');
     del.onclick = function () { deleteFd(fd); };
-    acts.appendChild(intb); acts.appendChild(ed); acts.appendChild(del);
+    acts.appendChild(intb); acts.appendChild(ed); acts.appendChild(dup); acts.appendChild(del);
 
     row.appendChild(main);
     row.appendChild(badges);
@@ -691,9 +700,20 @@
       tr.appendChild(el('td', '', Calc.inr(a.amount)));
       tr.appendChild(el('td', '', a.rate != null ? a.rate + '%' : '—'));
       tr.appendChild(el('td', '', Calc.fmtDate(a.issueDate) + ' → ' + Calc.fmtDate(a.maturityDate)));
-      tr.appendChild(el('td', 'num', sum.count ? Calc.inr(sum.net) : '—'));
-      tr.appendChild(el('td', 'num', sum.count ? Calc.inr(sum.tax) : '—'));
-      tr.appendChild(el('td', 'num', a.maturityValue > 0 ? Calc.inr(a.maturityValue) : '—'));
+       var fyA = sum.count ? Calc.fdFySummary([a]) : null;
+       var fyTip = fyA
+         ? '\n' + fyA.cur.label + ': ' + Calc.inr(fyA.cur.interest) + ' int · TDS ' + Calc.inr(fyA.cur.tax) +
+           '\n' + fyA.prev.label + ': ' + Calc.inr(fyA.prev.interest) + ' int · TDS ' + Calc.inr(fyA.prev.tax)
+         : '';
+       var netCell = el('td', 'num', sum.count ? Calc.inr(sum.net) : '—');
+       var taxCell = el('td', 'num', sum.count ? Calc.inr(sum.tax) : '—');
+       if (sum.count) {
+         netCell.title = 'Net interest by financial year (recorded payouts, 1 Apr – 31 Mar)' + fyTip;
+         taxCell.title = 'TDS by financial year (recorded payouts, 1 Apr – 31 Mar)' + fyTip;
+       }
+       tr.appendChild(netCell);
+       tr.appendChild(taxCell);
+       tr.appendChild(el('td', 'num', a.maturityValue > 0 ? Calc.inr(a.maturityValue) : '—'));
       var x = el('td', 'num', a.xirr != null ? (a.xirr * 100).toFixed(2) + '% p.a.' : '—');
       if (sum.count) x.title = 'XIRR (net of TDS) from initial amount, final value and ' + sum.count + ' recorded payout' + (sum.count > 1 ? 's' : '');
       tr.appendChild(x);
@@ -707,17 +727,20 @@
         itb.onclick = function () { buildInterestForm(a); };
         act.appendChild(itb);
       }
-      var det = el('button', 'mini', 'payouts');
-      var rm = el('button', 'mini danger', '×');
-      rm.onclick = function () {
-        confirmDel('Delete this archived record (and its payout history)?', function () {
-          DATA.archived = (DATA.archived || []).filter(function (o) {
-            return !(o.account === a.account && o.maturityDate === a.maturityDate && o.archivedAt === a.archivedAt);
-          });
-          persist(); renderAll();
-        });
-      };
-      act.appendChild(det); act.appendChild(rm);
+       var det = el('button', 'mini', 'payouts');
+       var dupA = el('button', 'mini', 'duplicate');
+       dupA.title = 'New FD with the same holder, rate, TDS and repayment details — set a new account number and dates';
+       dupA.onclick = function () { buildFdForm(null, a); };
+       var rm = el('button', 'mini danger', '×');
+       rm.onclick = function () {
+         confirmDel('Delete this archived record (and its payout history)?', function () {
+           DATA.archived = (DATA.archived || []).filter(function (o) {
+             return !(o.account === a.account && o.maturityDate === a.maturityDate && o.archivedAt === a.archivedAt);
+           });
+           persist(); renderAll();
+         });
+       };
+       act.appendChild(det); act.appendChild(dupA); act.appendChild(rm);
       tr.appendChild(act);
       tbl.appendChild(tr);
       // full record detail row (collapsed): payout ledger + all stored fields
