@@ -253,14 +253,58 @@ whenReady(function run() {
   eq('history row shows account', $('#sec-fd .archTable').textContent.indexOf('130910DP00004005') >= 0, true);
   eq('history row shows xirr %', $('#sec-fd .archTable').textContent.indexOf('% p.a.') >= 0, true);
   eq('payouts toggle present', !!$('#sec-fd .archTable button.mini'), true);
-  // expanding shows the payout ledger
-  $$('#sec-fd .archTable button.mini')[0].click();
+  // expanding shows the payout ledger (the "payouts" button, not the new "interest" one)
+  $$('#sec-fd .archTable button.mini').forEach(function (b) { if (b.textContent === 'payouts') b.click(); });
   eq('detail row shows payout date', !!$('#sec-fd .archDetail:not([hidden])'), true);
   // 1.5-FY removal: FY 2026-27 maturity (01/06/2026) is removed from 1 Oct 2028
   eq('kept at 30 Sep 2028', dom.window.Calc.fdAutoRemove(App.DATA.archived[0], '2028-09-30'), false);
   eq('removed at 1 Oct 2028', dom.window.Calc.fdAutoRemove(App.DATA.archived[0], '2028-10-01'), true);
   eq('xirr chart rendered', !!$('#sec-fd .xirrSvg'), true);
   eq('chart has a line path', !!$('#sec-fd .xirrSvg path.line'), true);
+
+  console.log('8) freshly-matured FD is still editable (final payout on maturity day)');
+  var arch = App.DATA.archived[0];
+  eq('archived record flagged as matured-on-load', !!arch.isMatured, true);
+  eq('matured row has an interest button', $$('#sec-fd .archTable button.mini').some(function (b) { return b.textContent === 'interest'; }), true);
+  // The final (maturity-day) payout can be recorded from the history table.
+  $$('#sec-fd .archTable button.mini').forEach(function (b) { if (b.textContent === 'interest') b.click(); });
+  eq('interest modal opened for matured FD', !!$('#interestModal'), true);
+  setValue('#imDate', '01/06/2026');
+  setValue('#imInt', '3060');
+  setValue('#imTax', '306');
+  $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
+  eq('final payout stored on the archived record', arch.entries.length, 2);
+  eq('final payout is the maturity-day one', arch.entries.some(function (e) { return e.date === '2026-06-01' && e.int === 3060; }), true);
+  eq('archived XIRR refreshed', typeof arch.xirr, 'number');
+  eq('matured FD row still shows the payout total', $('#sec-fd .archTable').textContent.indexOf('3,060') >= 0, true);
+  // Older archived records (matured long before they were archived) stay read-only.
+  App.DATA.archived.push({
+    id: 'archOld', account: '130910DP00004006', panId: 'pan1',
+    amount: 200000, rate: 7, issueDate: '2024-06-01', maturityDate: '2025-06-01',
+    maturityValue: 214000, xirr: 0.07, archivedAt: '2025-07-15',
+    entries: [{ date: '2025-06-01', int: 14000, tax: 0 }]
+  });
+  // A record archived in a PREVIOUS version on its own maturity day (no isMatured
+  // flag, archivedAt === maturityDate) must still be editable — that is exactly
+  // today's situation for the user's FD.
+  App.DATA.archived.push({
+    id: 'archToday', account: '130910DP00004007', panId: 'pan1',
+    amount: 300000, rate: 7.5, issueDate: '2025-09-01', maturityDate: today,
+    maturityValue: 310000, xirr: 0.075, archivedAt: today, entries: []
+  });
+  App.renderAll();
+  eq('unflagged archive row has no interest button (read-only)',
+    (function () {
+      var rows = $$('#sec-fd .archTable tr');
+      var oldRow = rows.filter(function (tr) { return tr.textContent.indexOf('130910DP00004006') >= 0; })[0];
+      return oldRow && !Array.from(oldRow.querySelectorAll('button.mini')).some(function (b) { return b.textContent === 'interest'; });
+    })(), true);
+  eq('flagged row still has its interest button',
+    (function () {
+      var rows = $$('#sec-fd .archTable tr');
+      var newRow = rows.filter(function (tr) { return tr.textContent.indexOf('130910DP00004005') >= 0; })[0];
+      return newRow && Array.from(newRow.querySelectorAll('button.mini')).some(function (b) { return b.textContent === 'interest'; });
+    })(), true);
 
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exit(1);

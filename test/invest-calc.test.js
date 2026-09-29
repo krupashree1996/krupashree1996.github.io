@@ -117,6 +117,25 @@ console.log('xirr / fdXirr');
   eq('payout fdXirr returns a number', typeof y, 'number');
   eq('payout fdXirr differs from compound', Math.abs(x - y) > 1e-6, true);
   eq('no amount -> null', Calc.fdXirr({ maturityValue: 10 }), null);
+
+  // Regression: payout bonds return only the principal at maturity (interest was
+  // paid out in the entries). With no stated maturity value, the fallback must be
+  // the principal itself, NOT P + simple interest (that double-counts interest
+  // and inflated XIRR to ~14.6% on a 10L @8.1% bond).
+  var fd3 = {
+    amount: 1000000, rate: 8.2, issueDate: '2026-02-19', maturityDate: '2026-05-19',
+    interestMode: 'payout',
+    entries: [{ date: '2026-03-31', int: 9211, tax: 921 }]
+  };
+  var z = Calc.fdXirr(fd3);
+  eq('payout no-mv xirr is a number', typeof z, 'number');
+  close('payout no-mv xirr sane (89d, one 8290 payout)', z * 100, 3.46, 0.05);
+  // Same bond WITH a stated maturity value = principal: identical flows.
+  var fd4 = Object.assign({}, fd3, { maturityValue: 1000000 });
+  close('payout with mv=principal matches', Calc.fdXirr(fd4) * 100, z * 100, 1e-6);
+  // Compound FD: fallback stays P + simple interest (no payouts to double-count).
+  var fd5 = { amount: 400000, rate: 8.1, issueDate: '2025-01-01', maturityDate: '2025-04-01', interestMode: 'compound' };
+  close('compound no-mv xirr = simple-annualized ~8.3%', Calc.fdXirr(fd5) * 100, 8.31, 0.05);
 })();
 
 console.log('auto-remove (1.5 FYs, 1-Oct cutoff)');

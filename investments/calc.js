@@ -193,7 +193,11 @@ var Calc = (function () {
       var net = entryNet(e);
       if (mode === 'payout' && e.date && net > 0) flows.push({ date: e.date, amt: net });
     });
-    var final = fd.maturityValue > 0 ? fd.maturityValue : fdExpectedTotal(fd);
+    // Payout bonds return only the principal at maturity (interest was paid out
+    // in the entries), so the no-stated-value fallback must NOT add simple
+    // interest on top — that double-counts the interest already in the flows.
+    var final = fd.maturityValue > 0 ? fd.maturityValue
+      : (mode === 'payout' ? (fd.amount || 0) : fdExpectedTotal(fd));
     if (final > 0 && fd.maturityDate) flows.push({ date: fd.maturityDate, amt: final });
     if (flows.length < 2) return null;
     return xirr(flows);

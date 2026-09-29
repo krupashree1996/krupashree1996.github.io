@@ -8,7 +8,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 1;
+  var APP_VERSION = 2;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -101,6 +101,7 @@
         a.entries = (fd.entries || []).map(function (e) { return Object.assign({}, e); });
         a.xirr = Calc.fdXirr(fd);
         a.archivedAt = today;
+        a.isMatured = true; // moved on/after its maturity date: still editable (final payout)
         DATA.archived.push(a);
         moved++;
       } else keep.push(fd);
@@ -409,7 +410,10 @@
 
   /* ---- Interest ledger (per-payout rows) ---- */
   function fdById(id) { for (var i = 0; i < DATA.fds.length; i++) if (DATA.fds[i].id === id) return DATA.fds[i]; return null; }
+  /* Works for an active FD or a freshly-archived matured record, so the final
+   * (maturity-day) payout can still be recorded after the FD moved to history. */
   function buildInterestForm(fd) {
+    if (fd.archivedAt) fd.xirr = Calc.fdXirr(fd); // refresh the archived XIRR after edits
     var f = formShell('Interest \u2014 ' + (fd.account || 'No account'));
     f.box.id = 'interestModal';
     var mode = Calc.normInterestMode(fd);
@@ -599,6 +603,15 @@
       if (sum.count) x.title = 'XIRR from initial amount, final value and ' + sum.count + ' recorded payout' + (sum.count > 1 ? 's' : '');
       tr.appendChild(x);
       var act = el('td', '');
+      // Editable if it matured on the day it was archived — either the new flag,
+      // or an already-archived record where archivedAt === maturityDate (covers
+      // FDs that matured today under the previous version; no migration needed).
+      if (a.isMatured || (a.archivedAt && a.maturityDate && a.archivedAt === a.maturityDate)) {
+        var itb = el('button', 'mini', 'interest');
+        itb.title = 'Record the final (maturity-day) interest payout';
+        itb.onclick = function () { buildInterestForm(a); };
+        act.appendChild(itb);
+      }
       var det = el('button', 'mini', 'payouts');
       var rm = el('button', 'mini danger', '×');
       rm.onclick = function () {
