@@ -13,9 +13,9 @@
 - If real data is ever found in git history: scrub the working tree, `git filter-repo`, force-push, then verify with a full-blob scan (`git rev-list --all --objects` + grep).
 
 ## Current state (last update: 2026-09-29)
-- App: investments v6 (`APP_VERSION = 6` in `investments/app.js`), SW cache `investments-v14` (`investments/sw.js`).
-- Latest commit: `1e30f03` (extended PRIVACY GUARD).
-- FD summary tiles (priority order): FY TDS, FY interest (recorded payouts only, Indian FY 1 Apr–31 Mar), Invested, Close now (principal + credited + simple accrual to today, ~1% break penalty ignored — noted in tooltip), Expected total, prev-FY interest + TDS.
+- App: investments v7 (`APP_VERSION = 7` in `investments/app.js`), SW cache `investments-v15` (`investments/sw.js`).
+- Latest commit: `bcbbacb` (session_handover.md) + this reordering commit.
+- FD summary tiles (order): Invested, Close now (principal + credited + simple accrual to today, ~1% break penalty ignored — noted in tooltip), Expected total, FY interest, FY TDS, prev-FY interest, prev-FY TDS (FY = 1 Apr–31 Mar, recorded payouts only).
 - XIRR is net-of-TDS; archived records are recomputed on load.
 - All buttons default to `type="button"` (the `el()` helper in `app.js` + explicit attrs in `index.html` + regression test in `test/invest-dom.test.js`).
 - `npm test` = 8 suites, all passing.

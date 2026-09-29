@@ -1,4 +1,4 @@
-var CACHE = 'investments-v14';
+var CACHE = 'investments-v15';
 var PRECACHE = [
   'index.html', 'style.css', 'calc.js', 'fd.js', 'app.js',
   'data/bundle.js', 'manifest.json',
