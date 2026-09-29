@@ -392,6 +392,34 @@ function wVerify(d, path) {
 eq('no forbidden personal tokens in app files', leaked.length, 0);
 ok('bundle has no password key', !bundleData || !('password' in bundleData.DATA));
 
+section('PRIVACY GUARD — investments/ + test/ use synthetic fixtures only');
+/* Real personal values are never listed here (that would leak them into the
+ * public repo). Instead: any PNB-format account (130910<2 letters><8 digits>)
+ * appearing in these trees must be one of the known synthetic test accounts.
+ * A real account would fail the allowlist and trip this check. */
+(function () {
+  var ROOT2 = path.join(__dirname, '..');
+  var TREES = ['investments', 'test'];
+  var SYNTHETIC_ACCTS = /^130910DP(00000001|00004001|00004002|00004003|00004004|00004006|00004007|00004009)$|^130910TR00000009$/;
+  var PNB_ACCT = /\b130910[A-Z]{2}\d{8}\b/g;
+  var bad = [];
+  TREES.forEach(function (tree) {
+    (function collect(dir) {
+      fs.readdirSync(dir).forEach(function (f) {
+        var full = path.join(dir, f);
+        if (f === 'vendor') return; /* minified third-party libs are out of scope */
+        if (fs.statSync(full).isDirectory()) { collect(full); return; }
+        if (!/\.(js|html|css|json)$/.test(f)) return;
+        var content = fs.readFileSync(full, 'utf8');
+        (content.match(PNB_ACCT) || []).forEach(function (a) {
+          if (!SYNTHETIC_ACCTS.test(a)) bad.push(full + ' account ' + a);
+        });
+      });
+    })(path.join(ROOT2, tree));
+  });
+  eq('no real-looking PNB accounts in investments or tests', bad.length, 0);
+})();
+
 /* ------------------------------------------------------------------ */
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);
