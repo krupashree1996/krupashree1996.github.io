@@ -8,12 +8,13 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 5;
+  var APP_VERSION = 6;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
     if (cls) e.className = cls;
     if (text != null) e.textContent = text;
+    if (e.tagName === 'BUTTON') e.type = 'button'; // never an implicit form submit (navigates to ?)
     return e;
   }
   function toast(msg, kind) {
@@ -579,10 +580,12 @@
       tr.appendChild(calc);
       if (!readOnly) {
         var act = el('td', '');
-        var ed = el('button', 'mini', '\u270e\uFE0F');
+        var ed = el('button', 'mini', '\u270E\uFE0F');
+        ed.type = 'button'; // inside the form — without this it submits (navigates to ?)
         ed.title = 'Edit this payout';
         ed.onclick = function () { if (onEdit) onEdit(fd.entries[r.idx]); };
         var rm = el('button', 'mini danger', '\u00d7');
+        rm.type = 'button';
         rm.title = 'Delete this payout';
         rm.onclick = function () {
           confirmDel('Delete the payout on ' + Calc.fmtDate(r.date) + '?', function () {
@@ -618,23 +621,22 @@
 
     var s = Calc.fdSummary(filterFds(DATA.fds));
     if (s.count) {
-      var actual = 0, actualTax = 0, tracked = 0;
+      var fy = Calc.fdFySummary(filterFds(DATA.fds));
+      var closeNow = 0, closeNowCount = 0;
       filterFds(DATA.fds).forEach(function (fd) {
-        var es = Calc.fdEntrySummary(fd);
-        if (es.count) { tracked++; actual += es.net; actualTax += es.tax; }
+        var v = Calc.fdCloseNowValue(fd);
+        if (v != null) { closeNow += v; closeNowCount++; }
       });
       var kv = el('div', 'kv inline');
+      kv.appendChild(kvin(fy.cur.label + ' TDS', fy.cur.count ? Calc.inr(fy.cur.tax) : '₹0', fy.cur.count ? '' : 'muted'));
+      kv.appendChild(kvin(fy.cur.label + ' interest', fy.cur.count ? Calc.inr(fy.cur.interest) : '₹0', fy.cur.count ? 'pos' : 'muted'));
       kv.appendChild(kvin('Invested', Calc.inr(s.invested)));
+      kv.appendChild(kvin('Close now', closeNowCount ? Calc.inr(closeNow) : '—', 'pos'));
       kv.appendChild(kvin('Expected total', Calc.inr(s.expected)));
-      kv.appendChild(kvin('Interest (est.)', Calc.inr(s.interest), s.interest >= 0 ? 'pos' : ''));
-      if (tracked) {
-        kv.appendChild(kvin('Interest (received)', Calc.inr(actual), 'pos'));
-        kv.appendChild(kvin('TDS (received)', Calc.inr(actualTax)));
-      } else {
-        kv.appendChild(kvin('Est. TDS', Calc.inr(s.tax)));
-        kv.appendChild(kvin('Net after TDS', Calc.inr(s.net)));
-      }
+      kv.appendChild(kvin(fy.prev.label + ' interest', fy.prev.count ? Calc.inr(fy.prev.interest) : '₹0', fy.prev.count ? 'pos' : 'muted'));
+      kv.appendChild(kvin(fy.prev.label + ' TDS', fy.prev.count ? Calc.inr(fy.prev.tax) : '₹0', fy.prev.count ? '' : 'muted'));
       card.appendChild(kv);
+      card.appendChild(el('p', 'hint', 'FY = 1 Apr – 31 Mar, from recorded payouts only. Close now = principal + credited interest + simple interest accrued to today at the current rate (ignores the bank\u2019s break penalty of ~1% on accrued interest).'));
     }
 
     if (!filterFds(DATA.fds).length) {

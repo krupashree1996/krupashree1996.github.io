@@ -278,6 +278,59 @@ var Calc = (function () {
       return (a.account || '').localeCompare(b.account || '');
     });
   }
+  /* Worth if this FD is closed TODAY: principal + credited net (compound) plus
+   * simple interest accrued since the last credit date at the current rate.
+   * Ignores the bank's break penalty (~1% on accrued interest). Null for FDs
+   * that are not active. */
+  function fdCloseNowValue(fd, today) {
+    today = today || todayISO();
+    if (!fd || !fd.maturityDate || today >= fd.maturityDate) return null;
+    var mode = normInterestMode(fd);
+    var base = fd.amount || 0;
+    var last = fd.issueDate || '';
+    (fd.entries || []).forEach(function (e) {
+      if (mode === 'compound') base += entryNet(e);
+      if (e.date > last) last = e.date;
+    });
+    var days = daysBetweenISO(last, today);
+    if (days == null) days = 0;
+    if (days < 0) days = 0;
+    var acc = Math.round(base * ((fd.rate || 0) / 100) * (days / 365));
+    return base + acc;
+  }
+  /* Indian FY (1 Apr – 31 Mar) containing an ISO date, as its starting year. */
+  function fyOfDate(iso) {
+    var p = String(iso || '').split('-');
+    if (p.length < 2) return null;
+    var y = +p[0], m = +p[1];
+    if (!y || !m) return null;
+    return m >= 4 ? y : y - 1;
+  }
+  function fyYearOf(isoDate, today) {
+    var d = parseISO(isoDate || todayISO());
+    return d.getFullYear() - (d.getMonth() + 1 < 4 ? 1 : 0);
+  }
+  function fyLabel(startYear) {
+    return 'FY ' + String(startYear).slice(2) + '\u2013' + String(startYear + 1).slice(2);
+  }
+  /* Recorded (entered, not estimated) payout totals per FY for a list of FDs.
+   * Covers the current and the previous FY only. */
+  function fdFySummary(list, today) {
+    today = today || todayISO();
+    var cy = fyYearOf(today, today), py = cy - 1;
+    function blank(startYear) { return { year: startYear, label: fyLabel(startYear), count: 0, interest: 0, tax: 0 }; }
+    var out = { cur: blank(cy), prev: blank(py) };
+    (list || []).forEach(function (fd) {
+      (fd.entries || []).forEach(function (e) {
+        if (!(e.int > 0) || !e.date) return;
+        var fy = fyOfDate(e.date);
+        if (fy == null) return;
+        var t = fy === cy ? out.cur : (fy === py ? out.prev : null);
+        if (t) { t.count++; t.interest += e.int || 0; t.tax += e.tax || 0; }
+      });
+    });
+    return out;
+  }
   function fdSummary(list, today) {
     var s = { count: 0, invested: 0, expected: 0, net: 0, tax: 0, matured: 0, active: 0, maturedValue: 0 };
     (list || []).forEach(function (fd) {
@@ -372,6 +425,7 @@ var Calc = (function () {
     normInterestMode: normInterestMode, entryNet: entryNet, fdEntries: fdEntries, fdEntrySummary: fdEntrySummary,
     fdStatus: fdStatus, fdAutoRemove: fdAutoRemove, fdStatusRank: fdStatusRank,
     xirr: xirr, fdXirr: fdXirr, sortFds: sortFds, fdSummary: fdSummary,
+    fdCloseNowValue: fdCloseNowValue, fyOfDate: fyOfDate, fyYearOf: fyYearOf, fyLabel: fyLabel, fdFySummary: fdFySummary,
     validFd: validFd, fdDateCheck: fdDateCheck, fdFileMaturity: fdFileMaturity,
     validPan: validPan, normPan: normPan, holderLabel: holderLabel,
     parseDDMMYYYY: parseDDMMYYYY, isoToDDMMYYYY: isoToDDMMYYYY

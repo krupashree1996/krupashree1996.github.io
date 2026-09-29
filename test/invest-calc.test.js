@@ -175,7 +175,7 @@ eq('iso empty -> empty', Calc.isoToDDMMYYYY(''), '');
 
 console.log('interest ledger — compound (credited in)');
 (function () {
-  // Mirrors the 130910DP00004005 slip in 202608_consolidated.xlsx (8.1%, issue 2025-08-27).
+  // Synthetic compound FD: 8.1% p.a., quarterly credits, issue 27 Aug 2025.
   var fd = {
     amount: 400000, rate: 8.1, issueDate: '2025-08-27',
     entries: [
@@ -271,6 +271,67 @@ console.log('fdEntries — reverse-ordered input is date-sorted');
   eq('second day count from first payout', rows[1].days, 91);
   eq('running worth after 1st', rows[0].after, 800628);
   eq('running worth after 2nd', rows[1].after, 814448);
+})();
+
+console.log('fdCloseNowValue — break-today worth (principal + credited + accrued)');
+(function () {
+  // Synthetic: 4L @ 8.1%, quarterly compound credits, active FD.
+  var fd = {
+    amount: 400000, rate: 8.1, issueDate: '2025-08-27', maturityDate: '2027-08-27',
+    entries: [
+      { date: '2025-11-27', int: 2720, tax: 272 },
+      { date: '2026-02-27', int: 2766, tax: 277 },
+      { date: '2026-05-27', int: 2812, tax: 281 }
+    ]
+  };
+  var today = '2026-09-29';
+  // base = 400000 + (2720-272) + (2766-277) + (2812-281) = 407468
+  // days 2026-05-27 -> 2026-09-29 = 125
+  // accrued = 407468 * 0.081 * 125/365 ≈ 11303
+  close('close-now = base + accrued', Calc.fdCloseNowValue(fd, today), 407468 + 11303, 1);
+  eq('matured FD -> null', Calc.fdCloseNowValue({ amount: 100, rate: 6, issueDate: '2025-01-01', maturityDate: '2025-07-01' }, '2026-09-29'), null);
+  eq('no entries -> principal + accrual from issue',
+    Math.round(Calc.fdCloseNowValue({ amount: 1000000, rate: 8.1, issueDate: '2026-04-01', maturityDate: '2027-04-01' }, '2026-09-29') - 1000000),
+    Math.round(1000000 * 0.081 * 181 / 365));
+  // Payout mode: credits don't grow the base.
+  var pay = {
+    amount: 1000000, rate: 8.1, interestMode: 'payout', issueDate: '2025-08-27', maturityDate: '2027-08-27',
+    entries: [{ date: '2026-02-27', int: 27000, tax: 2700 }]
+  };
+  close('payout: base stays principal', Calc.fdCloseNowValue(pay, '2026-09-29'),
+    1000000 + Math.round(1000000 * 0.081 * 214 / 365), 1);
+})();
+
+console.log('fdFySummary — recorded payout totals per Indian FY');
+(function () {
+  var fdA = {
+    amount: 400000, rate: 8.1, issueDate: '2025-08-27', maturityDate: '2027-08-27',
+    entries: [
+      { date: '2025-09-28', int: 3060, tax: 306 },  // FY 2025-26
+      { date: '2026-03-29', int: 8305, tax: 830 },   // FY 2025-26
+      { date: '2026-06-28', int: 8232, tax: 823 }    // FY 2026-27
+    ]
+  };
+  var fy = Calc.fdFySummary([fdA], '2026-09-29'); // current FY = 2026-27
+  eq('cur label', fy.cur.label, 'FY 26–27');
+  eq('prev label', fy.prev.label, 'FY 25–26');
+  eq('cur count', fy.cur.count, 1);
+  eq('cur interest', fy.cur.interest, 8232);
+  eq('cur tax', fy.cur.tax, 823);
+  eq('prev count', fy.prev.count, 2);
+  eq('prev interest', fy.prev.interest, 3060 + 8305);
+  eq('prev tax', fy.prev.tax, 306 + 830);
+  // No entries -> zeroed tiles.
+  var empty = Calc.fdFySummary([{ amount: 100, rate: 6, issueDate: '2026-05-01', maturityDate: '2027-05-01' }], '2026-09-29');
+  eq('empty cur', empty.cur.count, 0);
+  eq('empty prev', empty.prev.count, 0);
+  // FY boundary: 31 Mar is the last day of the previous FY.
+  var edge = Calc.fdFySummary([
+    { amount: 100, rate: 6, issueDate: '2026-01-01', maturityDate: '2027-01-01',
+      entries: [{ date: '2026-03-31', int: 500, tax: 50 }] }
+  ], '2026-09-29');
+  eq('31 Mar counted in prev FY', edge.prev.interest, 500);
+  eq('boundary FY label', edge.prev.year, 2025);
 })();
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

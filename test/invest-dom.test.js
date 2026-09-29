@@ -92,7 +92,7 @@ whenReady(function run() {
   var parsed = {
     account: '130910DP00004003', holder: 'TEST HOLDER', pan: '', amount: 800000, days: 444,
     rate: 8.1, issueDate: '2026-03-24', maturityDate: '2027-06-11', maturityValue: 881991,
-    repayAc: '05582191003046', format: 'epos', complete: true
+    repayAc: '00000000000001', format: 'epos', complete: true
   };
   App.importPreview(parsed, 'test.pdf');
   eq('import preview opened', !!$('#importModal'), true);
@@ -108,7 +108,7 @@ whenReady(function run() {
   App.autoImport({
     account: '130910DP00004004', holder: 'TEST HOLDER', pan: '', amount: 500000,
     rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 600000,
-    repayAc: '05582191003046', format: 'epos', complete: true
+    repayAc: '00000000000001', format: 'epos', complete: true
   }, 'Y_PNB_FD_20260701_4004_600000.pdf');
   eq('no modal opened for complete read', !!document.getElementById('importModal'), false);
   eq('FD added directly', App.DATA.fds.length, before + 1);
@@ -121,14 +121,14 @@ whenReady(function run() {
   App.autoImport({
     account: '130910DP00004004', holder: 'TEST HOLDER', pan: '', amount: 500000,
     rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 600000,
-    repayAc: '05582191003046', format: 'epos', complete: true
+    repayAc: '00000000000001', format: 'epos', complete: true
   }, 'Y_PNB_FD_20260701_4004_600000.pdf');
   eq('no second FD created', App.DATA.fds.length, beforeDup);
   // Same slip via the preview path is also rejected and shows the error.
   App.importPreview({
     account: '130910DP00004004', holder: '', pan: '', amount: 500000,
     rate: 8.1, issueDate: '2026-07-01', maturityDate: '2027-08-01', maturityValue: 600000,
-    repayAc: '05582191003046', format: 'epos', complete: true
+    repayAc: '00000000000001', format: 'epos', complete: true
   }, 'Y_PNB_FD_20260701_4004_600000.pdf');
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
   eq('preview save blocked too', App.DATA.fds.length, beforeDup);
@@ -141,7 +141,7 @@ whenReady(function run() {
   App.importPreview({
     account: '130910DP00004002', holder: 'TEST HOLDER', pan: '', amount: 400000,
     rate: 8, issueDate: '2025-12-05', maturityDate: '2027-12-30', maturityValue: 500000,
-    days: 390, repayAc: '05582191003046', format: 'epos', complete: true
+    days: 390, repayAc: '00000000000001', format: 'epos', complete: true
   }, 'Y_PNB_FD_20261230_4002_500000.pdf');
   eq('date/tenure warning shown', !!$('#importModal .dateWarn'), true);
   eq('warning mentions the year error', $('#importModal .dateWarn').textContent.indexOf('30 Dec 2027') >= 0, true);
@@ -198,6 +198,9 @@ whenReady(function run() {
   // so row 0 is the 28/06/8108 entry.
   var editBtns = $$('#interestModal .intTable button[title="Edit this payout"]');
   eq('pencil buttons present (one per row)', editBtns.length, 3);
+  // No button inside the modal may be an implicit submit (it would navigate to '?').
+  eq('no implicit submit buttons in the modal',
+    $$('#interestModal form button').every(function (b) { return b.type === 'button'; }), true);
   editBtns[0].click();
   eq('save button switched to "Save changes"', $$('#interestModal .actions button').some(function (b) { return b.textContent === 'Save changes'; }), true);
   eq('date prefilled', $('#imDate').value, '28/06/2026');
@@ -228,11 +231,12 @@ whenReady(function run() {
   // Row shows interest (paid) + worth now cells.
   App.renderAll();
   eq('row shows interest (paid) cell', $$('#sec-fd .fdCell').some(function (c) { return c.querySelector('small').textContent === 'Interest (paid)'; }), true);
-  eq('summary shows interest received', $('#sec-fd .kv').textContent.indexOf('Interest (received)') >= 0, true);
+  eq('summary shows FY interest tile', $('#sec-fd .kv').textContent.indexOf('interest') >= 0, true);
+  eq('summary shows close now tile', $('#sec-fd .kv').textContent.indexOf('Close now') >= 0, true);
 
   console.log('7) matured -> history (full record + XIRR); 1.5-FY removal');
   App.DATA.fds.push({
-    id: 'fdOld', account: '130910DP00004005', panId: 'pan1',
+    id: 'fdOld', account: '130910DP00004009', panId: 'pan1',
     amount: 400000, rate: 8.1, issueDate: '2025-06-01', maturityDate: '2026-06-01',
     maturityValue: 440000, days: 365, interestMode: 'compound',
     entries: [{ date: '2025-09-28', int: 3060, tax: 306 }]
@@ -250,7 +254,7 @@ whenReady(function run() {
   eq('archived has xirr', typeof App.DATA.archived[0].xirr, 'number');
   App.renderAll();
   eq('history card shown', !!$('#sec-fd .archTable'), true);
-  eq('history row shows account', $('#sec-fd .archTable').textContent.indexOf('130910DP00004005') >= 0, true);
+  eq('history row shows account', $('#sec-fd .archTable').textContent.indexOf('130910DP00004009') >= 0, true);
   eq('history row shows xirr %', $('#sec-fd .archTable').textContent.indexOf('% p.a.') >= 0, true);
   eq('payouts toggle present', !!$('#sec-fd .archTable button.mini'), true);
   // expanding shows the payout ledger (the "payouts" button, not the new "interest" one)
@@ -302,7 +306,7 @@ whenReady(function run() {
   eq('flagged row still has its interest button',
     (function () {
       var rows = $$('#sec-fd .archTable tr');
-      var newRow = rows.filter(function (tr) { return tr.textContent.indexOf('130910DP00004005') >= 0; })[0];
+      var newRow = rows.filter(function (tr) { return tr.textContent.indexOf('130910DP00004009') >= 0; })[0];
       return newRow && Array.from(newRow.querySelectorAll('button.mini')).some(function (b) { return b.textContent === 'interest'; });
     })(), true);
 

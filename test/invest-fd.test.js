@@ -33,7 +33,7 @@ function eposItems(over) {
     { x: 443, y: 516, str: '₹5,10,000.00' },
     { x: 53, y: 480, str: 'Debit Account Number' },
     { x: 160, y: 480, str: 'Repayment Account Number' },
-    { x: 160, y: 470, str: '05582191003046' },
+    { x: 160, y: 470, str: '00000000000001' },
     { x: 53, y: 295, str: '3. Maturity Value and part withdrawal if any, are subject to TDS as per Income Tax Act.' }
   ];
   return base.concat(over || []);
@@ -51,7 +51,7 @@ console.log('parse — clean e-FD slip');
   eq('issue date', f.issueDate, '2026-03-10');
   eq('maturity date', f.maturityDate, '2027-05-28');
   eq('maturity value', f.maturityValue, 510000);
-  eq('repay account', f.repayAc, '05582191003046');
+  eq('repay account', f.repayAc, '00000000000001');
   eq('complete', f.complete, true);
 })();
 
