@@ -306,6 +306,34 @@ whenReady(function run() {
       return newRow && Array.from(newRow.querySelectorAll('button.mini')).some(function (b) { return b.textContent === 'interest'; });
     })(), true);
 
+  console.log('9) date fields: calendar picker + manual typing');
+  App.buildFdForm(null);
+  eq('issue date wrapped with calendar button', !!$('.dateinWrap input#fIssue ~ .dateCalBtn'), true);
+  // Tapping the calendar button opens a month grid next to the field.
+  $('.dateinWrap input#fIssue ~ .dateCalBtn').click();
+  eq('calendar popup open', !!$('#calPop'), true);
+  var days = $$('#calPop .calDay');
+  eq('day cells rendered', days.length >= 28, true);
+  // Tapping a day writes DD/MM/YYYY into the field and closes the popup.
+  var day15 = days.filter(function (d) { return d.textContent === '15'; })[0];
+  day15.click();
+  var now = new Date();
+  var mm = (now.getMonth() < 9 ? '0' : '') + (now.getMonth() + 1);
+  eq('picked day is 15th of current month (padded DD/MM/YYYY)', $('#fIssue').value, '15/' + mm + '/' + now.getFullYear());
+  eq('popup closed after pick', !$('#calPop'), true);
+  // Manual typing still works (DD/MM/YYYY text field).
+  setValue('#fIssue', '10/03/2026');
+  eq('typed date kept as-is', $('#fIssue').value, '10/03/2026');
+  // Calendar reopens anchored to the typed value's month.
+  $('.dateinWrap input#fIssue ~ .dateCalBtn').click();
+  eq('reopened on typed month (03/26)', $$('#calPop .calLabel')[0].textContent, '3/26');
+  eq('typed 10th highlighted', $$('#calPop .calDay.sel').some(function (d) { return d.textContent === '10'; }), true);
+  closeDatePickerViaBtn();
+  function closeDatePickerViaBtn() { document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); }
+  eq('escape closes popup', !$('#calPop'), true);
+  closeModalViaApp();
+  function closeModalViaApp() { document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); }
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exit(1);
 });

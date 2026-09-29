@@ -8,7 +8,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 3;
+  var APP_VERSION = 4;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -173,13 +173,86 @@
     if (ph) i.placeholder = ph;
     return i;
   }
+  /* Text field (type DD/MM/YYYY) with a calendar button that opens a month
+   * grid; tapping a day writes the value into the field. */
   function dateInput(id, value) {
+    var wrap = el('span', 'dateinWrap');
     var i = document.createElement('input');
     i.id = id; i.type = 'text'; i.placeholder = 'DD/MM/YYYY'; i.maxLength = 10;
     i.setAttribute('inputmode', 'text');
     i.value = Calc.isoToDDMMYYYY(value || '');
     i.classList.add('datein');
-    return i;
+    var b = el('button', 'dateCalBtn', '\uD83D\uDDD3\uFE0F');
+    b.type = 'button'; b.title = 'Pick date from calendar';
+    b.setAttribute('data-datein', id);
+    b.onclick = function (e) { e.stopPropagation(); openDatePicker(i, b); };
+    wrap.appendChild(i); wrap.appendChild(b);
+    return wrap;
+  }
+  var calPop = null;
+  function closeDatePicker() {
+    if (calPop && calPop.el) calPop.el.remove();
+    document.removeEventListener('mousedown', onDocDownPick, true);
+    document.removeEventListener('keydown', onEscPick, true);
+    calPop = null;
+  }
+  function onDocDownPick(e) { if (calPop && !calPop.el.contains(e.target)) closeDatePicker(); }
+  function onEscPick(e) { if (e.key === 'Escape') { e.stopPropagation(); closeDatePicker(); } }
+  function openDatePicker(field, btn) {
+    if (calPop) closeDatePicker();
+    var parsed = Calc.parseDDMMYYYY(field.value);
+    var base = parsed ? Calc.parseISO(parsed) : new Date();
+    var y = base.getFullYear(), m = base.getMonth();
+    var sel = parsed || '';
+    var p = el('div', 'calPop');
+    p.id = 'calPop';
+    var head = el('div', 'calHead');
+    var back = el('button', 'calNav', '\u2039'); back.title = 'Previous month';
+    var label = el('div', 'calLabel');
+    var fwd = el('button', 'calNav', '\u203A'); fwd.title = 'Next month';
+    head.appendChild(back); head.appendChild(label); head.appendChild(fwd);
+    p.appendChild(head);
+    var grid = el('div', 'calGrid');
+    p.appendChild(grid);
+    function render() {
+      label.textContent = (m + 1) + '/' + String(y).slice(2);
+      grid.textContent = '';
+      ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach(function (d) { grid.appendChild(el('div', 'calDow', d)); });
+      var first = new Date(y, m, 1);
+      var startDow = first.getDay();
+      var dim = new Date(y, m + 1, 0).getDate();
+      var today = new Date();
+      for (var k = 0; k < startDow; k++) grid.appendChild(el('div', 'calBlk'));
+      for (var d = 1; d <= dim; d++) {
+        (function (d) {
+          var c = el('div', 'calDay', String(d));
+          var iso = y + '-' + pad2(m + 1) + '-' + pad2(d);
+          if (d === today.getDate() && m === today.getMonth() && y === today.getFullYear()) c.classList.add('today');
+          if (iso === sel) c.classList.add('sel');
+          c.onclick = function () {
+            field.value = pad2(d) + '/' + pad2(m + 1) + '/' + y;
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            closeDatePicker();
+            field.focus();
+          };
+          grid.appendChild(c);
+        })(d);
+      }
+    }
+    back.onclick = function (e) { e.stopPropagation(); m--; if (m < 0) { m = 11; y--; } render(); };
+    fwd.onclick = function (e) { e.stopPropagation(); m++; if (m > 11) { m = 0; y++; } render(); };
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+    render();
+    // anchor above/below the button
+    document.body.appendChild(p);
+    var r = btn.getBoundingClientRect();
+    p.style.position = 'fixed';
+    p.style.right = '8px';
+    var below = r.bottom + p.offsetHeight + 4 < window.innerHeight;
+    p.style.top = (below ? r.bottom + 4 : (r.top - p.offsetHeight - 4)) + 'px';
+    calPop = { el: p };
+    document.addEventListener('mousedown', onDocDownPick, true);
+    document.addEventListener('keydown', onEscPick, true);
   }
   function readDate(id) { return Calc.parseDDMMYYYY(val(id)); }
   function dateErrors(ids) {
