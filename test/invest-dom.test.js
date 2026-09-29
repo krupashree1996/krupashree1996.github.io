@@ -277,6 +277,20 @@ whenReady(function run() {
   eq('history row shows xirr %', $('#sec-fd .archTable').textContent.indexOf('% p.a.') >= 0, true);
   eq('history row has duplicate button', $$('#sec-fd .archTable button').filter(function (b) { return b.textContent === 'duplicate'; }).length >= 1, true);
   eq('history TDS cell carries FY tooltip', (function () { var tds = $('#sec-fd .archTable tr:nth-child(2) td:nth-child(6)'); return tds && tds.title && tds.title.indexOf('financial year') >= 0; })(), true);
+
+  console.log('7b) a history record can be edited in place (e.g. fill a missing maturity value)');
+  (function () {
+    var oldRow = $$('#sec-fd .archTable tr').filter(function (tr) { return tr.textContent.indexOf('130910DP00004009') >= 0; })[0];
+    Array.from(oldRow.querySelectorAll('button.mini')).forEach(function (b) { if (b.textContent === 'edit') b.click(); });
+  })();
+  eq('history edit form opened', !!($('#modalBox h2') && $('#modalBox h2').textContent === 'Edit FD (history)'), true);
+  eq('history edit prefills account', $('#fAcc').value, '130910DP00004009');
+  setValue('#fMv', '440000');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Save changes') b.click(); });
+  var edited = App.DATA.archived.filter(function (a) { return a.account === '130910DP00004009'; })[0];
+  eq('history edit saved in place', edited.maturityValue, 440000);
+  eq('history edit refreshed XIRR', typeof edited.xirr, 'number');
+
   eq('payouts toggle present', !!$('#sec-fd .archTable button.mini'), true);
   // expanding shows the payout ledger (the "payouts" button, not the new "interest" one)
   $$('#sec-fd .archTable button.mini').forEach(function (b) { if (b.textContent === 'payouts') b.click(); });
@@ -318,6 +332,12 @@ whenReady(function run() {
     maturityValue: 310000, xirr: 0.075, archivedAt: today, entries: []
   });
   App.renderAll();
+  eq('history sorted by latest maturity first', (function () {
+    var accts = $$('#sec-fd .archTable tr').slice(1).map(function (tr) {
+      var m = tr.textContent.match(/130910DP\d+/); return m ? m[0] : null;
+    }).filter(Boolean).join(',');
+    return accts === '130910DP00004007,130910DP00004009,130910DP00004006';
+  })(), true);
   eq('unflagged archive row has no interest button (read-only)',
     (function () {
       var rows = $$('#sec-fd .archTable tr');

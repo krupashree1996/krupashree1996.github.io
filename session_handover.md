@@ -13,12 +13,14 @@
 - If real data is ever found in git history: scrub the working tree, `git filter-repo`, force-push, then verify with a full-blob scan (`git rev-list --all --objects` + grep).
 
 ## Current state (last update: 2026-09-29)
-- App: investments v10 (`APP_VERSION = 10` in `investments/app.js`), SW cache `investments-v18` (`investments/sw.js`).
-- Latest commit: duplicate-FD + history FY tooltip commit (after `aef2e7b` per-FD FY breakdown).
+- App: investments v11 (`APP_VERSION = 11` in `investments/app.js`), SW cache `investments-v19` (`investments/sw.js`).
+- Latest commit: history edit + maturity-date sort commit (after `16d047f` duplicate-FD).
 - FD summary tiles (order): Invested, Close now (principal + credited + simple accrual to today, ~1% break penalty ignored — noted in tooltip), Expected total, FY interest, FY TDS, prev-FY interest, prev-FY TDS (FY = 1 Apr–31 Mar, recorded payouts only).
 - XIRR is net-of-TDS; archived records are recomputed on load.
 - Per-FD FY breakdown (interest + TDS for current + previous FY, recorded payouts only) shows under the ledger total in the interest modal / archived payout detail, in the "Interest (paid)" tooltip on FD rows, and in the Interest (net) / TDS cell tooltips on matured-history rows. Past-dated payout entries can be added freely (no date restriction).
 - Duplicate FD: a `duplicate` button on every FD row (active + matured history) opens the add form prefilled with holder/PAN, amount, rate, TDS, mode, repay a/c — blank account + dates, no payouts copied. New synthetic account `130910DP00004008` is allowlisted in the `cc-calc` PII guard.
+- History rows have an `edit` button ("Edit FD (history)"): edit in place (e.g. fill a missing bank maturity value, rate, TDS); XIRR is recomputed on save. `commitFd` gains an `arch` flag; the duplicate-guard ignores the record being edited (`dup.id !== o.id`).
+- Matured-history table is sorted by **latest maturity date first** (`maturityDate`, not `archivedAt`).
 - All buttons default to `type="button"` (the `el()` helper in `app.js` + explicit attrs in `index.html` + regression test in `test/invest-dom.test.js`).
 - `npm test` = 8 suites, all passing.
 

@@ -8,7 +8,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 10;
+  var APP_VERSION = 11;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -349,8 +349,13 @@
     return hit;
   }
 
-  function commitFd(rec, edit, o) {
-    if (edit) {
+  function commitFd(rec, edit, o, arch) {
+    if (edit && arch) {
+      var i2 = -1;
+      (DATA.archived || []).forEach(function (x, i) { if (x.id === o.id) i2 = i; });
+      DATA.archived[i2] = Object.assign({ id: o.id, archivedAt: o.archivedAt, isMatured: o.isMatured }, rec);
+      DATA.archived[i2].xirr = Calc.fdXirr(DATA.archived[i2]); // refresh XIRR after editing maturity value etc.
+    } else if (edit) {
       var idx = -1;
       DATA.fds.forEach(function (x, i) { if (x.id === o.id) idx = i; });
       DATA.fds[idx] = Object.assign({ id: o.id, createdAt: o.createdAt }, rec);
@@ -362,14 +367,14 @@
   /* ---- FD add/edit form ----
    * fd = record to edit (null for a new FD); dup = record to prefill from
    * (new FD with the same parameters but a fresh account and no payouts). */
-  function buildFdForm(fd, dup) {
+  function buildFdForm(fd, dup, arch) {
     var edit = !!fd;
     var o = fd || (dup ? {
       panId: dup.panId, pan: dup.pan, amount: dup.amount, rate: dup.rate,
       days: dup.days, tdsRate: dup.tdsRate, interestMode: dup.interestMode,
       repayAc: dup.repayAc, holder: dup.holder, entries: []
     } : {});
-    var f = formShell(edit ? 'Edit FD' : (dup ? 'Duplicate FD' : 'Add FD'));
+    var f = formShell(edit ? (arch ? 'Edit FD (history)' : 'Edit FD') : (dup ? 'Duplicate FD' : 'Add FD'));
     var actions = f.actions;
     var ff = fdFields(o);
     f.form.appendChild(ff.form);
@@ -393,8 +398,8 @@
       var errs = Calc.validFd(rec).concat(dateErrors(['fIssue', 'fMaturity']));
       if (errs.length) { f.err.textContent = errs.join('  |  '); return; }
       var dup = duplicateFd(rec, edit, o);
-      if (dup) { f.err.textContent = 'This FD is already in your list (account ' + dup.account + '). Open it to edit instead.'; return; }
-      commitFd(rec, edit, o);
+      if (dup && dup.id !== o.id) { f.err.textContent = 'This FD is already in your list (account ' + dup.account + '). Open it to edit instead.'; return; }
+      commitFd(rec, edit, o, arch);
       persist(); closeModal(); renderAll();
       toast(edit ? 'FD updated.' : 'FD added.', 'ok');
     };
@@ -693,7 +698,7 @@
     var thead = el('tr');
     ['Account', 'Invested', 'Rate', 'Issue → Maturity', 'Interest (net)', 'TDS', 'Maturity value', 'XIRR', ''].forEach(function (h) { thead.appendChild(el('th', '', h)); });
     tbl.appendChild(thead);
-    list.slice().sort(function (a, b) { return (b.archivedAt || '').localeCompare(a.archivedAt || ''); }).forEach(function (a) {
+    list.slice().sort(function (a, b) { return (b.maturityDate || '').localeCompare(a.maturityDate || ''); }).forEach(function (a) {
       var sum = Calc.fdEntrySummary(a);
       var tr = el('tr');
       tr.appendChild(el('td', '', a.account || '—'));
@@ -728,6 +733,9 @@
         act.appendChild(itb);
       }
        var det = el('button', 'mini', 'payouts');
+       var edA = el('button', 'mini', 'edit');
+       edA.title = 'Edit this record (e.g. fill in the bank maturity value, rate or TDS)';
+       edA.onclick = function () { buildFdForm(a, null, true); };
        var dupA = el('button', 'mini', 'duplicate');
        dupA.title = 'New FD with the same holder, rate, TDS and repayment details — set a new account number and dates';
        dupA.onclick = function () { buildFdForm(null, a); };
@@ -740,7 +748,7 @@
            persist(); renderAll();
          });
        };
-       act.appendChild(det); act.appendChild(dupA); act.appendChild(rm);
+        act.appendChild(det); act.appendChild(edA); act.appendChild(dupA); act.appendChild(rm);
       tr.appendChild(act);
       tbl.appendChild(tr);
       // full record detail row (collapsed): payout ledger + all stored fields
