@@ -8,7 +8,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 7;
+  var APP_VERSION = 8;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -776,22 +776,23 @@
     var maxD = Calc.parseISO(pts[pts.length - 1].date).getTime();
     var span = (maxD - minD) || 1;
     var vals = pts.map(function (p) { return p.v * 100; });
-    var minV = Math.min.apply(null, vals.concat([0]));
-    var maxV = Math.max.apply(null, vals.concat([0]));
-    if (maxV - minV < 0.5) { minV = Math.min(minV, 0); maxV = Math.max(maxV, 0.5); }
-    var padV = (maxV - minV) * 0.08; minV -= padV; maxV += padV;
+    var minV = Math.min.apply(null, vals), maxV = Math.max.apply(null, vals);
+    // Stable integer-percentage scale (e.g. 5..8) so small differences between
+    // FDs are readable instead of stretched into a full-height spike.
+    var lo = Math.min(0, Math.floor(minV)), hi = Math.ceil(maxV);
+    if (hi - lo < 2) { lo -= 1; hi += 1; }
+    lo -= 0.15; hi += 0.15; // headroom so edge dots/labels are not clipped
     function X(d) { return m.l + (d - minD) / span * pw; }
-    function Y(v) { return m.t + (1 - (v - minV) / (maxV - minV)) * ph; }
-    // gridlines + y labels (4 ticks)
-    var ticks = 4, i;
-    for (i = 0; i <= ticks; i++) {
-      var vv = minV + (maxV - minV) * i / ticks;
-      var yy = Y(vv);
+    function Y(v) { return m.t + (1 - (v - lo) / (hi - lo)) * ph; }
+    // gridlines + y labels on whole percents
+    var step = (hi - lo) <= 5 ? 1 : Math.ceil((hi - lo) / 5), i;
+    for (i = Math.max(lo, Math.ceil(lo)); i <= hi; i += step) {
+      var yy = Y(i);
       S('line', { x1: m.l, y1: yy, x2: W - m.r, y2: yy, class: 'grid' });
-      txt('text', { x: m.l - 6, y: yy + 3, class: 'ax', 'text-anchor': 'end' }, vv.toFixed(1));
+      txt('text', { x: m.l - 6, y: yy + 3, class: 'ax', 'text-anchor': 'end' }, i);
     }
-    // zero baseline
-    S('line', { x1: m.l, y1: Y(0), x2: W - m.r, y2: Y(0), class: 'zero' });
+    // zero baseline (only when 0 is in range)
+    if (lo <= 0 && hi >= 0) S('line', { x1: m.l, y1: Y(0), x2: W - m.r, y2: Y(0), class: 'zero' });
     // x labels (first, mid, last maturity date)
     txt('text', { x: m.l, y: H - 8, class: 'ax', 'text-anchor': 'start' }, Calc.fmtDate(pts[0].date));
     if (pts.length > 2) txt('text', { x: m.l + pw / 2, y: H - 8, class: 'ax', 'text-anchor': 'middle' }, Calc.fmtDate(pts[Math.floor(pts.length / 2)].date));
