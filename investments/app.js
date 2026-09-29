@@ -8,7 +8,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 8;
+  var APP_VERSION = 9;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -441,7 +441,11 @@
     cells.appendChild(fdCell('Invested', Calc.inr(fd.amount)));
     cells.appendChild(fdCell('Rate', fd.rate != null ? fd.rate + '%' : '—'));
     if (eSum.count) {
-      cells.appendChild(fdCell('Interest (paid)', Calc.inr(eSum.net), eSum.count + ' payout' + (eSum.count > 1 ? 's' : '') + ' · TDS ' + Calc.inr(eSum.tax)));
+      var fyRow = Calc.fdFySummary([fd]);
+      cells.appendChild(fdCell('Interest (paid)', Calc.inr(eSum.net),
+        eSum.count + ' payout' + (eSum.count > 1 ? 's' : '') + ' · TDS ' + Calc.inr(eSum.tax) +
+        '\n' + fyRow.cur.label + ': ' + Calc.inr(fyRow.cur.interest) + ' int · TDS ' + Calc.inr(fyRow.cur.tax) +
+        '\n' + fyRow.prev.label + ': ' + Calc.inr(fyRow.prev.interest) + ' int · TDS ' + Calc.inr(fyRow.prev.tax)));
       cells.appendChild(fdCell('Worth now', Calc.inr(eSum.after), 'invested + interest paid out'));
     } else {
       cells.appendChild(fdCell('Interest', Calc.inr(Calc.fdInterest(fd)), !usedMv ? 'simple interest (est.)' : 'from PNB value'));
@@ -602,6 +606,18 @@
     box.appendChild(tbl);
     var s = Calc.fdEntrySummary(fd);
     box.appendChild(el('p', 'hint', 'Total: ' + s.count + ' payout' + (s.count > 1 ? 's' : '') + ' \u00b7 gross ' + Calc.inr(s.gross) + ' \u00b7 TDS ' + Calc.inr(s.tax) + ' \u00b7 net interest ' + Calc.inr(s.net) + ' \u00b7 worth now ' + Calc.inr(s.after)));
+    if (s.count) {
+      var fy = Calc.fdFySummary([fd]);
+      var fyBits = [
+        fy.cur.label + ': ' + Calc.inr(fy.cur.interest) + ' int \u00b7 TDS ' + Calc.inr(fy.cur.tax),
+        fy.prev.label + ': ' + Calc.inr(fy.prev.interest) + ' int \u00b7 TDS ' + Calc.inr(fy.prev.tax)
+      ];
+      var olderCount = s.count - fy.cur.count - fy.prev.count;
+      if (olderCount > 0) {
+        fyBits.push('older FYs: ' + olderCount + ' payout' + (olderCount > 1 ? 's' : '') + ' \u00b7 ' + Calc.inr(s.gross - fy.cur.interest - fy.prev.interest) + ' int \u00b7 TDS ' + Calc.inr(s.tax - fy.cur.tax - fy.prev.tax));
+      }
+      box.appendChild(el('p', 'hint', 'By financial year (recorded payouts, 1 Apr \u2013 31 Mar) \u2014 ' + fyBits.join('  \u00b7  ')));
+    }
   }
 
   function renderFd() {

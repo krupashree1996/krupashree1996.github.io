@@ -13,10 +13,11 @@
 - If real data is ever found in git history: scrub the working tree, `git filter-repo`, force-push, then verify with a full-blob scan (`git rev-list --all --objects` + grep).
 
 ## Current state (last update: 2026-09-29)
-- App: investments v7 (`APP_VERSION = 7` in `investments/app.js`), SW cache `investments-v15` (`investments/sw.js`).
-- Latest commit: `bcbbacb` (session_handover.md) + this reordering commit.
+- App: investments v9 (`APP_VERSION = 9` in `investments/app.js`), SW cache `investments-v17` (`investments/sw.js`).
+- Latest commit: this per-FD FY-breakdown commit (after `3e5bb63` stable XIRR chart scale).
 - FD summary tiles (order): Invested, Close now (principal + credited + simple accrual to today, ~1% break penalty ignored — noted in tooltip), Expected total, FY interest, FY TDS, prev-FY interest, prev-FY TDS (FY = 1 Apr–31 Mar, recorded payouts only).
 - XIRR is net-of-TDS; archived records are recomputed on load.
+- Per-FD FY breakdown (interest + TDS for current + previous FY, recorded payouts only) shows under the ledger total in the interest modal / archived payout detail, and in the "Interest (paid)" cell tooltip on FD rows. Past-dated payout entries can be added freely (no date restriction).
 - All buttons default to `type="button"` (the `el()` helper in `app.js` + explicit attrs in `index.html` + regression test in `test/invest-dom.test.js`).
 - `npm test` = 8 suites, all passing.
 
