@@ -183,21 +183,39 @@ var Calc = (function () {
     }
     return isFinite(r) ? r : null;
   }
-  /* Annualized return of an FD. Payout-mode net entries count as cash flows;
-   * compound-mode ones do not (credited in, so only initial + final matter). */
+  /* Annualized return of an FD, NET of TDS — the return on money actually in
+   * hand. Payout mode: net entries (already after TDS) are cash flows and the
+   * final value is the principal (or bank-stated value) untouched. Compound
+   * mode: credits stay in the account, so only initial + final matter — the
+   * final is the actual worth in hand: principal + credited net (gross − TDS)
+   * from recorded payouts, or the bank value minus estimated TDS when none. */
   function fdXirr(fd) {
     if (!fd || !fd.amount || !fd.issueDate) return null;
     var flows = [{ date: fd.issueDate, amt: -fd.amount }];
     var mode = normInterestMode(fd);
+    var netIn = 0;
     (fd.entries || []).forEach(function (e) {
       var net = entryNet(e);
       if (mode === 'payout' && e.date && net > 0) flows.push({ date: e.date, amt: net });
+      netIn += net;
     });
-    // Payout bonds return only the principal at maturity (interest was paid out
-    // in the entries), so the no-stated-value fallback must NOT add simple
-    // interest on top — that double-counts the interest already in the flows.
-    var final = fd.maturityValue > 0 ? fd.maturityValue
-      : (mode === 'payout' ? (fd.amount || 0) : fdExpectedTotal(fd));
+    var final;
+    if (mode === 'payout') {
+      // Payout bonds return only the principal at maturity (interest was paid
+      // out in the entries), so the no-stated-value fallback must NOT add
+      // simple interest on top — that double-counts the interest already in
+      // the flows.
+      final = fd.maturityValue > 0 ? fd.maturityValue : (fd.amount || 0);
+    } else if (netIn > 0) {
+      // Compound: the credits (already net of TDS) are in the account at
+      // maturity, so money in hand = principal + net credited.
+      final = (fd.amount || 0) + netIn;
+    } else {
+      // No payouts recorded: bank value (or P + simple interest) less the
+      // TDS that would be withheld on the interest.
+      final = fd.maturityValue > 0 ? fd.maturityValue : fdExpectedTotal(fd);
+      final = final > 0 ? Math.max(0, final - (fdTax(fd) || 0)) : 0;
+    }
     if (final > 0 && fd.maturityDate) flows.push({ date: fd.maturityDate, amt: final });
     if (flows.length < 2) return null;
     return xirr(flows);

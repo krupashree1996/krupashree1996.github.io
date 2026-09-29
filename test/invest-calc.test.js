@@ -99,14 +99,23 @@ console.log('xirr / fdXirr');
   eq('fewer than 2 flows -> null', Calc.xirr([{ date: '2025-01-01', amt: -1 }]), null);
   eq('all-positive -> null', Calc.xirr([{ date: '2025-01-01', amt: 1 }, { date: '2025-02-01', amt: 2 }]), null);
 
+  // Compound FD, 90 days, bank value 407959 (gross interest 7959, 10% TDS).
+  // Recorded payouts net 7163 -> money in hand = 400000 + 7163 = 407163.
   var fd = {
     amount: 400000, rate: 8.1, issueDate: '2025-01-01', maturityDate: '2025-04-01',
     maturityValue: 407959, interestMode: 'compound',
-    entries: [{ date: '2025-02-01', int: 2700, tax: 270 }]
+    entries: [{ date: '2025-04-01', int: 7959, tax: 796 }]
   };
   var x = Calc.fdXirr(fd);
   eq('fdXirr returns a number', typeof x, 'number');
-  close('compound fdXirr ~ annualized 8.3% (mid credits ignored)', x * 100, 8.31, 0.15);
+  close('compound fdXirr = XIRR(400000 -> 407163 over 90d) ~7.46%', x * 100, 7.464, 0.02);
+  eq('compound fdXirr matches the two-flow XIRR of money in hand', Math.abs(x - Calc.xirr([{ date: '2025-01-01', amt: -400000 }, { date: '2025-04-01', amt: 407163 }])) < 1e-9, true);
+  // No payouts recorded: bank value less the estimated TDS on the interest.
+  var x0 = Calc.fdXirr({ amount: 400000, rate: 8.1, issueDate: '2025-01-01', maturityDate: '2025-04-01', maturityValue: 407959, interestMode: 'compound' });
+  close('compound no-entries fdXirr = XIRR(400000 -> 407959-796) ~7.46%', x0 * 100, 7.464, 0.02);
+  // TDS rate 0 (e.g. NRI 0% slab): gross value, no deduction.
+  var x1 = Calc.fdXirr({ amount: 400000, rate: 8.1, tdsRate: 0, issueDate: '2025-01-01', maturityDate: '2025-04-01', maturityValue: 407959, interestMode: 'compound' });
+  close('compound tdsRate=0 fdXirr = XIRR(400000 -> 407959) ~8.31%', x1 * 100, 8.31, 0.02);
 
   var fd2 = {
     amount: 400000, rate: 8.1, issueDate: '2025-01-01', maturityDate: '2025-04-01',
@@ -133,9 +142,10 @@ console.log('xirr / fdXirr');
   // Same bond WITH a stated maturity value = principal: identical flows.
   var fd4 = Object.assign({}, fd3, { maturityValue: 1000000 });
   close('payout with mv=principal matches', Calc.fdXirr(fd4) * 100, z * 100, 1e-6);
-  // Compound FD: fallback stays P + simple interest (no payouts to double-count).
+  // Compound FD: fallback stays P + simple interest (no payouts to double-count),
+  // then the estimated TDS (10%) is deducted from the final value.
   var fd5 = { amount: 400000, rate: 8.1, issueDate: '2025-01-01', maturityDate: '2025-04-01', interestMode: 'compound' };
-  close('compound no-mv xirr = simple-annualized ~8.3%', Calc.fdXirr(fd5) * 100, 8.31, 0.05);
+  close('compound no-mv xirr net-of-est-TDS ~7.49%', Calc.fdXirr(fd5) * 100, 7.49, 0.02);
 })();
 
 console.log('auto-remove (1.5 FYs, 1-Oct cutoff)');

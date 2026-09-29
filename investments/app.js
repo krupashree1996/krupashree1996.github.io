@@ -8,7 +8,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 4;
+  var APP_VERSION = 5;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -51,6 +51,10 @@
         } else if (d && Array.isArray(d.fds)) {
           DATA.fds = d.fds;
           DATA.archived = Array.isArray(d.archived) ? d.archived : [];
+          // XIRR is display data derived from the record; recompute so a new
+          // definition (e.g. net-of-TDS) applies to records archived by an
+          // older build without a data migration.
+          DATA.archived.forEach(function (a) { a.xirr = Calc.fdXirr(a); });
           var r = archiveMatured();
           if (r.moved || r.pruned) {
             flush();
@@ -673,7 +677,7 @@
       tr.appendChild(el('td', 'num', sum.count ? Calc.inr(sum.tax) : '—'));
       tr.appendChild(el('td', 'num', a.maturityValue > 0 ? Calc.inr(a.maturityValue) : '—'));
       var x = el('td', 'num', a.xirr != null ? (a.xirr * 100).toFixed(2) + '% p.a.' : '—');
-      if (sum.count) x.title = 'XIRR from initial amount, final value and ' + sum.count + ' recorded payout' + (sum.count > 1 ? 's' : '');
+      if (sum.count) x.title = 'XIRR (net of TDS) from initial amount, final value and ' + sum.count + ' recorded payout' + (sum.count > 1 ? 's' : '');
       tr.appendChild(x);
       var act = el('td', '');
       // Editable if it matured on the day it was archived — either the new flag,
@@ -723,7 +727,7 @@
       cw.appendChild(el('p', 'hint', 'Annualized return (XIRR) for each matured FD, oldest maturity first.'));
       card.appendChild(cw);
     }
-    card.appendChild(el('p', 'hint', 'Matured FDs are kept in history for 1.5 financial years (removed each 1 Oct), with their full payout ledger. XIRR uses initial amount, final credited value, and (for payout-mode bonds) the recorded net payouts.'));
+    card.appendChild(el('p', 'hint', 'Matured FDs are kept in history for 1.5 financial years (removed each 1 Oct), with their full payout ledger. XIRR is net of TDS: initial amount, final value less TDS withheld, and (for payout-mode bonds) the recorded net payouts.'));
     sec.appendChild(card);
   }
   /* Expandable full record for an archived FD: payout ledger + all fields. */
