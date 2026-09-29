@@ -13,8 +13,8 @@
 - If real data is ever found in git history: scrub the working tree, `git filter-repo`, force-push, then verify with a full-blob scan (`git rev-list --all --objects` + grep).
 
 ## Current state (last update: 2026-09-29)
-- App: investments v11 (`APP_VERSION = 11` in `investments/app.js`), SW cache `investments-v19` (`investments/sw.js`).
-- Latest commit: history edit + maturity-date sort commit (after `16d047f` duplicate-FD).
+- App: investments v12 (`APP_VERSION = 12` in `investments/app.js`), SW cache `investments-v20` (`investments/sw.js`).
+- Latest commit: XIRR-chart y-axis fits the data (no forced 0 baseline) (after `c95943c` history edit + sort).
 - FD summary tiles (order): Invested, Close now (principal + credited + simple accrual to today, ~1% break penalty ignored — noted in tooltip), Expected total, FY interest, FY TDS, prev-FY interest, prev-FY TDS (FY = 1 Apr–31 Mar, recorded payouts only).
 - XIRR is net-of-TDS; archived records are recomputed on load.
 - Per-FD FY breakdown (interest + TDS for current + previous FY, recorded payouts only) shows under the ledger total in the interest modal / archived payout detail, in the "Interest (paid)" tooltip on FD rows, and in the Interest (net) / TDS cell tooltips on matured-history rows. Past-dated payout entries can be added freely (no date restriction).

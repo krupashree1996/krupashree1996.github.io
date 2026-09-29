@@ -300,6 +300,16 @@ whenReady(function run() {
   eq('removed at 1 Oct 2028', dom.window.Calc.fdAutoRemove(App.DATA.archived[0], '2028-10-01'), true);
   eq('xirr chart rendered', !!$('#sec-fd .xirrSvg'), true);
   eq('chart has a line path', !!$('#sec-fd .xirrSvg path.line'), true);
+  // With a realistic ~8% XIRR the y-axis must fit the data (e.g. 5..8) instead
+  // of forcing a 0 baseline.
+  App.DATA.archived[0].xirr = 0.081;
+  App.renderAll();
+  eq('chart y-axis fits the data (no forced 0 baseline)', (function () {
+    var labels = $$('#sec-fd .xirrSvg text.ax').map(function (t) { return t.textContent; })
+      .filter(function (s) { return /^\d+(\.\d+)?$/.test(s); });
+    var nums = labels.map(Number);
+    return nums.length > 0 && Math.min.apply(null, nums) > 0;
+  })(), true);
 
   console.log('8) freshly-matured FD is still editable (final payout on maturity day)');
   var arch = App.DATA.archived[0];

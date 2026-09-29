@@ -8,7 +8,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 11;
+  var APP_VERSION = 12;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -824,9 +824,9 @@
     var span = (maxD - minD) || 1;
     var vals = pts.map(function (p) { return p.v * 100; });
     var minV = Math.min.apply(null, vals), maxV = Math.max.apply(null, vals);
-    // Stable integer-percentage scale (e.g. 5..8) so small differences between
-    // FDs are readable instead of stretched into a full-height spike.
-    var lo = Math.min(0, Math.floor(minV)), hi = Math.ceil(maxV);
+    // Integer-percentage scale fitted to the data (e.g. 5..8) so small
+    // differences between FDs are readable instead of a full-height spike.
+    var lo = Math.floor(minV), hi = Math.ceil(maxV);
     if (hi - lo < 2) { lo -= 1; hi += 1; }
     lo -= 0.15; hi += 0.15; // headroom so edge dots/labels are not clipped
     function X(d) { return m.l + (d - minD) / span * pw; }
