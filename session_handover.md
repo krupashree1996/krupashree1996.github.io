@@ -8,7 +8,7 @@
 - Before ANY `git commit` / `git push`: run `node scripts/pii-scan.js` (local, uncommitted — it embeds the real patterns it hunts for; keep it out of the repo).
 - `npm test` always runs the committed PRIVACY GUARDs:
   - `test/cc-calc.test.js` — scans `neu-tracker/` for forbidden tokens and allowlists synthetic PNB accounts across `investments/` + `test/`.
-- A local `.git/hooks/pre-push` (local-only, never pushed) runs the PII scan and blocks the push on any hit. If it is missing, recreate it: run `scripts/pii-scan.js`, exit 1 on hit.
+- A COMMITTED hook at `scripts/git-hooks/pre-push` blocks pushes on PII hits (runs `scripts/pii-scan.js` when present + the committed guards). Activate once per machine: `git config core.hooksPath scripts/git-hooks`.
 - Test fixtures: synthetic values only (e.g. `130910DP00004001`, `TEST HOLDER`, `130910DP00000001`).
 - If real data is ever found in git history: scrub the working tree, `git filter-repo`, force-push, then verify with a full-blob scan (`git rev-list --all --objects` + grep).
 

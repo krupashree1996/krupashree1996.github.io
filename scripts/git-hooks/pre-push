@@ -1,0 +1,14 @@
+#!/bin/sh
+# Committed PII gate (AGENTS.md rule: never push personal data).
+# Activate on a fresh clone:  git config core.hooksPath scripts/git-hooks
+# Runs (1) the full local scan when present (scripts/pii-scan.js is deliberately
+# uncommitted — it embeds the real patterns it hunts for), and (2) the
+# committed privacy guards that ship with the repo.
+set -e
+if [ -f scripts/pii-scan.js ]; then
+  echo "pre-push: full PII scan"
+  node scripts/pii-scan.js || { echo "PII scan failed — push blocked." >&2; exit 1; }
+fi
+echo "pre-push: committed privacy guards"
+node test/cc-calc.test.js || { echo "Privacy guard failed — push blocked." >&2; exit 1; }
+exit 0
