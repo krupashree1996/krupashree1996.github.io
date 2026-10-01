@@ -88,7 +88,8 @@ whenReady(function run() {
   eq('invested shown', !!$('#sec-fd .fdRow .fdCell b'), true);
   eq('active badge shown', $$('#sec-fd .badge.b-active').length, 1);
 
-  console.log('3b) duplicate FD prefills parameters, fresh account and no payouts');
+  console.log('3b) duplicate FD copies every field except the account number');
+  App.DATA.fds[0].entries = [{ date: '2026-06-28', int: 8108, tax: 811 }];
   $$('#sec-fd .fdRow button').forEach(function (b) { if (b.textContent === 'duplicate') b.click(); });
   eq('duplicate form opened', !!$('#fAcc'), true);
   eq('duplicate title', !!($('#modalBox h2') && $('#modalBox h2').textContent === 'Duplicate FD'), true);
@@ -96,16 +97,20 @@ whenReady(function run() {
   eq('rate prefilled', $('#fRate').value, '8.1');
   eq('amount prefilled', $('#fAmt').value, '400000');
   eq('holder prefilled', $('#fPanId').value, 'pan1');
-  eq('no issue date prefilled', $('#fIssue').value, '');
+  eq('issue date prefilled from source', $('#fIssue').value, '10/03/2026');
+  eq('maturity date prefilled from source', $('#fMaturity').value, '28/05/2027');
   setValue('#fAcc', '130910DP00004008');
   setValue('#fIssue', '15/04/2026');
   setValue('#fMaturity', '15/04/2028');
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
   eq('duplicated FD added', App.DATA.fds.length, 2);
+  var srcFd = App.DATA.fds[0];
   var dupFd = App.DATA.fds[1];
   eq('duplicated account is the new one', dupFd.account, '130910DP00004008');
-  eq('duplicated FD has no payouts', dupFd.entries.length, 0);
+  eq('duplicated FD copies payouts', JSON.stringify(dupFd.entries.map(function (e) { return [e.date, e.int]; })), JSON.stringify((srcFd.entries || []).map(function (e) { return [e.date, e.int]; })));
+  eq('duplicated payouts are copies, not shared refs', dupFd.entries !== srcFd.entries, true);
   eq('duplicated FD keeps rate', dupFd.rate, 8.1);
+  App.DATA.fds[0].entries = []; // step 6 expects fd0 to start with no payouts
 
   console.log('4) import-preview path (synthetic parsed slip)');
   var parsed = {
@@ -388,6 +393,23 @@ whenReady(function run() {
   eq('escape closes popup', !$('#calPop'), true);
   closeModalViaApp();
   function closeModalViaApp() { document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); }
+
+  console.log('10) holder resync links records to PANs after load');
+  App.DATA.pans.push({ id: 'panR', pan: 'ABCD01234F', name: 'RESYNC HOLDER' });
+  var fdA = { account: '130910DP00004010', panId: '', pan: 'abcd01234f', holder: '', amount: 1000, rate: 7, issueDate: '01/04/2026', maturityDate: '01/04/2027' };
+  var fdB = { account: '130910DP00004011', panId: 'stale-id', pan: 'ABCD01234F', holder: 'old label', amount: 1000, rate: 7, issueDate: '01/04/2026', maturityDate: '01/04/2027' };
+  App.DATA.fds.push(fdA, fdB);
+  App.resyncHolders();
+  eq('empty panId linked by PAN text', fdA.panId, 'panR');
+  eq('holder name filled from holder', fdA.holder, 'RESYNC HOLDER');
+  eq('stale panId re-linked by PAN text', fdB.panId, 'panR');
+  eq('holder label refreshed', fdB.holder, 'RESYNC HOLDER');
+  App.DATA.fds.push({ account: '130910DP00004012', panId: 'pan1', pan: '', holder: '', amount: 1, rate: 1, issueDate: '01/04/2026', maturityDate: '01/04/2027' });
+  App.resyncHolders();
+  eq('valid panId kept', App.DATA.fds[App.DATA.fds.length - 1].panId, 'pan1');
+  App.DATA.fds.pop();
+  App.DATA.fds.pop(); App.DATA.fds.pop();
+  App.DATA.pans.pop();
 
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exit(1);

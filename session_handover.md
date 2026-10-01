@@ -12,17 +12,18 @@
 - Test fixtures: synthetic values only (e.g. `130910DP00004001`, `TEST HOLDER`, `130910DP00000001`).
 - If real data is ever found in git history: scrub the working tree, `git filter-repo`, force-push, then verify with a full-blob scan (`git rev-list --all --objects` + grep).
 
-## Current state (last update: 2026-09-29)
-- App: investments v12 (`APP_VERSION = 12` in `investments/app.js`), SW cache `investments-v20` (`investments/sw.js`).
-- Latest commit: XIRR-chart y-axis fits the data (no forced 0 baseline) (after `c95943c` history edit + sort).
+## Current state (last update: 2026-10-01)
+- App: investments v13 (`APP_VERSION = 13` in `investments/app.js`), SW cache `investments-v21` (`investments/sw.js`).
+- Latest commit: holder resync on load/bundle-import/profile-save (name↔PAN auto-links without manual edit); duplicate copies ALL fields except account incl. payouts (deep copy).
 - FD summary tiles (order): Invested, Close now (principal + credited + simple accrual to today, ~1% break penalty ignored — noted in tooltip), Expected total, FY interest, FY TDS, prev-FY interest, prev-FY TDS (FY = 1 Apr–31 Mar, recorded payouts only).
 - XIRR is net-of-TDS; archived records are recomputed on load.
 - Per-FD FY breakdown (interest + TDS for current + previous FY, recorded payouts only) shows under the ledger total in the interest modal / archived payout detail, in the "Interest (paid)" tooltip on FD rows, and in the Interest (net) / TDS cell tooltips on matured-history rows. Past-dated payout entries can be added freely (no date restriction).
-- Duplicate FD: a `duplicate` button on every FD row (active + matured history) opens the add form prefilled with holder/PAN, amount, rate, TDS, mode, repay a/c — blank account + dates, no payouts copied. New synthetic account `130910DP00004008` is allowlisted in the `cc-calc` PII guard.
+- Duplicate FD: a `duplicate` button on every FD row (active + matured history) opens the add form copying EVERY field except the account number — holder/PAN, amount, rate, issue + maturity dates, maturity value, tenure, TDS, mode, repay a/c, and payouts (deep-copied so edits don't leak back). Synthetic accounts `130910DP00004008` + `...4010/4011/4012` are allowlisted in the `cc-calc` PII guard.
 - History rows have an `edit` button ("Edit FD (history)"): edit in place (e.g. fill a missing bank maturity value, rate, TDS); XIRR is recomputed on save. `commitFd` gains an `arch` flag; the duplicate-guard ignores the record being edited (`dup.id !== o.id`).
 - Matured-history table is sorted by **latest maturity date first** (`maturityDate`, not `archivedAt`).
 - All buttons default to `type="button"` (the `el()` helper in `app.js` + explicit attrs in `index.html` + regression test in `test/invest-dom.test.js`).
-- `npm test` = 8 suites, all passing.
+- `resyncHolders()` (app.js) re-links every FD/archived record to its holder by PAN text whenever `panId` is empty or stale — runs on session load, bundle import, and profile save. Fixes "import bundle then name/PAN only shows after manually editing each record".
+- `npm test` = 8 suites, all passing (115 checks in invest-dom alone).
 
 ## Known open item
 - Older git history (pre-scrub commits) still contains real-looking fixtures

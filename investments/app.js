@@ -8,7 +8,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 12;
+  var APP_VERSION = 13;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -68,6 +68,7 @@
           DATA.profile = d.profile || DATA.profile;
           DATA.meta = d.meta || {};
           DATA.notes = d.notes || '';
+          resyncHolders();
         } else {
           corruptSession = true;
         }
@@ -119,6 +120,24 @@
 
   /* ---- lookups / filtering ---- */
   function holderOf(id) { for (var i = 0; i < DATA.pans.length; i++) if (DATA.pans[i].id === id) return DATA.pans[i]; return null; }
+  /* Re-link each record to a holder by PAN so an fd that was saved before its
+   * holder was registered (or whose panId went stale across a bundle import)
+   * resolves name↔PAN without a manual edit-and-save. */
+  function resyncHolders() {
+    function fix(rec) {
+      if (holderOf(rec.panId)) {
+        if (rec.holder === undefined) rec.holder = (holderOf(rec.panId).name || '');
+        return;
+      }
+      var id = panIdForPanText(rec.pan);
+      if (id) {
+        rec.panId = id;
+        rec.holder = holderOf(id).name || rec.holder || '';
+      }
+    }
+    DATA.fds.forEach(fix);
+    (DATA.archived || []).forEach(fix);
+  }
   function filterFds(list) {
     if (!S.curPan) return list;
     return list.filter(function (f) { return f.panId === S.curPan; });
@@ -366,13 +385,16 @@
 
   /* ---- FD add/edit form ----
    * fd = record to edit (null for a new FD); dup = record to prefill from
-   * (new FD with the same parameters but a fresh account and no payouts). */
+   * (new FD copying every field — dates, payouts included — with a fresh
+   * account number). */
   function buildFdForm(fd, dup, arch) {
     var edit = !!fd;
     var o = fd || (dup ? {
       panId: dup.panId, pan: dup.pan, amount: dup.amount, rate: dup.rate,
       days: dup.days, tdsRate: dup.tdsRate, interestMode: dup.interestMode,
-      repayAc: dup.repayAc, holder: dup.holder, entries: []
+      repayAc: dup.repayAc, holder: dup.holder,
+      issueDate: dup.issueDate, maturityDate: dup.maturityDate, maturityValue: dup.maturityValue,
+      entries: dup.entries ? dup.entries.map(function (e) { return Object.assign({}, e); }) : []
     } : {});
     var f = formShell(edit ? (arch ? 'Edit FD (history)' : 'Edit FD') : (dup ? 'Duplicate FD' : 'Add FD'));
     var actions = f.actions;
@@ -1067,6 +1089,7 @@
         return out;
       });
       if (S.curPan && !newIds[S.curPan]) S.curPan = '';
+      resyncHolders();
       persist(); closeModal(); renderAll();
       toast('Profile saved.', 'ok');
     };
@@ -1125,6 +1148,7 @@
         DATA.profile = d.profile || DATA.profile;
         DATA.meta = d.meta || {};
         DATA.notes = d.notes || '';
+        resyncHolders();
         persist(); renderAll();
         toast('Bundle loaded.', 'ok');
       } catch (e) {
@@ -1206,5 +1230,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview, autoImport: autoImport };
+  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview, autoImport: autoImport, resyncHolders: resyncHolders };
 })();
