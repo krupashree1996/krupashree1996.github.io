@@ -345,6 +345,10 @@ eq('label default', Calc.fdTypeLabel(''), 'FD');
 // SCSS/FRB return only principal at maturity — no P + simple interest.
 eq('scss expected = principal', Calc.fdExpectedTotal({ type: 'scss', amount: 1000000, rate: 8.2, days: 1800, issueDate: '2026-01-01', maturityDate: '2031-01-01' }), 1000000);
 eq('rbi expected = principal', Calc.fdExpectedTotal({ type: 'rbi', amount: 150000, rate: 7.4, days: 1825 }), 150000);
+// Payout instruments ignore any stored bank maturity value (e.g. legacy data).
+eq('scss ignores stored maturityValue', Calc.fdExpectedTotal({ type: 'scss', amount: 1000000, rate: 8.2, days: 1800, maturityValue: 999999 }), 1000000);
+eq('rbi ignores stored maturityValue', Calc.fdExpectedTotal({ type: 'rbi', amount: 150000, rate: 7.4, days: 1825, maturityValue: 888888 }), 150000);
+eq('fd still honors stored maturityValue', Calc.fdExpectedTotal({ type: 'fd', amount: 400000, rate: 8.1, days: 444, maturityValue: 510000 }), 510000);
 eq('fd still P + interest', Math.round(Calc.fdExpectedTotal({ type: 'fd', amount: 400000, rate: 8.1, days: 444 }) / 1000), 439);
 // Interest-mode normalization forces payout for scss/rbi even if stored as compound.
 eq('scss forces payout mode', Calc.normInterestMode({ type: 'scss', interestMode: 'compound' }), 'payout');

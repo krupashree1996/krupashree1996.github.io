@@ -73,11 +73,13 @@ var Calc = (function () {
     var t = typeof fd === 'string' ? fd : fd && fd.type;
     return t === 'scss' || t === 'rbi' ? t : 'fd';
   }
-  /* Expected total = bank-stated maturity value when present, else P + simple
-   * interest (FD only; scss/rbi are principal-only — see normFdType). */
+  /* Expected total = bank-stated maturity value when present (FD only), else
+   * P + simple interest (FD). scss/rbi are principal-only: payout instruments
+   * return the invested amount at maturity, so a bank-stated value never
+   * applies to them. */
   function fdExpectedTotal(fd) {
-    if (fd && fd.maturityValue > 0) return fd.maturityValue;
     if (normFdType(fd) !== 'fd') return fd && fd.amount > 0 ? fd.amount : null;
+    if (fd && fd.maturityValue > 0) return fd.maturityValue;
     var i = fdInterest(fd);
     if (i == null) return null;
     return (fd.amount || 0) + i;
@@ -94,9 +96,11 @@ var Calc = (function () {
     if (exp == null) return null;
     return exp - (tax || 0);
   }
-  /* Bank-stated maturity value if present, else the computed expected total. */
+  /* Bank-stated maturity value if present (FD only), else the computed
+   * expected total. Payout instruments settle at principal, so a stored
+   * bank value never applies to them. */
   function fdMaturityValue(fd) {
-    if (fd && fd.maturityValue > 0) return fd.maturityValue;
+    if (normFdType(fd) === 'fd' && fd && fd.maturityValue > 0) return fd.maturityValue;
     return fdExpectedTotal(fd);
   }
   /* ---- Interest ledger (per-payout rows) ----
@@ -214,10 +218,9 @@ var Calc = (function () {
     var final;
     if (mode === 'payout') {
       // Payout bonds return only the principal at maturity (interest was paid
-      // out in the entries), so the no-stated-value fallback must NOT add
-      // simple interest on top — that double-counts the interest already in
-      // the flows.
-      final = fd.maturityValue > 0 ? fd.maturityValue : (fd.amount || 0);
+      // out in the entries) — a bank-stated value never applies to them, so
+      // this is the principal, full stop.
+      final = fd.amount || 0;
     } else if (netIn > 0) {
       // Compound: the credits (already net of TDS) are in the account at
       // maturity, so money in hand = principal + net credited.

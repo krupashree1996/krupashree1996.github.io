@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 14;
+  var APP_VERSION = 15;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -340,15 +340,25 @@
     form.appendChild(field('Notes', textInput('fNotes', rec.notes, ''), true));
     // Picking SCSS / FRB in an open form flips TDS to 0 and interest type to
     // payout (they pay out and are TDS-free by default); back to FD restores 10.
+    // Maturity value is also hidden: payout instruments return only the
+    // principal at maturity, so a bank-stated value is meaningless for them.
     // Note: query within the local `form`, not the document — the form isn't
     // in the DOM yet when fdFields() runs (buildFdForm appends it later).
     var typeSel = form.querySelector('#fType');
+    var mvField = form.querySelector('#fMv');
+    if (mvField) mvField = mvField.parentNode; // the <label> wrapper
+    function syncMvVisibility() {
+      if (mvField) mvField.style.display =
+        Calc.normFdType(typeSel.value) !== 'fd' ? 'none' : '';
+    }
+    syncMvVisibility();
     if (typeSel) typeSel.addEventListener('change', function () {
       var notFd = Calc.normFdType(typeSel.value) !== 'fd';
       var tds = form.querySelector('#fTds');
       var imode = form.querySelector('#fImode');
       if (notFd) { if (imode) imode.value = 'payout'; if (tds) tds.value = '0'; }
       else { if (imode && imode.value === 'payout') imode.value = 'compound'; if (tds && !tds.value) tds.value = '10'; }
+      syncMvVisibility();
     });
     function read() {
       var panId = document.getElementById('fPanId') ? val('fPanId') : (rec.panId || '');
@@ -364,7 +374,7 @@
         rate: num('fRate'),
         issueDate: readDate('fIssue'),
         maturityDate: readDate('fMaturity'),
-        maturityValue: num('fMv'),
+        maturityValue: notFd ? 0 : num('fMv'),
         tdsRate: notFd ? (tdsVal == null ? 0 : tdsVal) : tdsVal,
         interestMode: notFd ? 'payout' : (document.getElementById('fImode') ? val('fImode') : (rec.interestMode || 'compound')),
         repayAc: val('fRepay'),
@@ -503,7 +513,9 @@
         eSum.count + ' payout' + (eSum.count > 1 ? 's' : '') + ' · TDS ' + Calc.inr(eSum.tax) +
         '\n' + fyRow.cur.label + ': ' + Calc.inr(fyRow.cur.interest) + ' int · TDS ' + Calc.inr(fyRow.cur.tax) +
         '\n' + fyRow.prev.label + ': ' + Calc.inr(fyRow.prev.interest) + ' int · TDS ' + Calc.inr(fyRow.prev.tax)));
-      cells.appendChild(fdCell('Worth now', Calc.inr(eSum.after), 'invested + interest paid out'));
+      var payout = Calc.normInterestMode(fd) === 'payout';
+      cells.appendChild(fdCell('Worth now', Calc.inr(payout ? (fd.amount || 0) : eSum.after),
+        payout ? 'principal (interest paid out)' : 'invested + interest paid out'));
     } else {
       cells.appendChild(fdCell('Interest', Calc.inr(Calc.fdInterest(fd)), !usedMv ? 'simple interest (est.)' : 'from PNB value'));
       var expTip = usedMv ? 'bank-stated maturity value' : (Calc.normFdType(fd) !== 'fd' ? 'principal returned at maturity (interest paid out)' : 'computed (P + simple interest)');
