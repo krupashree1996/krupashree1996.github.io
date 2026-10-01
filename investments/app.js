@@ -2,13 +2,14 @@
  * Vanilla JS, no build step. Data persists to localStorage + optional bundle
  * export. PNB confirmation PDFs are parsed in-browser with the vendored pdf.js. */
 (function () {
-  var DATA = window.DATA || (window.DATA = { profile: { name: '' }, pans: [], meta: {}, fds: [], notes: '', archived: [] });
+  var DATA = window.DATA || (window.DATA = { profile: { name: '' }, pans: [], meta: {}, fds: [], commodities: [], notes: '', archived: [] });
   if (!Array.isArray(DATA.archived)) DATA.archived = [];
+  if (!Array.isArray(DATA.commodities)) DATA.commodities = [];
   var S = { tab: 'fd', curPan: '' };
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 13;
+  var APP_VERSION = 14;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -65,6 +66,7 @@
             toast(msgs.join(' · '), 'ok');
           }
           if (Array.isArray(d.pans)) DATA.pans = d.pans;
+          DATA.commodities = Array.isArray(d.commodities) ? d.commodities : [];
           DATA.profile = d.profile || DATA.profile;
           DATA.meta = d.meta || {};
           DATA.notes = d.notes || '';
@@ -86,7 +88,7 @@
   function flush() {
     if (newerSession || corruptSession) return;
     try {
-      localStorage.setItem(LS, JSON.stringify({ version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, fds: DATA.fds, notes: DATA.notes, archived: DATA.archived }));
+      localStorage.setItem(LS, JSON.stringify({ version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, fds: DATA.fds, commodities: DATA.commodities, notes: DATA.notes, archived: DATA.archived }));
       flushWarned = false;
     } catch (e) {
       if (!flushWarned) { flushWarned = true; toast('Storage full or sealed — changes will not be saved. Save a bundle to keep them.', 'bad'); }
@@ -318,6 +320,11 @@
     rec = rec || {};
     var form = el('div', 'form');
     form.appendChild(field('Account number *', textInput('fAcc', rec.account, '130910DP…')));
+    form.appendChild(field('Type', selectControl('fType', [
+      { v: 'fd', l: 'FD — fixed deposit (compounded)' },
+      { v: 'scss', l: 'SCSS — Senior Citizens’ Saver Scheme (paid out)' },
+      { v: 'rbi', l: 'RBI FRB — floating-rate bond (paid out)' }
+    ], Calc.normFdType(rec))));
     var panOpts = panOptions();
     if (panOpts.length) form.appendChild(field('PAN holder', selectControl('fPanId', panOpts, rec.panId || '')));
     form.appendChild(field('PAN (if holder not listed)', textInput('fPan', rec.pan, 'ABCDE1234F')));
@@ -327,14 +334,30 @@
     form.appendChild(field('Maturity date *', dateInput('fMaturity', rec.maturityDate)));
     form.appendChild(field('Term (days, auto)', numInput('fDays', rec.days, 'blank = from dates')));
     form.appendChild(field('Maturity value (₹, bank)', numInput('fMv', rec.maturityValue, 'leave blank to compute')));
-    form.appendChild(field('TDS rate (%)', numInput('fTds', rec.tdsRate == null ? 10 : rec.tdsRate, '10 = NRI slabs')));
-    form.appendChild(field('Interest type', selectControl('fImode', [{ v: 'compound', l: 'Compound (FD — credited in)' }, { v: 'payout', l: 'Payout (floating bond — paid out)' }], Calc.normInterestMode(rec))));
+    form.appendChild(field('TDS rate (%)', numInput('fTds', rec.tdsRate == null ? (Calc.normFdType(rec) === 'fd' ? 10 : 0) : rec.tdsRate, 'SCSS/FRB: 0 unless interest > ₹50,000')));
+    form.appendChild(field('Interest type', selectControl('fImode', [{ v: 'compound', l: 'Compound (credited in)' }, { v: 'payout', l: 'Payout (paid out)' }], Calc.normInterestMode(rec))));
     form.appendChild(field('Repay account', textInput('fRepay', rec.repayAc, 'repayment a/c')));
     form.appendChild(field('Notes', textInput('fNotes', rec.notes, ''), true));
+    // Picking SCSS / FRB in an open form flips TDS to 0 and interest type to
+    // payout (they pay out and are TDS-free by default); back to FD restores 10.
+    // Note: query within the local `form`, not the document — the form isn't
+    // in the DOM yet when fdFields() runs (buildFdForm appends it later).
+    var typeSel = form.querySelector('#fType');
+    if (typeSel) typeSel.addEventListener('change', function () {
+      var notFd = Calc.normFdType(typeSel.value) !== 'fd';
+      var tds = form.querySelector('#fTds');
+      var imode = form.querySelector('#fImode');
+      if (notFd) { if (imode) imode.value = 'payout'; if (tds) tds.value = '0'; }
+      else { if (imode && imode.value === 'payout') imode.value = 'compound'; if (tds && !tds.value) tds.value = '10'; }
+    });
     function read() {
       var panId = document.getElementById('fPanId') ? val('fPanId') : (rec.panId || '');
+      var t = document.getElementById('fType') ? val('fType') : 'fd';
+      var notFd = Calc.normFdType(t) !== 'fd';
+      var tdsVal = num('fTds');
       var rec2 = {
         account: val('fAcc').toUpperCase(),
+        type: t,
         panId: panId || panIdForPanText(val('fPan')),
         pan: val('fPan'),
         amount: num('fAmt'),
@@ -342,8 +365,8 @@
         issueDate: readDate('fIssue'),
         maturityDate: readDate('fMaturity'),
         maturityValue: num('fMv'),
-        tdsRate: num('fTds'),
-        interestMode: document.getElementById('fImode') ? val('fImode') : (rec.interestMode || 'compound'),
+        tdsRate: notFd ? (tdsVal == null ? 0 : tdsVal) : tdsVal,
+        interestMode: notFd ? 'payout' : (document.getElementById('fImode') ? val('fImode') : (rec.interestMode || 'compound')),
         repayAc: val('fRepay'),
         notes: val('fNotes')
       };
@@ -390,6 +413,7 @@
   function buildFdForm(fd, dup, arch) {
     var edit = !!fd;
     var o = fd || (dup ? {
+      type: dup.type,
       panId: dup.panId, pan: dup.pan, amount: dup.amount, rate: dup.rate,
       days: dup.days, tdsRate: dup.tdsRate, interestMode: dup.interestMode,
       repayAc: dup.repayAc, holder: dup.holder,
@@ -482,11 +506,13 @@
       cells.appendChild(fdCell('Worth now', Calc.inr(eSum.after), 'invested + interest paid out'));
     } else {
       cells.appendChild(fdCell('Interest', Calc.inr(Calc.fdInterest(fd)), !usedMv ? 'simple interest (est.)' : 'from PNB value'));
-      cells.appendChild(fdCell('Expected total', Calc.inr(exp), usedMv ? 'bank-stated maturity value' : 'computed (P + simple interest)'));
+      var expTip = usedMv ? 'bank-stated maturity value' : (Calc.normFdType(fd) !== 'fd' ? 'principal returned at maturity (interest paid out)' : 'computed (P + simple interest)');
+      cells.appendChild(fdCell('Expected total', Calc.inr(exp), expTip));
     }
     cells.appendChild(fdCell('Maturity', Calc.fmtDate(fd.maturityDate), fd.maturityDate ? ('issued ' + Calc.fmtDate(fd.issueDate)) : ''));
 
     var badges = el('div', 'rowCols');
+    if (Calc.normFdType(fd) !== 'fd') badges.appendChild(el('span', 'badge b-type', Calc.fdTypeLabel(fd.type)));
     badges.appendChild(statusBadge(fd));
     if (!eSum.count) {
       var tax = Calc.fdTax(fd);
@@ -1009,6 +1035,186 @@
     modal(f.box, true);
   }
 
+  /* ---- Commodities tab (gold / SGB) ---- */
+  function filterCommodities() {
+    if (!S.curPan) return DATA.commodities;
+    return DATA.commodities.filter(function (c) { return c.panId === S.curPan; });
+  }
+  function renderCommodities() {
+    var sec = document.getElementById('sec-commodities');
+    sec.innerHTML = '';
+    var card = el('div', 'card');
+    var head = el('div', 'cardHead');
+    head.appendChild(el('h2', '', 'Commodities · gold / SGB'));
+    head.appendChild(el('span', 'chip', 'view: ' + viewTitle()));
+    head.appendChild(el('div', 'spacer'));
+    var add = el('button', 'primary', '+ Add holding');
+    add.onclick = function () { commodityForm(null); };
+    head.appendChild(add);
+    card.appendChild(head);
+    card.appendChild(el('p', 'hint', 'Return is driven by the gold price, not a fixed rate. Record the current value (or units × price) and any SGB coupon receipts; XIRR uses the actual cash flows.'));
+
+    var list = filterCommodities();
+    if (!list.length) {
+      card.appendChild(el('p', 'muted', 'No holdings yet. Add an SGB or gold holding to start tracking.'));
+    } else {
+      var cost = 0;
+      list.forEach(function (c) { cost += c.invested || 0; });
+      var kv = el('div', 'kv inline');
+      kv.appendChild(kvin('Cost', Calc.inr(cost)));
+      var openV = 0, openCount = 0;
+      list.forEach(function (c) {
+        var v = Calc.commodityMarketValue(c);
+        if (v != null && !c.soldValue) { openV += v; openCount++; }
+      });
+      kv.appendChild(kvin('Open value', openCount ? Calc.inr(openV) : '—', 'pos'));
+      var coupons = 0;
+      list.forEach(function (c) { coupons += Calc.commodityCouponSummary(c).total; });
+      kv.appendChild(kvin('Coupons received', Calc.inr(coupons)));
+      card.appendChild(kv);
+
+      var tbl = el('table', 'intTable');
+      var thead = el('tr');
+      ['Holding', 'Cost', 'Value', 'Gain', 'Return', 'Coupons', 'XIRR', ''].forEach(function (h) { thead.appendChild(el('th', '', h)); });
+      tbl.appendChild(thead);
+      list.forEach(function (c) { tbl.appendChild(commodityRow(c)); });
+      card.appendChild(tbl);
+    }
+    sec.appendChild(card);
+  }
+  function commodityRow(c) {
+    var today = Calc.todayISO();
+    var mv = Calc.commodityMarketValue(c);
+    var fv = Calc.commodityFinalValue(c, today);
+    var ret = Calc.commodityReturnPct(c, today);
+    var xirr = Calc.commodityXirr(c, today);
+    var cs = Calc.commodityCouponSummary(c);
+    var gain = (fv != null && c.invested > 0) ? fv + cs.total - c.invested : null;
+
+    var tr = el('tr');
+    var nameCell = el('td', '');
+    var label = (c.name || 'No name');
+    if (c.panId || c.pan) label += ' · ' + (Calc.holderLabel(holderOf(c.panId)) || c.pan || 'holder');
+    nameCell.appendChild(el('b', '', label));
+    var sub = [];
+    sub.push(Calc.fmtDate(c.purchaseDate));
+    if (c.soldDate) sub.push('→ sold ' + Calc.fmtDate(c.soldDate));
+    else sub.push((c.units > 0 ? c.units + ' g · ' : '') + 'valued ' + Calc.fmtDate(c.valuedOn || today));
+    var metaEl = el('div', 'fdMeta', sub.join(' '));
+    nameCell.appendChild(metaEl);
+    tr.appendChild(nameCell);
+    tr.appendChild(el('td', 'num', Calc.inr(c.invested)));
+    var valCell = el('td', 'num', fv != null ? Calc.inr(fv) : '—');
+    valCell.title = c.soldValue > 0 ? 'redemption value' : (c.currentValue > 0 ? 'recorded current value' : 'units × price');
+    tr.appendChild(valCell);
+    var gainCell = el('td', 'num', gain != null ? Calc.inr(gain) : '—');
+    gainCell.className = 'num ' + (gain != null && gain > 0 ? 'ok' : (gain != null && gain < 0 ? 'warn' : ''));
+    tr.appendChild(gainCell);
+    var retCell = el('td', 'num', ret != null ? ret.toFixed(1) + '%' : '—');
+    retCell.className = 'num ' + (ret != null && ret > 0 ? 'ok' : (ret != null && ret < 0 ? 'warn' : ''));
+    tr.appendChild(retCell);
+    tr.appendChild(el('td', 'num', cs.count ? Calc.inr(cs.total) : '—'));
+    tr.appendChild(el('td', 'num', xirr != null ? (xirr * 100).toFixed(2) + '% p.a.' : '—'));
+    var act = el('td', '');
+    var ed = el('button', 'mini', 'edit');
+    ed.onclick = function () { commodityForm(c); };
+    var cp = el('button', 'mini', 'coupon');
+    cp.title = 'Record an SGB coupon payment';
+    cp.onclick = function () { commodityCoupon(c); };
+    var del = el('button', 'mini danger', 'del');
+    del.onclick = function () {
+      confirmDel('Delete ' + (c.name || 'this holding') + '? This cannot be undone.', function () {
+        DATA.commodities = DATA.commodities.filter(function (x) { return x.id !== c.id; });
+        persist(); renderAll();
+        toast('Holding deleted.', 'warn');
+      });
+    };
+    act.appendChild(ed); act.appendChild(cp); act.appendChild(del);
+    tr.appendChild(act);
+    return tr;
+  }
+  function commodityForm(c) {
+    c = c || {};
+    var f = formShell(c.id ? 'Edit holding' : 'Add commodity holding');
+    var form = f.form;
+    form.appendChild(field('Name *', textInput('cName', c.name, 'e.g. SGB 2026, Sovereign Gold')));
+    form.appendChild(field('Type', selectControl('cKind', [
+      { v: 'sgb', l: 'SGB — Sovereign Gold Bond' },
+      { v: 'gold', l: 'Gold (ETF / physical)' },
+      { v: 'other', l: 'Other commodity' }
+    ], c.kind || 'sgb')));
+    var panOpts = panOptions();
+    if (panOpts.length) form.appendChild(field('PAN holder', selectControl('cPanId', panOpts, c.panId || '')));
+    form.appendChild(field('PAN (if holder not listed)', textInput('cPan', c.pan, 'ABCDE1234F')));
+    form.appendChild(field('Cost / invested (₹) *', numInput('cCost', c.invested, 'e.g. 120000')));
+    form.appendChild(field('Units (g equivalent, SGB = qty)', numInput('cUnits', c.units, 'blank = use current value')));
+    form.appendChild(field('Current price per unit (₹)', numInput('cPrice', c.unitPrice, 'blank = use current value')));
+    form.appendChild(field('Current value (₹)', numInput('cValue', c.currentValue, 'used when units × price not set')));
+    form.appendChild(field('Valued on', dateInput('cValuedOn', c.valuedOn)));
+    form.appendChild(field('Purchase date *', dateInput('cPurchase', c.purchaseDate)));
+    form.appendChild(field('Redemption / sold value (₹)', numInput('cSold', c.soldValue, 'blank = still holding')));
+    form.appendChild(field('Redemption / sold date', dateInput('cSoldOn', c.soldDate)));
+    form.appendChild(field('Notes', textInput('cNotes', c.notes, ''), true));
+
+    function read() {
+      var rec = {
+        id: c.id || Calc.uid('commodity'),
+        name: val('cName').trim(),
+        kind: val('cKind'),
+        panId: document.getElementById('cPanId') ? val('cPanId') : (c.panId || ''),
+        pan: val('cPan'),
+        invested: num('cCost'),
+        units: num('cUnits'),
+        unitPrice: num('cPrice'),
+        currentValue: num('cValue'),
+        valuedOn: readDate('cValuedOn'),
+        purchaseDate: readDate('cPurchase'),
+        soldValue: num('cSold'),
+        soldDate: readDate('cSoldOn'),
+        notes: val('cNotes')
+      };
+      rec.panId = rec.panId || panIdForPanText(rec.pan);
+      rec.coupons = c.coupons ? c.coupons.slice() : [];
+      return rec;
+    }
+    var save = el('button', 'primary', c.id ? 'Save' : 'Add holding');
+    save.onclick = function () {
+      var rec = read();
+      var probs = Calc.validCommodity(rec);
+      if (probs.length) { f.err.textContent = probs.join('  |  '); return; }
+      var i = -1;
+      DATA.commodities.forEach(function (x, ix) { if (x.id === rec.id) i = ix; });
+      if (i >= 0) DATA.commodities[i] = rec; else DATA.commodities.push(rec);
+      persist(); closeModal(); renderAll();
+      toast(c.id ? 'Holding updated.' : 'Holding added.', 'ok');
+    };
+    var cancel = el('button', 'ghost', 'Cancel');
+    cancel.onclick = closeModal;
+    f.actions.appendChild(save); f.actions.appendChild(cancel);
+    modal(f.box, true);
+  }
+  function commodityCoupon(c) {
+    c.coupons = c.coupons || [];
+    var f = formShell('Coupon — ' + (c.name || c.id));
+    f.form.appendChild(el('p', 'hint', 'SGB pays a 2.5% p.a. coupon on face value, semi-annually. Record each receipt; it feeds the return and XIRR.'));
+    f.form.appendChild(field('Date', dateInput('cpDate', '')));
+    f.form.appendChild(field('Amount (₹)', numInput('cpAmt', '', 'e.g. 3000')));
+    var save = el('button', 'primary', 'Add coupon');
+    save.onclick = function () {
+      var d = readDate('cpDate');
+      var a = num('cpAmt');
+      if (!d || !(a > 0)) { f.err.textContent = 'Enter a date (DD/MM/YYYY) and an amount.'; return; }
+      c.coupons.push({ date: d, amount: a });
+      c.coupons.sort(function (x, y) { return x.date < y.date ? -1 : x.date > y.date ? 1 : 0; });
+      persist(); closeModal(); renderAll();
+      toast('Coupon recorded.', 'ok');
+    };
+    var cancel = el('button', 'ghost', 'Cancel');
+    cancel.onclick = closeModal;
+    f.actions.appendChild(save); f.actions.appendChild(cancel);
+    modal(f.box, true);
+  }
+
   /* ---- Notes tab ---- */
   function renderNotes() {
     var sec = document.getElementById('sec-notes');
@@ -1114,7 +1320,7 @@
 
   /* ---- bundle export / import ---- */
   function saveBundle() {
-    var out = { version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, fds: DATA.fds, notes: DATA.notes, archived: DATA.archived || [] };
+    var out = { version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, fds: DATA.fds, commodities: DATA.commodities || [], notes: DATA.notes, archived: DATA.archived || [] };
     var blob = new Blob(['window.DATA = ' + JSON.stringify(out, null, 1) + ';\n'], { type: 'text/javascript' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -1145,6 +1351,7 @@
         DATA.fds = d.fds;
         DATA.archived = Array.isArray(d.archived) ? d.archived : [];
         if (Array.isArray(d.pans)) DATA.pans = d.pans;
+        DATA.commodities = Array.isArray(d.commodities) ? d.commodities : [];
         DATA.profile = d.profile || DATA.profile;
         DATA.meta = d.meta || {};
         DATA.notes = d.notes || '';
@@ -1185,6 +1392,7 @@
       else b.classList.remove('now');
     });
     document.getElementById('sec-fd').hidden = t !== 'fd';
+    document.getElementById('sec-commodities').hidden = t !== 'commodities';
     document.getElementById('sec-notes').hidden = t !== 'notes';
   }
   function renderAll() {
@@ -1192,6 +1400,7 @@
     setProfileChip();
     renderChips();
     renderFd();
+    renderCommodities();
     renderNotes();
   }
 
@@ -1230,5 +1439,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview, autoImport: autoImport, resyncHolders: resyncHolders };
+  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview, autoImport: autoImport, resyncHolders: resyncHolders, commodityForm: commodityForm, renderCommodities: renderCommodities };
 })();

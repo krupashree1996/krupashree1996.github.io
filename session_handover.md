@@ -13,8 +13,10 @@
 - If real data is ever found in git history: scrub the working tree, `git filter-repo`, force-push, then verify with a full-blob scan (`git rev-list --all --objects` + grep).
 
 ## Current state (last update: 2026-10-01)
-- App: investments v13 (`APP_VERSION = 13` in `investments/app.js`), SW cache `investments-v21` (`investments/sw.js`).
-- Latest commit: holder resync on load/bundle-import/profile-save (name↔PAN auto-links without manual edit); duplicate copies ALL fields except account incl. payouts (deep copy).
+- App: investments v14 (`APP_VERSION = 14` in `investments/app.js`), SW cache `investments-v22` (`investments/sw.js`).
+- Latest commit: FD/SCSS/RBI-FRB **type field** (auto payout + TDS 0, SCSS/RBI expected-total = principal-only, row badge) + a new **Commodities** tab (SGB/gold: cost vs current value or units×price, coupon receipts, return % + XIRR on actual cash flows).
+- `DATA` gains a `commodities` array (persisted to localStorage + bundle). Each: `{id, name, kind(sgb|gold|other), panId, pan, invested, units, unitPrice, currentValue, valuedOn, purchaseDate, soldValue, soldDate, notes, coupons:[{date,amount}]}`. Helpers in `calc.js`: `commodityMarketValue`, `commodityCouponSummary`, `commodityFinalValue`, `commodityReturnPct`, `commodityXirr`, `validCommodity`.
+- FD records gain `type` (`fd`|`scss`|`rbi`, default `fd`). `Calc.normFdType` + `fdTypeLabel`; SCSS/RBI force `interestMode=payout` (in `normInterestMode`) and their `fdExpectedTotal` = principal only (no P+simple interest). `fdFields` flips TDS→0 / mode→payout live when type changes (listener on the local `form`, NOT the document — form isn't in DOM yet at build time).
 - FD summary tiles (order): Invested, Close now (principal + credited + simple accrual to today, ~1% break penalty ignored — noted in tooltip), Expected total, FY interest, FY TDS, prev-FY interest, prev-FY TDS (FY = 1 Apr–31 Mar, recorded payouts only).
 - XIRR is net-of-TDS; archived records are recomputed on load.
 - Per-FD FY breakdown (interest + TDS for current + previous FY, recorded payouts only) shows under the ledger total in the interest modal / archived payout detail, in the "Interest (paid)" tooltip on FD rows, and in the Interest (net) / TDS cell tooltips on matured-history rows. Past-dated payout entries can be added freely (no date restriction).

@@ -334,5 +334,49 @@ console.log('fdFySummary — recorded payout totals per Indian FY');
   eq('boundary FY label', edge.prev.year, 2025);
 })();
 
+console.log('normFdType / fdTypeLabel / fdExpectedTotal by type');
+eq('default -> fd', Calc.normFdType({}), 'fd');
+eq('scss normalized', Calc.normFdType({ type: 'scss' }), 'scss');
+eq('rbi normalized', Calc.normFdType({ type: 'rbi' }), 'rbi');
+eq('garbage -> fd', Calc.normFdType({ type: 'nope' }), 'fd');
+eq('label scss', Calc.fdTypeLabel('scss'), 'SCSS');
+eq('label rbi', Calc.fdTypeLabel('rbi'), 'RBI FRB');
+eq('label default', Calc.fdTypeLabel(''), 'FD');
+// SCSS/FRB return only principal at maturity — no P + simple interest.
+eq('scss expected = principal', Calc.fdExpectedTotal({ type: 'scss', amount: 1000000, rate: 8.2, days: 1800, issueDate: '2026-01-01', maturityDate: '2031-01-01' }), 1000000);
+eq('rbi expected = principal', Calc.fdExpectedTotal({ type: 'rbi', amount: 150000, rate: 7.4, days: 1825 }), 150000);
+eq('fd still P + interest', Math.round(Calc.fdExpectedTotal({ type: 'fd', amount: 400000, rate: 8.1, days: 444 }) / 1000), 439);
+// Interest-mode normalization forces payout for scss/rbi even if stored as compound.
+eq('scss forces payout mode', Calc.normInterestMode({ type: 'scss', interestMode: 'compound' }), 'payout');
+eq('rbi forces payout mode', Calc.normInterestMode({ type: 'rbi', interestMode: 'compound' }), 'payout');
+eq('fd honors stored mode', Calc.normInterestMode({ type: 'fd', interestMode: 'compound' }), 'compound');
+
+console.log('commodities — market value / coupons / return / XIRR');
+(function () {
+  var sgb = {
+    name: 'SGB 2026', invested: 120000, units: 24, unitPrice: 7000,
+    purchaseDate: '2025-06-01', valuedOn: '2026-09-20',
+    coupons: [{ date: '2025-12-01', amount: 1500 }, { date: '2026-06-01', amount: 1500 }]
+  };
+  eq('market value from units×price', Calc.commodityMarketValue(sgb), 24 * 7000);
+  eq('recorded currentValue wins over units×price', Calc.commodityMarketValue(Object.assign({}, sgb, { currentValue: 170000 })), 170000);
+  var cs = Calc.commodityCouponSummary(sgb);
+  eq('coupon count', cs.count, 2);
+  eq('coupon total', cs.total, 3000);
+  eq('final value (still held) = market value', Calc.commodityFinalValue(sgb), 168000);
+  eq('final value (sold) = soldValue', Calc.commodityFinalValue(Object.assign({}, sgb, { soldValue: 175000, soldDate: '2026-09-01' })), 175000);
+  // Return: (finalValue + coupons − cost) / cost.
+  var r = Calc.commodityReturnPct(sgb);
+  close('return pct ≈ (168000+3000−120000)/120000', r, ((168000 + 3000 - 120000) / 120000) * 100, 0.001);
+  eq('no cost -> null return', Calc.commodityReturnPct({ invested: 0 }), null);
+  var x = Calc.commodityXirr(sgb, '2026-09-20');
+  eq('xirr is a positive fraction', x != null && x > 0 && x < 1, true);
+  // Sold SGB: final flow at soldDate.
+  var xs = Calc.commodityXirr(Object.assign({}, sgb, { soldValue: 175000, soldDate: '2026-09-01' }), '2026-09-20');
+  eq('sold xirr positive', xs != null && xs > 0, true);
+  eq('validation: missing name', Calc.validCommodity({ invested: 100, purchaseDate: '2025-01-01' }).length, 1);
+  eq('validation: all good', Calc.validCommodity(sgb).length, 0);
+})();
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);

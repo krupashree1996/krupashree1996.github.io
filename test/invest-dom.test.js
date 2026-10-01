@@ -411,6 +411,59 @@ whenReady(function run() {
   App.DATA.fds.pop(); App.DATA.fds.pop();
   App.DATA.pans.pop();
 
+  console.log('11) FD type field + SCSS/RBI auto-payout & TDS 0');
+  App.buildFdForm(null);
+  eq('type select present', !!$('#fType'), true);
+  setValue('#fType', 'scss');
+  setValue('#fAcc', 'SCSS99990001');
+  setValue('#fAmt', '1000000');
+  setValue('#fRate', '8.2');
+  setValue('#fIssue', '01/06/2026');
+  setValue('#fMaturity', '01/06/2031');
+  var scssBtn = $$('#modalBox .actions button').filter(function (b) { return b.textContent === 'Add FD'; })[0];
+  scssBtn.click();
+  var scss = App.DATA.fds.filter(function (f) { return f.account === 'SCSS99990001'; })[0];
+  eq('scss added', !!scss, true);
+  eq('scss stored type', scss.type, 'scss');
+  eq('scss forced to payout mode', scss.interestMode, 'payout');
+  eq('scss TDS defaulted to 0', scss.tdsRate, 0);
+  eq('scss row shows SCSS badge', $$('#sec-fd .fdRow').some(function (r) { return r.querySelector('.b-type') && r.querySelector('.b-type').textContent === 'SCSS'; }), true);
+  // The "Expected total" cell for the SCSS row must be the principal (₹10,00,000),
+  // NOT P + simple interest (which would be ~₹14,34,xxx).
+  var scssRow = $$('#sec-fd .fdRow').filter(function (r) { return r.getAttribute('data-account') === 'SCSS99990001'; })[0];
+  var expCell = Array.prototype.slice.call(scssRow.querySelectorAll('.fdCell')).filter(function (c) { return c.querySelector('small') && c.querySelector('small').textContent === 'Expected total'; })[0];
+  eq('scss expected total = principal only', expCell.querySelector('b').textContent, '₹10,00,000');
+
+  console.log('12) commodities tab — add SGB holding + coupon');
+  App.switchTab('commodities');
+  eq('commodities section visible', $('#sec-commodities').hidden, false);
+  eq('commodities empty hint', !!$('#sec-commodities .muted'), true);
+  // Add via the form.
+  $$('#sec-commodities button').forEach(function (b) { if (b.textContent === '+ Add holding') b.click(); });
+  eq('commodity form opened', !!$('#cName'), true);
+  setValue('#cName', 'SGB 2026');
+  setValue('#cCost', '120000');
+  setValue('#cUnits', '24');
+  setValue('#cPrice', '7000');
+  setValue('#cPurchase', '01/06/2025');
+  setValue('#cValuedOn', '20/09/2026');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add holding') b.click(); });
+  var c0 = App.DATA.commodities[0];
+  eq('commodity added', !!c0, true);
+  eq('commodity name', c0.name, 'SGB 2026');
+  eq('commodity row rendered', $$('#sec-commodities .intTable tr').length >= 2, true);
+  // Record a coupon.
+  var cpBtn = $$('#sec-commodities table button').filter(function (b) { return b.textContent === 'coupon'; })[0];
+  cpBtn.click();
+  eq('coupon form opened', !!$('#cpAmt'), true);
+  setValue('#cpDate', '01/12/2025');
+  setValue('#cpAmt', '1500');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add coupon') b.click(); });
+  eq('coupon recorded', App.DATA.commodities[0].coupons.length, 1);
+  eq('coupon amount', App.DATA.commodities[0].coupons[0].amount, 1500);
+  // Persisted through bundle round-trip shape.
+  eq('commodities in DATA', Array.isArray(App.DATA.commodities), true);
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exit(1);
 });

@@ -66,9 +66,18 @@ var Calc = (function () {
     if (d == null) return null;
     return Math.round(p * (r / 100) * (d / 365));
   }
-  /* Expected total = bank-stated maturity value when present, else P + simple interest. */
+  /* Instrument type: 'fd' (default), 'scss', 'rbi' (RBI floating-rate bond).
+   * SCSS and FRB return ONLY the principal at maturity (interest was paid out
+   * quarterly), so their expected total must not add simple interest. */
+  function normFdType(fd) {
+    var t = typeof fd === 'string' ? fd : fd && fd.type;
+    return t === 'scss' || t === 'rbi' ? t : 'fd';
+  }
+  /* Expected total = bank-stated maturity value when present, else P + simple
+   * interest (FD only; scss/rbi are principal-only — see normFdType). */
   function fdExpectedTotal(fd) {
     if (fd && fd.maturityValue > 0) return fd.maturityValue;
+    if (normFdType(fd) !== 'fd') return fd && fd.amount > 0 ? fd.amount : null;
     var i = fdInterest(fd);
     if (i == null) return null;
     return (fd.amount || 0) + i;
@@ -96,6 +105,9 @@ var Calc = (function () {
    *   'compound' (FD)  — net is credited into the principal; interest accrues on the running amount.
    *   'payout'   (floating bond) — net is paid out; interest accrues on the original principal. */
   function normInterestMode(fd) {
+    /* SCSS / FRB always pay out (interest never credited back), so their mode
+     * is payout regardless of whatever an older record stored. */
+    if (normFdType(fd) !== 'fd') return 'payout';
     var m = fd && fd.interestMode;
     return m === 'payout' ? 'payout' : 'compound';
   }
@@ -348,6 +360,63 @@ var Calc = (function () {
     s.interest = s.expected - s.invested;
     return s;
   }
+  /* ---- Commodities (gold / SGB) ----
+   * A commodity is valued by its current market/redemption value (not a fixed
+   * contractual payoff like debt). SGB: each bond = 1 g gold equivalent,
+   * redeemed at prevailing gold price + an optional 2.5% p.a. coupon on face.
+   * Returns are driven by the gold price, so "expected" is never computed — the
+   * user records the current value (or units × price) and any coupon receipts. */
+  function commodityMarketValue(c) {
+    if (!c) return null;
+    if (c.currentValue > 0) return c.currentValue;
+    if (c.units > 0 && c.unitPrice > 0) return Math.round(c.units * c.unitPrice);
+    return null;
+  }
+  function commodityCouponSummary(c) {
+    var s = { count: 0, total: 0 };
+    (c && c.coupons || []).forEach(function (e) {
+      if (e && e.amount > 0) { s.count++; s.total += e.amount; }
+    });
+    return s;
+  }
+  /* Final value in hand: the sold/redemption value when redeemed, otherwise the
+   * current market value (unrealized). */
+  function commodityFinalValue(c, today) {
+    if (!c) return null;
+    if (c.soldValue > 0) return c.soldValue;
+    return commodityMarketValue(c);
+  }
+  /* Simple (un-annualized) return on the cost basis: (value + coupons − cost)
+   * / cost × 100. Null when there is nothing to measure yet. */
+  function commodityReturnPct(c, today) {
+    var v = commodityFinalValue(c, today);
+    if (!c || !(c.invested > 0) || v == null) return null;
+    return ((v + commodityCouponSummary(c).total - c.invested) / c.invested) * 100;
+  }
+  /* XIRR over the actual cash flows: −cost at purchase, +coupons, +final value
+   * at the redemption date (or today when still held). */
+  function commodityXirr(c, today) {
+    if (!c || !(c.invested > 0) || !c.purchaseDate) return null;
+    today = today || todayISO();
+    var flows = [{ date: c.purchaseDate, amt: -c.invested }];
+    (c.coupons || []).forEach(function (e) {
+      if (e && e.amount > 0 && e.date) flows.push({ date: e.date, amt: e.amount });
+    });
+    var fv = commodityFinalValue(c, today);
+    var end = c.soldDate || today;
+    if (fv > 0 && end) flows.push({ date: end, amt: fv });
+    if (flows.length < 2) return null;
+    return xirr(flows);
+  }
+  function validCommodity(c) {
+    var e = [];
+    if (!(c.name || '').trim()) e.push('Name is required.');
+    if (!(c.invested > 0)) e.push('Cost (invested amount) is required.');
+    if (!c.purchaseDate) e.push('Purchase date is required.');
+    if (c.soldDate && c.purchaseDate && c.soldDate < c.purchaseDate) e.push('Redemption date is before purchase date.');
+    return e;
+  }
+
   function validPan(o) {
     var e = [];
     var p = normPan(o.pan);
@@ -399,6 +468,9 @@ var Calc = (function () {
     return null;
   }
 
+  function fdTypeLabel(t) {
+    return { fd: 'FD', scss: 'SCSS', rbi: 'RBI FRB' }[normFdType(t)] || 'FD';
+  }
   function validFd(fd) {
     var e = [];
     if (!(fd.account || '').trim()) e.push('Account number is required.');
@@ -426,7 +498,11 @@ var Calc = (function () {
     fdStatus: fdStatus, fdAutoRemove: fdAutoRemove, fdStatusRank: fdStatusRank,
     xirr: xirr, fdXirr: fdXirr, sortFds: sortFds, fdSummary: fdSummary,
     fdCloseNowValue: fdCloseNowValue, fyOfDate: fyOfDate, fyYearOf: fyYearOf, fyLabel: fyLabel, fdFySummary: fdFySummary,
+    normFdType: normFdType, fdTypeLabel: fdTypeLabel,
     validFd: validFd, fdDateCheck: fdDateCheck, fdFileMaturity: fdFileMaturity,
+    commodityMarketValue: commodityMarketValue, commodityCouponSummary: commodityCouponSummary,
+    commodityFinalValue: commodityFinalValue, commodityReturnPct: commodityReturnPct,
+    commodityXirr: commodityXirr, validCommodity: validCommodity,
     validPan: validPan, normPan: normPan, holderLabel: holderLabel,
     parseDDMMYYYY: parseDDMMYYYY, isoToDDMMYYYY: isoToDDMMYYYY
   };
