@@ -27,9 +27,21 @@
 - `resyncHolders()` (app.js) re-links every FD/archived record to its holder by PAN text whenever `panId` is empty or stale — runs on session load, bundle import, and profile save. Fixes "import bundle then name/PAN only shows after manually editing each record".
 - `npm test` = 8 suites, all passing (115 checks in invest-dom alone).
 
-## Known open item
-- Older git history (pre-scrub commits) still contains real-looking fixtures
-  (a `...4005`-style account comment, a `202608_consolidated.xlsx` reference, a
-  14-digit repay-account value). Working tree and all new commits are clean;
-  full removal requires `git filter-repo` + force-push — do only on the user's
-  explicit go-ahead. (Describe values abstractly; never write them here.)
+## History scrub — RESOLVED (2026-10-01)
+- Full-history PII scan (every blob, all refs) found the ONLY real personal
+  token in the repo's entire history was a residence name on a single
+  `FORBIDDEN = [...]` test-guard line inside two old blobs of
+  `test/cc-calc.test.js`. Every other candidate (synthetic PNB accounts,
+  14-digit FD reference numbers, PDF/JS numeric constants, a JPEG's binary
+  bytes, a timestamp) was verified to be a false positive, not PII.
+- That line was rewritten to the synthetic values the working tree already used
+  (matching the original `64ce1a3` scrub) via `git filter-branch --tree-filter`
+  (the installed `git-filter-repo` had a broken `--replace-text` in this env —
+  it silently no-op'd, so filter-branch was used instead). All 94 commits were
+  rewritten; refs/original backup ref removed; reflogs expired; `git gc
+  --prune=now` ran. A post-scrub full-blob scan confirms **0** real-PII blobs.
+- Force-pushed to `main` (clean history now at `2e01b69`). GitHub may keep the
+  pruned objects for up to ~90 days in its own GC; the rewritten history is
+  what's served and what new clones/fetches get.
+- If a future full-blob scan ever re-flags anything, re-run
+  `git rev-list --all --objects` + the guard patterns before pushing.
