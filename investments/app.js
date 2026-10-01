@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 15;
+  var APP_VERSION = 16;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -711,7 +711,10 @@
 
     var s = Calc.fdSummary(filterFds(DATA.fds));
     if (s.count) {
-      var fy = Calc.fdFySummary(filterFds(DATA.fds));
+      /* FY tiles must include MATURED FDs too: interest credited to an FD in a
+       * financial year is that year's income even if the deposit matured before
+       * the year end, so excluding the archive under-reports the TDS figure. */
+      var fy = Calc.fdFySummary(filterFds(DATA.fds).concat(filterFds(DATA.archived || [])));
       var closeNow = 0, closeNowCount = 0;
       filterFds(DATA.fds).forEach(function (fd) {
         var v = Calc.fdCloseNowValue(fd);
@@ -726,7 +729,7 @@
       kv.appendChild(kvin(fy.prev.label + ' interest', fy.prev.count ? Calc.inr(fy.prev.interest) : '₹0', fy.prev.count ? 'pos' : 'muted'));
       kv.appendChild(kvin(fy.prev.label + ' TDS', fy.prev.count ? Calc.inr(fy.prev.tax) : '₹0', fy.prev.count ? '' : 'muted'));
       card.appendChild(kv);
-      card.appendChild(el('p', 'hint', 'FY = 1 Apr – 31 Mar, from recorded payouts only. Close now = principal + credited interest + simple interest accrued to today at the current rate (ignores the bank\u2019s break penalty of ~1% on accrued interest).'));
+      card.appendChild(el('p', 'hint', 'FY = 1 Apr – 31 Mar, from recorded payouts only, and includes matured FDs (interest credited in that FY is that FY’s income). Close now = principal + credited interest + simple interest accrued to today at the current rate (ignores the bank\u2019s break penalty of ~1% on accrued interest).'));
     }
 
     if (!filterFds(DATA.fds).length) {

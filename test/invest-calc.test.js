@@ -332,6 +332,16 @@ console.log('fdFySummary — recorded payout totals per Indian FY');
   ], '2026-09-29');
   eq('31 Mar counted in prev FY', edge.prev.interest, 500);
   eq('boundary FY label', edge.prev.year, 2025);
+  // A MATURED FD still contributed income in the FY its interest was credited.
+  // The summary tiles pass active + archived together, so both must be counted.
+  var matured = {
+    amount: 400000, rate: 8.1, issueDate: '2024-08-27', maturityDate: '2026-08-27',
+    entries: [{ date: '2026-06-28', int: 5555, tax: 555 }]  // matured FY 2026-27
+  };
+  var both = Calc.fdFySummary([fdA, matured], '2026-09-29');
+  eq('matured FD counted in cur FY interest', both.cur.interest, 8232 + 5555);
+  eq('matured FD counted in cur FY tax', both.cur.tax, 823 + 555);
+  eq('matured FD counted in cur FY count', both.cur.count, 2);
 })();
 
 console.log('normFdType / fdTypeLabel / fdExpectedTotal by type');
