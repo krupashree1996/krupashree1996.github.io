@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 16;
+  var APP_VERSION = 17;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -828,7 +828,9 @@
         det.textContent = drow.hidden ? 'payouts' : 'hide';
       };
     });
-    card.appendChild(tbl);
+    var wrap = el('div', 'archWrap');
+    wrap.appendChild(tbl);
+    card.appendChild(wrap);
     var chartPts = list.filter(function (a) { return a.xirr != null && a.maturityDate; })
       .map(function (a) { return { date: a.maturityDate, v: a.xirr, account: a.account || '' }; })
       .sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
@@ -1093,7 +1095,9 @@
       ['Holding', 'Cost', 'Value', 'Gain', 'Return', 'Coupons', 'XIRR', ''].forEach(function (h) { thead.appendChild(el('th', '', h)); });
       tbl.appendChild(thead);
       list.forEach(function (c) { tbl.appendChild(commodityRow(c)); });
-      card.appendChild(tbl);
+      var cwrap = el('div', 'archWrap');
+      cwrap.appendChild(tbl);
+      card.appendChild(cwrap);
     }
     sec.appendChild(card);
   }
@@ -1339,12 +1343,12 @@
     var blob = new Blob(['window.DATA = ' + JSON.stringify(out, null, 1) + ';\n'], { type: 'text/javascript' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'data/bundle.js';
+    a.download = 'investments_' + Calc.todayISO().replace(/-/g, '') + '.js';
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-    toast('Bundle downloaded. Place it in this app\u2019s data/ folder to move your data.');
+    toast('Bundle downloaded. Restore it with \u2018Open bundle\u2019, or place it in this app\u2019s data/ folder as bundle.js to move your data.');
   }
   function loadBundle(file) {
     var rd = new FileReader();
