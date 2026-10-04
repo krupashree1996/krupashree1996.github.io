@@ -438,6 +438,22 @@ const Calc = (function () {
    *     closing date settles it immediately (e.g. a bill closing 18/09 and
    *     paid off on 03/10 shows settled before the next statement arrives).
    * Negative entries in other categories are reversals, not payments. */
+  /* A ledger entry only reduces a bill's outstanding when it is actually a
+   * repayment to the bank — not a statement credit that is a reversal/waiver
+   * /refund (those print as credits too and get auto-tagged 'payment' on
+   * import, but never actually pay anything). */
+  function isRepayment(e) {
+    if (!e || !isFinite(e.amount) || e.amount <= 0) return false;
+    if (e.category && e.category !== 'payment') return false; // pre-v5: undefined = payment
+    /* a payment the user explicitly linked to a bill is a repayment by intent */
+    if (String(e.forPeriod || '')) return true;
+    /* legacy pre-ledger payment-array entries (no category, no reliable desc)
+     * are accepted as-is so auto-settle backfill is unchanged */
+    if (e.category === undefined) return true;
+    var d = String(e.desc || '').toUpperCase();
+    return /BPPY|EFT|NEFT|RTGS|ACH|UPI|ATM|CARD PAY|BANK TRANSFER|PAYMENT/.test(d);
+  }
+
   function paymentForRecord(rec, ledger, records) {
     var start = pdate(rec.periodTo);
     var isLatest = true, end = Infinity;
@@ -448,7 +464,7 @@ const Calc = (function () {
       if (t2 > start) { isLatest = false; if (t2 < end) end = t2; }
     });
     var list = (ledger || []).filter(function (p) {
-      if (!p || p.category !== 'payment') return false;
+      if (!isRepayment(p)) return false;
       var fp = String(p.forPeriod || '');
       if (fp && (fp === rec.periodTo || fp === rec.statementDate)) return true;
       if (fp) return false;
@@ -499,7 +515,7 @@ const Calc = (function () {
     if (!newRecord || !Array.isArray(records) || !Array.isArray(ledger)) return 0;
     /* pre-v5 bundles pass the legacy DATA.payments array, whose entries have no
      * category — every one of those is a payment. */
-    var payments = ledger.filter(function (e) { return e && (e.category === undefined || e.category === 'payment'); });
+    var payments = ledger.filter(function (e) { return isRepayment(e); });
     var nt = pdate(newRecord.periodTo);
     if (!nt || !isFinite(newRecord.payments) || newRecord.payments <= 0) return 0;
     // the single most-recent bill strictly before the new statement

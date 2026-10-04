@@ -353,10 +353,17 @@ eq('minimum', Calc.paymentForRecord(recP, [{ category: 'payment', amount: 500, f
 eq('partial', Calc.paymentForRecord(recP, [{ category: 'payment', amount: 200, forPeriod: '18/11/2025' }]).kind, 'partial');
 eq('sum of two payments', Calc.paymentForRecord(recP, [{ category: 'payment', amount: 6000, forPeriod: '18/11/2025' }, { category: 'payment', amount: 4000, forPeriod: '18/11/2025' }]).totalPaid, 10000);
 ok('reversal (non-payment category) is ignored', Calc.paymentForRecord(recP, [{ category: 'base', amount: -10000, forPeriod: '18/11/2025' }]).kind, 'none');
+/* a statement credit that is a reversal/waiver (printed '+ C', auto-tagged
+ * 'payment' on import) is NOT a repayment to the bank — it never reduces a
+ * bill's outstanding */
+eq('reversal credit (payment category, non-repayment desc) ignored',
+  Calc.paymentForRecord(recP, [{ category: 'payment', desc: 'PETRO SURCHARGE WAIVER + C', date: '20/11/2025', amount: 10000 }]).kind, 'none');
+eq('unlinked EFT is a repayment',
+  Calc.paymentForRecord(recP, [{ category: 'payment', desc: 'EFT card payment', date: '20/11/2025', amount: 10000 }]).kind, 'full');
 var dsPast = Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 500 }, [], new Date(2025, 11, 10));
 ok('past due overdue', dsPast.overdue === true);
 eq('past due days left', dsPast.daysLeft, -2);
-var dsFut = Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 500 }, [{ category: 'payment', amount: 500, forPeriod: '' }], new Date(2025, 11, 1));
+var dsFut = Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 500 }, [{ category: 'payment', desc: 'EFT card payment', amount: 500, forPeriod: '' }], new Date(2025, 11, 1));
 eq('future due days left', dsFut.daysLeft, 7);
 ok('not overdue when due ahead', dsFut.overdue === false);
 ok('settled after payment', Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 500, periodTo: '18/11/2025' }, [{ category: 'payment', amount: 10000, forPeriod: '18/11/2025' }], new Date(2025, 11, 1)).settled === true);
@@ -370,11 +377,11 @@ var recs2 = [
   { id: 'b2', periodTo: '18/09/2026', total: 71513, minimumDue: 3580, dueDate: '08/10/2026' }
 ];
 var lg2 = [
-  { category: 'payment', date: '23/07/2026', amount: 11000 },   // after b0 closed → b0
-  { category: 'payment', date: '22/08/2026', amount: 890 },     // after b1 closed → b1
-  { category: 'payment', date: '31/08/2026', amount: 16865 },   // after b1 closed → b1
-  { category: 'payment', date: '20/09/2026', amount: 3580 },    // after b2 closed → b2 (latest)
-  { category: 'payment', date: '03/10/2026', amount: 67933 }    // after b2 closed → b2, paid post-close
+  { category: 'payment', date: '23/07/2026', desc: 'EFT card payment', amount: 11000 },   // after b0 closed → b0
+  { category: 'payment', date: '22/08/2026', desc: 'NEFT payment', amount: 890 },         // after b1 closed → b1
+  { category: 'payment', date: '31/08/2026', desc: 'EFT card payment', amount: 16865 },   // after b1 closed → b1
+  { category: 'payment', date: '20/09/2026', desc: 'UPI payment', amount: 3580 },         // after b2 closed → b2 (latest)
+  { category: 'payment', date: '03/10/2026', desc: 'EFT card payment', amount: 67933 }    // after b2 closed → b2, paid post-close
 ];
 var now26 = new Date(2026, 9, 4);
 var ds2 = Calc.dueStatus(recs2[2], lg2, recs2, now26);
@@ -383,7 +390,7 @@ eq('latest bill outstanding 0', ds2.outstanding, 0);
 eq('middle bill settled by in-window payments', Calc.dueStatus(recs2[1], lg2, recs2, now26).kind, 'full');
 eq('older bill settled by its window payment', Calc.dueStatus(recs2[0], lg2, recs2, now26).paid, 11000);
 /* a payment dated BEFORE the bill's period-to belongs to no window */
-eq('pre-close unlinked payment ignored', Calc.dueStatus(recs2[2], [{ category: 'payment', date: '05/09/2026', amount: 71513 }], recs2, now26).kind, 'none');
+eq('pre-close unlinked payment ignored', Calc.dueStatus(recs2[2], [{ category: 'payment', desc: 'EFT card payment', date: '05/09/2026', amount: 71513 }], recs2, now26).kind, 'none');
 /* an explicitly linked payment still wins over the window */
 eq('linked payment attributed to its bill', Calc.dueStatus(recs2[0], [{ category: 'payment', date: '03/10/2026', amount: 219972, forPeriod: '18/07/2026' }], recs2, now26).kind, 'full');
 eq('utilization 25%', Calc.utilizationOf({ total: 25000, creditLimit: 100000 }), 25);
