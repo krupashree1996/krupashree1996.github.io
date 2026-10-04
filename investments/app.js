@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 18;
+  var APP_VERSION = 19;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -1168,7 +1168,7 @@
 
       var tbl = el('table', 'intTable');
       var thead = el('tr');
-      ['Holding', 'Cost', 'Value', 'Gain', 'Return', 'Coupons', 'XIRR', ''].forEach(function (h) { thead.appendChild(el('th', '', h)); });
+      ['Holding', 'Cost', 'Value', 'Gain', 'Return', 'Coupons', 'XIRR', 'Est. payout', ''].forEach(function (h) { thead.appendChild(el('th', '', h)); });
       tbl.appendChild(thead);
       list.forEach(function (c) { tbl.appendChild(commodityRow(c)); });
       var cwrap = el('div', 'archWrap');
@@ -1210,6 +1210,21 @@
     tr.appendChild(retCell);
     tr.appendChild(el('td', 'num', cs.count ? Calc.inr(cs.total) : '—'));
     tr.appendChild(el('td', 'num', xirr != null ? (xirr * 100).toFixed(2) + '% p.a.' : '—'));
+    var csched = Calc.commodityPayoutSchedule(c);
+    if (csched.length) {
+      var csg = 0; csched.forEach(function (r) { csg += r.amount; });
+      var cnext = csched.filter(function (r) { return r.date >= today && r.kind !== 'redemption'; })[0];
+      var clines = csched.map(function (r) {
+        return Calc.fmtDate(r.date) + ' · ' + (r.kind === 'coupon' ? 'coupon' : r.kind === 'end' ? 'broken end' : 'redemption') + ' · est ' + Calc.inr(r.amount);
+      });
+      var estTd = el('td', 'num', cnext ? (Calc.inr(cnext.amount) + ' by ' + Calc.fmtDate(cnext.date)) : (c.units > 0 ? Calc.inr(Math.round(c.units * 1000)) : '—'));
+      estTd.title = 'Estimated coupon + redemption schedule (SGB)\n' +
+        clines.join('\n') + '\n\nEstimated total: ' + Calc.inr(csg) +
+        (c.units > 0 ? ' (incl. face redemption ' + Calc.inr(Math.round(c.units * 1000)) + ')' : '');
+      tr.appendChild(estTd);
+    } else {
+      tr.appendChild(el('td', 'num', '—'));
+    }
     var act = el('td', '');
     var ed = el('button', 'mini', 'edit');
     ed.onclick = function () { commodityForm(c); };
@@ -1247,6 +1262,19 @@
     form.appendChild(field('Current value (₹)', numInput('cValue', c.currentValue, 'used when units × price not set')));
     form.appendChild(field('Valued on', dateInput('cValuedOn', c.valuedOn)));
     form.appendChild(field('Purchase date *', dateInput('cPurchase', c.purchaseDate)));
+    form.appendChild(field('SGB redemption date (maturity)', dateInput('cRedeem', c.redeemDate), true));
+    form.appendChild(field('Coupon rate (% p.a.)', numInput('cRate', c.couponRate, 'SGB default 2.5')));
+    var kindSel = form.querySelector('#cKind');
+    var sgbRedeem = form.querySelector('#cRedeem'), sgbRate = form.querySelector('#cRate');
+    if (sgbRedeem) sgbRedeem = sgbRedeem.parentNode.parentNode; // the <label> wrapper
+    if (sgbRate) sgbRate = sgbRate.parentNode; // numInput sits directly in the label
+    function syncSgbVisibility() {
+      var sgb = kindSel.value === 'sgb';
+      if (sgbRedeem) sgbRedeem.style.display = sgb ? '' : 'none';
+      if (sgbRate) sgbRate.style.display = sgb ? '' : 'none';
+    }
+    kindSel.addEventListener('change', syncSgbVisibility);
+    syncSgbVisibility();
     form.appendChild(field('Redemption / sold value (₹)', numInput('cSold', c.soldValue, 'blank = still holding')));
     form.appendChild(field('Redemption / sold date', dateInput('cSoldOn', c.soldDate)));
     form.appendChild(field('Notes', textInput('cNotes', c.notes, ''), true));
@@ -1264,6 +1292,8 @@
         currentValue: num('cValue'),
         valuedOn: readDate('cValuedOn'),
         purchaseDate: readDate('cPurchase'),
+        redeemDate: readDate('cRedeem'),
+        couponRate: num('cRate'),
         soldValue: num('cSold'),
         soldDate: readDate('cSoldOn'),
         notes: val('cNotes')
@@ -1288,10 +1318,47 @@
     f.actions.appendChild(save); f.actions.appendChild(cancel);
     modal(f.box, true);
   }
+  /* Estimated coupon + redemption schedule table for an SGB (true semi-annual
+   * on the purchase anniversary; face-value redemption at maturity). */
+  function appendCommoditySchedule(c, box) {
+    var sched = Calc.commodityPayoutSchedule(c);
+    if (!sched.length) return;
+    var rate = c.couponRate != null ? c.couponRate : 2.5;
+    var full = Math.round((c.invested * rate / 100) / 2);
+    var stbl = el('table', 'intTable');
+    var sth = el('tr');
+    ['Date', 'Days', 'Kind', 'Est. amount'].forEach(function (h) { sth.appendChild(el('th', '', h)); });
+    stbl.appendChild(sth);
+    sched.forEach(function (row) {
+      var tr = el('tr');
+      tr.appendChild(el('td', '', Calc.fmtDate(row.date)));
+      tr.appendChild(el('td', '', row.days != null && row.days > 0 ? String(row.days) : '\u2014'));
+      var kindTxt = row.kind === 'coupon' ? 'coupon' : row.kind === 'end' ? 'broken end' : 'redemption (face)';
+      var kindTd = el('td', '', kindTxt);
+      if (row.kind === 'coupon') kindTd.title = 'Semi-annual coupon: invested \u00d7 ' + rate + '% \u00f7 2. Actual SGB coupon dates vary by a few days per series.';
+      else if (row.kind === 'end') kindTd.title = 'Broken end: day-based pro-rata (invested \u00d7 rate \u00d7 days \u00f7 365).';
+      else kindTd.title = 'Redemption at face value: ' + c.units + ' units \u00d7 \u20b91,000.';
+      tr.appendChild(kindTd);
+      tr.appendChild(el('td', 'num', Calc.inr(row.amount)));
+      stbl.appendChild(tr);
+    });
+    var st = el('tr');
+    var sg = 0; sched.forEach(function (r) { sg += r.amount; });
+    st.appendChild(el('td', '', sched.length + ' items'));
+    st.appendChild(el('td', ''));
+    st.appendChild(el('td', '', 'estimated total'));
+    st.appendChild(el('td', 'num strong', Calc.inr(sg)));
+    stbl.appendChild(st);
+    var sw = el('div', 'archWrap');
+    sw.appendChild(stbl);
+    box.appendChild(sw);
+    box.appendChild(el('p', 'hint', 'Estimated schedule: coupon = invested \u00d7 ' + rate + '% \u00f7 2 = ' + Calc.inr(full) + ' every ~6 months on the purchase date, plus face-value redemption (' + Calc.inr(Math.round((c.units || 0) * 1000)) + ') at maturity. This is an estimate, not a bank promise.'));
+  }
   function commodityCoupon(c) {
     c.coupons = c.coupons || [];
     var f = formShell('Coupon — ' + (c.name || c.id));
     f.form.appendChild(el('p', 'hint', 'SGB pays a 2.5% p.a. coupon on face value, semi-annually. Record each receipt; it feeds the return and XIRR.'));
+    appendCommoditySchedule(c, f.form);
     f.form.appendChild(field('Date', dateInput('cpDate', '')));
     f.form.appendChild(field('Amount (₹)', numInput('cpAmt', '', 'e.g. 3000')));
     var save = el('button', 'primary', 'Add coupon');

@@ -496,6 +496,7 @@ var Calc = (function () {
     var q = type === 'rbi' ? 2 : 4;            // payouts per year
     var gap = 12 / q;                          // months between period ends
     var per = Math.round((fd.amount * fd.rate / 100) / q);
+    var perDay = fd.amount * fd.rate / 100 / 365;   // day-based pro-rata for broken ends
     var est = fd.payoutEstimate || {};
     var full = est.full != null ? est.full : per;
     var p = String(fd.issueDate).split('-');
@@ -516,15 +517,52 @@ var Calc = (function () {
       var kind = out.length || days >= Math.round(gap * 30) ? 'full' : 'start';
       out.push({
         date: iso, days: days, kind: kind,
-        amount: kind === 'full' ? full : (est.brokenStart != null ? est.brokenStart : per)
+        amount: kind === 'full' ? full : (est.brokenStart != null ? est.brokenStart : Math.round(days * perDay))
       });
       mo += gap;
     }
     if (!out.length) return [];
+    var endDays = daysBetweenISO(out[out.length - 1].date, fd.maturityDate);
     out.push({
-      date: fd.maturityDate, days: daysBetweenISO(out[out.length - 1].date, fd.maturityDate),
-      kind: 'end', amount: est.brokenEnd != null ? est.brokenEnd : per
+      date: fd.maturityDate, days: endDays, kind: 'end',
+      amount: est.brokenEnd != null ? est.brokenEnd : Math.round(endDays * perDay)
     });
+    return out;
+  }
+  /* Estimated coupon + redemption schedule for an SGB holding (kind 'sgb').
+   * Coupons are semi-annual on the purchase anniversary (real SGB coupon dates
+   * differ by a few days per series — this is an estimate). Coupon amount is on
+   * the cost basis (invested), matching how most statements compute it; the
+   * final redemption is at face value (₹1,000 per unit).
+   * Items: { date, days, kind: 'coupon'|'end'|'redemption', amount }.
+   * Returns [] when sold, or when dates/amount are incomplete. */
+  function commodityPayoutSchedule(c) {
+    if (!c || c.kind !== 'sgb' || c.soldDate) return [];
+    if (!c.purchaseDate || !(c.invested > 0)) return [];
+    var redeem = c.redeemDate;
+    if (!redeem || redeem <= c.purchaseDate) return [];
+    var rate = c.couponRate != null ? c.couponRate : 2.5;
+    var perDay = c.invested * rate / 100 / 365;
+    var full = Math.round((c.invested * rate / 100) / 2);
+    var p = String(c.purchaseDate).split('-');
+    var iy = +p[0], im = +p[1], iday = +p[2];
+    var out = [];
+    for (var k = 1; k <= 200; k++) {
+      var mo = im + k * 6 - 1;
+      var y = iy + Math.floor(mo / 12), mn = (mo % 12) + 1;
+      var d = Math.min(iday, new Date(y, mn, 0).getDate());
+      var iso = y + '-' + pad(mn) + '-' + pad(d);
+      if (iso > redeem) break;            // a coupon landing exactly on maturity is the final coupon
+      var prev = out.length ? out[out.length - 1].date : c.purchaseDate;
+      out.push({
+        date: iso, days: daysBetweenISO(prev, iso), kind: 'coupon',
+        amount: full
+      });
+    }
+    var lastDate = out.length ? out[out.length - 1].date : c.purchaseDate;
+    var endDays = daysBetweenISO(lastDate, redeem);
+    if (endDays > 0) out.push({ date: redeem, days: endDays, kind: 'end', amount: Math.round(endDays * perDay) });
+    if (c.units > 0) out.push({ date: redeem, days: 0, kind: 'redemption', amount: Math.round(c.units * 1000) });
     return out;
   }
   function validFd(fd) {
@@ -556,7 +594,7 @@ var Calc = (function () {
     fdCloseNowValue: fdCloseNowValue, fyOfDate: fyOfDate, fyYearOf: fyYearOf, fyLabel: fyLabel, fdFySummary: fdFySummary,
     normFdType: normFdType, fdTypeLabel: fdTypeLabel, fdPayoutSchedule: fdPayoutSchedule,
     validFd: validFd, fdDateCheck: fdDateCheck, fdFileMaturity: fdFileMaturity,
-    commodityMarketValue: commodityMarketValue, commodityCouponSummary: commodityCouponSummary,
+    commodityMarketValue: commodityMarketValue, commodityPayoutSchedule: commodityPayoutSchedule, commodityCouponSummary: commodityCouponSummary,
     commodityFinalValue: commodityFinalValue, commodityReturnPct: commodityReturnPct,
     commodityXirr: commodityXirr, validCommodity: validCommodity,
     validPan: validPan, normPan: normPan, holderLabel: holderLabel,

@@ -402,6 +402,43 @@ console.log('fdPayoutSchedule — SCSS true-quarter / FRB half-year estimates');
   eq('frb half = P*r/2', frb[1].amount, 5550);
   eq('fd type -> no schedule', Calc.fdPayoutSchedule({ type: 'fd', amount: 1, rate: 1, issueDate: '2026-01-01', maturityDate: '2027-01-01' }).length, 0);
   eq('incomplete -> no schedule', Calc.fdPayoutSchedule({ type: 'scss', amount: 100, issueDate: '2026-01-01' }).length, 0);
+  // day-based pro-rata fallback for the two broken ends when no estimate entered
+  var perDay = 1000000 * 8.2 / 100 / 365;
+  eq('broken start = days * perDay', s[0].amount, Math.round(s[0].days * perDay));
+  eq('broken end = days * perDay', s[20].amount, Math.round(s[20].days * perDay));
+  eq('broken start days', s[0].days, 40);
+  eq('broken end days', s[20].days, 49);
+})();
+
+console.log('commodityPayoutSchedule — SGB coupons + face redemption');
+(function () {
+  var sgb = { kind: 'sgb', name: 'SGB 2026', invested: 50104, units: 50, purchaseDate: '2024-02-21', redeemDate: '2032-02-21' };
+  var p = Calc.commodityPayoutSchedule(sgb);
+  // 16 semi-annual coupons (8 yrs) + face redemption; no broken end (21 Feb == anniv)
+  var coupons = p.filter(function (r) { return r.kind === 'coupon'; });
+  eq('16 coupons', coupons.length, 16);
+  eq('first coupon 21 Aug 2024', p[0].date, '2024-08-21');
+  eq('second-to-last coupon 21 Aug 2031', p[14].date, '2031-08-21');
+  eq('final coupon lands on maturity', p[15].date, '2032-02-21');
+  eq('coupon = invested * 2.5% / 2', p[0].amount, 626);
+  var red = p.filter(function (r) { return r.kind === 'redemption'; });
+  eq('one redemption', red.length, 1);
+  eq('redemption at face (units x 1000)', red[0].amount, 50000);
+  eq('redemption on maturity', red[0].date, '2032-02-21');
+  eq('no broken end when anniv aligns', p.filter(function (r) { return r.kind === 'end'; }).length, 0);
+  // custom coupon rate
+  var p2 = Calc.commodityPayoutSchedule(Object.assign({}, sgb, { couponRate: 2.4 }));
+  eq('coupon at 2.4% = 601', p2[0].amount, 601);
+  // maturity NOT on the anniversary -> a broken-end coupon before redemption
+  var sgb2 = Object.assign({}, sgb, { redeemDate: '2028-12-07' });
+  var p3 = Calc.commodityPayoutSchedule(sgb2);
+  eq('broken end present', p3.some(function (r) { return r.kind === 'end'; }), true);
+  eq('redemption still at face', p3.filter(function (r) { return r.kind === 'redemption'; })[0].amount, 50000);
+  // sold / incomplete / non-sgb -> no schedule
+  eq('sold -> no schedule', Calc.commodityPayoutSchedule(Object.assign({}, sgb, { soldDate: '2027-01-01' })).length, 0);
+  eq('no redeemDate -> no schedule', Calc.commodityPayoutSchedule({ kind: 'sgb', invested: 1000, purchaseDate: '2024-01-01' }).length, 0);
+  eq('gold kind -> no schedule', Calc.commodityPayoutSchedule({ kind: 'gold', invested: 1000, units: 5, purchaseDate: '2024-01-01', redeemDate: '2029-01-01' }).length, 0);
+  eq('no units -> no redemption row', Calc.commodityPayoutSchedule(Object.assign({}, sgb, { units: 0 })).some(function (r) { return r.kind === 'redemption'; }), false);
 })();
 
 console.log('commodities — market value / coupons / return / XIRR');

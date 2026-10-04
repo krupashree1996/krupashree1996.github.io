@@ -464,6 +464,47 @@ whenReady(function run() {
     // Persisted through bundle round-trip shape.
   eq('commodities in DATA', Array.isArray(App.DATA.commodities), true);
 
+  console.log('12b) SGB redemption date + coupon estimate schedule');
+  // The SGB form shows the maturity/coupon fields by default (kind = sgb).
+  $$('#sec-commodities button').forEach(function (b) { if (b.textContent === '+ Add holding') b.click(); });
+  var redeemLabel = $('#cRedeem').parentNode.parentNode;
+  var rateLabel = $('#cRate').parentNode.parentNode;
+  eq('sgb fields shown for sgb', redeemLabel.style.display, '');
+  setValue('#cName', 'SGB 2024 (TEST)');
+  setValue('#cKind', 'gold');
+  eq('sgb fields hidden for gold', redeemLabel.style.display, 'none');
+  setValue('#cKind', 'sgb');
+  eq('sgb fields shown again', redeemLabel.style.display, '');
+  setValue('#cCost', '50104');
+  setValue('#cUnits', '50');
+  setValue('#cRate', '2.5');
+  setValue('#cPurchase', '21/02/2024');
+  setValue('#cRedeem', '21/02/2032');
+  setValue('#cValuedOn', '04/10/2026');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add holding') b.click(); });
+  var sgb0 = App.DATA.commodities.filter(function (c) { return c.name === 'SGB 2024 (TEST)'; })[0];
+  eq('sgb added', !!sgb0, true);
+  eq('redeemDate stored', sgb0.redeemDate, '2032-02-21');
+  eq('couponRate stored', sgb0.couponRate, 2.5);
+  // row shows the Est. payout cell
+  var sgbRow = Array.prototype.slice.call(document.querySelectorAll('#sec-commodities tr')).filter(function (r) { return r.textContent.indexOf('SGB 2024 (TEST)') >= 0; })[0];
+  eq('sgb row found', !!sgbRow, true);
+  var estTds = Array.prototype.slice.call(sgbRow.querySelectorAll('td')).filter(function (t) { return t.title && t.title.indexOf('Estimated coupon + redemption schedule') >= 0; });
+  eq('Est. payout cell on sgb row', estTds.length >= 1, true);
+  eq('estimate shows face redemption', estTds[0].title.indexOf('₹50,000') >= 0, true);
+  eq('estimate lists a coupon date', estTds[0].title.indexOf('21 Aug 2024') >= 0, true);
+  // coupon modal renders the schedule table
+  var cpBtn2 = Array.prototype.slice.call(sgbRow.querySelectorAll('button')).filter(function (b) { return b.textContent === 'coupon'; })[0];
+  cpBtn2.click();
+  var schedTbls = $$('#modalBox table.intTable');
+  eq('schedule table in coupon modal', schedTbls.length >= 1, true);
+  var stText = schedTbls[schedTbls.length - 1].textContent;
+  eq('schedule has first coupon', stText.indexOf('21 Aug 2024') >= 0, true);
+  eq('schedule marks redemption (face)', stText.indexOf('redemption (face)') >= 0, true);
+  eq('schedule has estimated total', stText.indexOf('estimated total') >= 0, true);
+  // close the modal
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
+
   console.log('13) SCSS payout-estimate fields + schedule display');
   App.switchTab('fd');
   App.buildFdForm(null);
