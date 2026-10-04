@@ -62,6 +62,16 @@ whenReady(function run() {
   eq('coin value default', DATA.rewardsConfig.valuePerCoin, 0.25);
   ok('landing section present', !!$('#landing'));
 
+  console.log('1b) file inputs use sr-only (Android picker regression)');
+  /* The Android/Chrome picker never opens for a programmatic .click() on an
+   * input with display:none (the hidden attribute). ipo/investments/tn-utilities
+   * all use .sr-only; neu-tracker regressed to hidden. */
+  ['#importFile', '#openBundleInput'].forEach(function (sel) {
+    var inp = $(sel, document);
+    ok(sel + ' has sr-only class', inp && inp.classList.contains('sr-only'), true);
+    ok(sel + ' is not hidden-attr', !(inp && inp.hasAttribute('hidden')), true);
+  });
+
   console.log('2) ledger — add an entry');
   setValue('#leDate', '10/11/2025');
   setValue('#leDesc', 'DMART buy');
@@ -135,14 +145,31 @@ whenReady(function run() {
     ok('monthly purchases chart drawn (records present)', calls.indexOf('chartMonthly') >= 0, true);
     ok('spend-by-category chart drawn (ledger present)', calls.indexOf('chartCats') >= 0, true);
 
-    console.log('7) persistence round-trip');
-    var saved = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
-    eq('persisted version', saved.version, 4);
-    eq('persisted ledger entries', saved.ledger.length, 2); // 1 payment log + 1 bulk-booked statement row (6c)
-    eq('persisted redemptions', saved.redemptions.length, 1);
-    ok('no password persisted', !('password' in saved));
+      console.log('7) persistence round-trip');
+      var saved = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
+      eq('persisted version', saved.version, 4);
+      eq('persisted ledger entries', saved.ledger.length, 2); // 1 payment log + 1 bulk-booked statement row (6c)
+      eq('persisted redemptions', saved.redemptions.length, 1);
+      ok('no password persisted', !('password' in saved));
 
-    console.log('\n' + passed + ' passed, ' + failed + ' failed');
-    process.exit(failed ? 1 : 0);
-  }, 60);
+      console.log('8) bundle import — bare JSON backup (no window.DATA wrapper)');
+      /* run last: loadBundleFile replaces the app's DATA object, so the
+       * captured `DATA` reference above goes stale afterwards. */
+      var payload = JSON.stringify({ version: 1, records: [{ id: 's-test', periodTo: '15/15/2020', periodFrom: '16/14/2020', total: 100, purchases: 100 }], ledger: [] });
+      var f = new dom.window.File([payload], 'backup.json', { type: 'application/json' });
+      f.text = function () { return Promise.resolve(payload); }; // jsdom File has no .text()
+      Object.defineProperty(document.getElementById('openBundleInput'), 'files', { value: [f], configurable: true });
+      document.getElementById('openBundleInput').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+      setTimeout(function () {
+        var now = dom.window.DATA;
+        eq('bare-JSON bundle loaded (records replaced)', now.records.length, 1);
+        eq('record id from JSON', now.records[0].id, 's-test');
+        eq('ledger from JSON', now.ledger.length, 0);
+        var saved2 = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
+        eq('persisted bare-JSON bundle version (migrated)', saved2.version, 4);
+
+        console.log('\n' + passed + ' passed, ' + failed + ' failed');
+        process.exit(failed ? 1 : 0);
+      }, 80);
+    }, 60);
 });

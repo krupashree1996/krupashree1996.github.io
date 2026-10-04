@@ -18,7 +18,7 @@
 
   var STORE_KEY = 'ne.tracker.data';
   var PW_KEY = 'ne.tracker.pw';
-  var APP_VERSION = 2;
+  var APP_VERSION = 3;
 
   /* ---------------- tiny DOM helpers ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -1068,9 +1068,13 @@
   }
   function loadBundleFile(file) {
     file.text().then(function (t) {
-      var s = t.replace(/^\s*window\.DATA\s*=\s*/, '');
-      s = s.replace(/\s*;\s*$/, '');
-      var d = JSON.parse(s);
+      var s = String(t), d;
+      if (s.indexOf('window.DATA =') >= 0) {
+        s = s.replace(/^[\s\S]*?window\.DATA\s*=\s*/, '').replace(/;\s*$/, '');
+        d = JSON.parse(s);
+      } else {
+        d = JSON.parse(s); // also accept a bare JSON bundle (renamed/extracted backup)
+      }
       if (!d || (!Array.isArray(d.records) && !Array.isArray(d.ledger))) throw new Error('not a bundle');
       var migrated = Calc.migrateBundle(d);
       if (migrated.incompatible) { toast('Bundle is from a newer app version — update first.', 'bad'); return; }
