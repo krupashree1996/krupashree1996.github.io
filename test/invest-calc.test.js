@@ -365,6 +365,45 @@ eq('scss forces payout mode', Calc.normInterestMode({ type: 'scss', interestMode
 eq('rbi forces payout mode', Calc.normInterestMode({ type: 'rbi', interestMode: 'compound' }), 'payout');
 eq('fd honors stored mode', Calc.normInterestMode({ type: 'fd', interestMode: 'compound' }), 'compound');
 
+console.log('fdPayoutSchedule — SCSS true-quarter / FRB half-year estimates');
+(function () {
+  var scss = { type: 'scss', amount: 1000000, rate: 8.2, issueDate: '2026-02-19', maturityDate: '2031-02-18' };
+  var s = Calc.fdPayoutSchedule(scss);
+  eq('scss 21 periods (20 qtrs + end)', s.length, 21);
+  eq('first end 31 Mar 2026', s[0].date, '2026-03-31');
+  eq('first kind broken start', s[0].kind, 'start');
+  eq('qtr end 30 Jun 2026', s[1].date, '2026-06-30');
+  eq('qtr end 31 Dec 2030', s[19].date, '2030-12-31');
+  eq('last is maturity', s[20].date, '2031-02-18');
+  eq('last kind end', s[20].kind, 'end');
+  eq('full quarter = P*r/4', s[1].amount, 20500);
+  // user-entered estimates override the two broken ends
+  var s2 = Calc.fdPayoutSchedule(Object.assign({}, scss, { payoutEstimate: { full: 20500, brokenStart: 9211, brokenEnd: 11289 } }));
+  eq('start uses brokenStart', s2[0].amount, 9211);
+  eq('end uses brokenEnd', s2[20].amount, 11289);
+  eq('est total matches bank schedule', s2.reduce(function (a, r) { return a + r.amount; }, 0), 410000);
+  // user-set full amount overrides P*r/4
+  var s3 = Calc.fdPayoutSchedule(Object.assign({}, scss, { payoutEstimate: { full: 21000 } }));
+  eq('custom full quarter', s3[1].amount, 21000);
+  // maturity exactly on a boundary: no end row
+  var s4 = Calc.fdPayoutSchedule({ type: 'scss', amount: 1000000, rate: 8.2, issueDate: '2026-04-01', maturityDate: '2028-03-31' });
+  eq('ends on boundary -> 8 rows', s4.length, 8);
+  eq('last is maturity (end)', s4[s4.length - 1].date, '2028-03-31');
+  eq('last kind end', s4[s4.length - 1].kind, 'end');
+  // short first period is a broken start even if a full estimate is set
+  var s5 = Calc.fdPayoutSchedule(Object.assign({}, scss, { payoutEstimate: { full: 20500, brokenStart: 5000 } }));
+  eq('short first period stays start', s5[0].kind, 'start');
+  eq('short first period amount', s5[0].amount, 5000);
+  // FRB: half-yearly, P*r/2, ends on Jun/Dec
+  var frb = Calc.fdPayoutSchedule({ type: 'rbi', amount: 150000, rate: 7.4, issueDate: '2025-07-01', maturityDate: '2030-06-30' });
+  eq('frb 10 half-years', frb.length, 10);
+  eq('frb first end 31 Dec 2025', frb[0].date, '2025-12-31');
+  eq('frb second end 30 Jun 2026', frb[1].date, '2026-06-30');
+  eq('frb half = P*r/2', frb[1].amount, 5550);
+  eq('fd type -> no schedule', Calc.fdPayoutSchedule({ type: 'fd', amount: 1, rate: 1, issueDate: '2026-01-01', maturityDate: '2027-01-01' }).length, 0);
+  eq('incomplete -> no schedule', Calc.fdPayoutSchedule({ type: 'scss', amount: 100, issueDate: '2026-01-01' }).length, 0);
+})();
+
 console.log('commodities — market value / coupons / return / XIRR');
 (function () {
   var sgb = {

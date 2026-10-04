@@ -461,8 +461,52 @@ whenReady(function run() {
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add coupon') b.click(); });
   eq('coupon recorded', App.DATA.commodities[0].coupons.length, 1);
   eq('coupon amount', App.DATA.commodities[0].coupons[0].amount, 1500);
-  // Persisted through bundle round-trip shape.
+    // Persisted through bundle round-trip shape.
   eq('commodities in DATA', Array.isArray(App.DATA.commodities), true);
+
+  console.log('13) SCSS payout-estimate fields + schedule display');
+  App.switchTab('fd');
+  App.buildFdForm(null);
+  eq('estimate fields hidden for FD', $('#fEstFull').parentNode.style.display, 'none');
+  setValue('#fType', 'scss');
+  eq('estimate fields shown for SCSS', $('#fEstFull').parentNode.style.display, '');
+  setValue('#fAcc', '130910SC00004020');
+  setValue('#fAmt', '1000000');
+  setValue('#fRate', '8.2');
+  setValue('#fIssue', '19/02/2026');
+  setValue('#fMaturity', '18/02/2031');
+  setValue('#fEstStart', '9211');
+  setValue('#fEstEnd', '11289');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
+  var sc2 = App.DATA.fds.filter(function (f) { return f.account === '130910SC00004020'; })[0];
+  eq('scss2 added', !!sc2, true);
+  eq('brokenStart stored', sc2.payoutEstimate && sc2.payoutEstimate.brokenStart, 9211);
+  eq('brokenEnd stored', sc2.payoutEstimate && sc2.payoutEstimate.brokenEnd, 11289);
+  eq('full left blank (auto P*r/4)', sc2.payoutEstimate && sc2.payoutEstimate.full, null);
+  // row shows the next estimated payout
+  var sc2Row = $$('#sec-fd .fdRow').filter(function (r) { return r.getAttribute('data-account') === '130910SC00004020'; })[0];
+  var estCell = Array.prototype.slice.call(sc2Row.querySelectorAll('.fdCell')).filter(function (c) { return c.querySelector('small') && c.querySelector('small').textContent === 'Est. payout'; })[0];
+  eq('Est. payout cell on row', !!estCell, true);
+  eq('estimate tooltip lists schedule', estCell.title.indexOf('31 Mar 2026') >= 0, true);
+  eq('estimate tooltip has total', estCell.title.indexOf('Estimated total gross') >= 0, true);
+  eq('estimate tooltip uses bank broken start', estCell.title.indexOf('₹9,211') >= 0, true);
+  eq('estimate tooltip uses P*r/4 full quarter', estCell.title.indexOf('₹20,500') >= 0, true);
+  // interest modal renders the schedule table
+  App.buildInterestForm(sc2);
+  var modTables = $$('#interestModal table.intTable');
+  eq('schedule table present in interest modal', modTables.length >= 1, true);
+  var schedTbl = modTables[modTables.length - 1];
+  var schedText = schedTbl.textContent;
+  eq('schedule has first quarter end', schedText.indexOf('31 Mar 2026') >= 0, true);
+  eq('schedule marks broken start', schedText.indexOf('broken start') >= 0, true);
+  eq('schedule marks broken end', schedText.indexOf('broken end') >= 0, true);
+  eq('schedule shows estimated total', schedText.indexOf('estimated total') >= 0, true);
+  eq('schedule row count (21 periods)', schedTbl.querySelectorAll('tr').length - 1, 22); // 21 + total row
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
+  // FD keeps hiding the estimate fields
+  App.buildFdForm(null);
+  eq('estimate fields hidden again for FD', $('#fEstFull').parentNode.style.display, 'none');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
 
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exit(1);

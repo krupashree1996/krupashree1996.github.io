@@ -474,6 +474,59 @@ var Calc = (function () {
   function fdTypeLabel(t) {
     return { fd: 'FD', scss: 'SCSS', rbi: 'RBI FRB' }[normFdType(t)] || 'FD';
   }
+  /* End-of-month ISO date: end of the month that contains the given month-start. */
+  function endOfMonthISO(year, month) { // month is 1-12
+    return year + '-' + pad(month) + '-' + pad(new Date(year, month, 0).getDate());
+  }
+  /* Payout schedule estimate for SCSS (quarterly) / RBI FRB (semi-annual).
+   * These pay on TRUE periods: a full quarter = P * r / 4, a full half-year =
+   * P * r / 2 — no day count. Only the two broken ends (issue -> first period
+   * end, last period end -> maturity) are day-dependent, so their amounts
+   * come from the record's user-entered estimates
+   * (`payoutEstimate.{brokenStart,brokenEnd}`); the full-period amount comes
+   * from `payoutEstimate.full` (default P*r/q). Period ends fall on the end of
+   * Mar/Jun/Sep/Dec (SCSS) or Jun/Dec (FRB), starting with the first end AFTER
+   * the issue date; the last item is always the maturity date.
+   * Each item: { date, days, kind: 'start'|'full'|'end', amount }.
+   * Returns [] when dates/amount are incomplete. */
+  function fdPayoutSchedule(fd) {
+    var type = normFdType(fd);
+    if (type !== 'scss' && type !== 'rbi') return [];
+    if (!fd.issueDate || !fd.maturityDate || !(fd.amount > 0) || !(fd.rate > 0)) return [];
+    var q = type === 'rbi' ? 2 : 4;            // payouts per year
+    var gap = 12 / q;                          // months between period ends
+    var per = Math.round((fd.amount * fd.rate / 100) / q);
+    var est = fd.payoutEstimate || {};
+    var full = est.full != null ? est.full : per;
+    var p = String(fd.issueDate).split('-');
+    var iy = +p[0], im = +p[1];
+    var out = [];
+    var mo = Math.ceil(im / gap) * gap;        // first boundary month (1-12 scale: 3,6,9,12 / 6,12)
+    for (;;) {
+      var y = iy + Math.floor((mo - 1) / 12);
+      var mn = ((mo - 1) % 12) + 1;
+      var last = new Date(y, mn, 0);           // last day of that month
+      var iso = y + '-' + pad(mn) + '-' + pad(last.getDate());
+      if (iso <= fd.issueDate) { mo += gap; continue; }
+      if (iso >= fd.maturityDate) break;
+      var prev = out.length ? out[out.length - 1].date : fd.issueDate;
+      var days = daysBetweenISO(prev, iso);
+      // a short first period (issue close to the boundary) is a broken start,
+      // otherwise a full period
+      var kind = out.length || days >= Math.round(gap * 30) ? 'full' : 'start';
+      out.push({
+        date: iso, days: days, kind: kind,
+        amount: kind === 'full' ? full : (est.brokenStart != null ? est.brokenStart : per)
+      });
+      mo += gap;
+    }
+    if (!out.length) return [];
+    out.push({
+      date: fd.maturityDate, days: daysBetweenISO(out[out.length - 1].date, fd.maturityDate),
+      kind: 'end', amount: est.brokenEnd != null ? est.brokenEnd : per
+    });
+    return out;
+  }
   function validFd(fd) {
     var e = [];
     if (!(fd.account || '').trim()) e.push('Account number is required.');
@@ -501,7 +554,7 @@ var Calc = (function () {
     fdStatus: fdStatus, fdAutoRemove: fdAutoRemove, fdStatusRank: fdStatusRank,
     xirr: xirr, fdXirr: fdXirr, sortFds: sortFds, fdSummary: fdSummary,
     fdCloseNowValue: fdCloseNowValue, fyOfDate: fyOfDate, fyYearOf: fyYearOf, fyLabel: fyLabel, fdFySummary: fdFySummary,
-    normFdType: normFdType, fdTypeLabel: fdTypeLabel,
+    normFdType: normFdType, fdTypeLabel: fdTypeLabel, fdPayoutSchedule: fdPayoutSchedule,
     validFd: validFd, fdDateCheck: fdDateCheck, fdFileMaturity: fdFileMaturity,
     commodityMarketValue: commodityMarketValue, commodityCouponSummary: commodityCouponSummary,
     commodityFinalValue: commodityFinalValue, commodityReturnPct: commodityReturnPct,

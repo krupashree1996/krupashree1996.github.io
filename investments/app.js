@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 17;
+  var APP_VERSION = 18;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -336,6 +336,20 @@
     form.appendChild(field('Maturity value (₹, bank)', numInput('fMv', rec.maturityValue, 'leave blank to compute')));
     form.appendChild(field('TDS rate (%)', numInput('fTds', rec.tdsRate == null ? (Calc.normFdType(rec) === 'fd' ? 10 : 0) : rec.tdsRate, 'SCSS/FRB: 0 unless interest > ₹50,000')));
     form.appendChild(field('Interest type', selectControl('fImode', [{ v: 'compound', l: 'Compound (credited in)' }, { v: 'payout', l: 'Payout (paid out)' }], Calc.normInterestMode(rec))));
+    // SCSS / FRB pay on TRUE periods (P*r/4 or P*r/2), not day counts. The
+    // full-period amount is usually exact; the two broken ends are day-dependent
+    // and the bank sets them, so all three are user-confirmed estimates.
+    var est = rec.payoutEstimate || {};
+    form.appendChild(field('Period payout, full period (₹)', numInput('fEstFull', est.full, 'SCSS: P × rate ÷ 4 · FRB: P × rate ÷ 2'), true));
+    form.appendChild(field('Broken period, start (₹)', numInput('fEstStart', est.brokenStart, 'issue date → first period end · blank = auto estimate')));
+    form.appendChild(field('Broken period, end (₹)', numInput('fEstEnd', est.brokenEnd, 'last period end → maturity · blank = auto estimate')));
+    function syncEstVisibility() {
+      var payoutType = ['scss', 'rbi'].indexOf(Calc.normFdType(typeSel.value)) >= 0;
+      ['fEstFull', 'fEstStart', 'fEstEnd'].forEach(function (id) {
+        var w = form.querySelector('#' + id);
+        if (w) w.parentNode.style.display = payoutType ? '' : 'none';
+      });
+    }
     form.appendChild(field('Repay account', textInput('fRepay', rec.repayAc, 'repayment a/c')));
     form.appendChild(field('Notes', textInput('fNotes', rec.notes, ''), true));
     // Picking SCSS / FRB in an open form flips TDS to 0 and interest type to
@@ -352,6 +366,7 @@
         Calc.normFdType(typeSel.value) !== 'fd' ? 'none' : '';
     }
     syncMvVisibility();
+    syncEstVisibility();
     if (typeSel) typeSel.addEventListener('change', function () {
       var notFd = Calc.normFdType(typeSel.value) !== 'fd';
       var tds = form.querySelector('#fTds');
@@ -359,6 +374,7 @@
       if (notFd) { if (imode) imode.value = 'payout'; if (tds) tds.value = '0'; }
       else { if (imode && imode.value === 'payout') imode.value = 'compound'; if (tds && !tds.value) tds.value = '10'; }
       syncMvVisibility();
+      syncEstVisibility();
     });
     function read() {
       var panId = document.getElementById('fPanId') ? val('fPanId') : (rec.panId || '');
@@ -378,7 +394,12 @@
         tdsRate: notFd ? (tdsVal == null ? 0 : tdsVal) : tdsVal,
         interestMode: notFd ? 'payout' : (document.getElementById('fImode') ? val('fImode') : (rec.interestMode || 'compound')),
         repayAc: val('fRepay'),
-        notes: val('fNotes')
+        notes: val('fNotes'),
+        payoutEstimate: notFd ? {
+          full: num('fEstFull'),
+          brokenStart: num('fEstStart'),
+          brokenEnd: num('fEstEnd')
+        } : null
       };
       rec2.entries = rec.entries ? rec.entries.slice() : [];
       var d = num('fDays');
@@ -428,6 +449,7 @@
       days: dup.days, tdsRate: dup.tdsRate, interestMode: dup.interestMode,
       repayAc: dup.repayAc, holder: dup.holder,
       issueDate: dup.issueDate, maturityDate: dup.maturityDate, maturityValue: dup.maturityValue,
+      payoutEstimate: dup.payoutEstimate ? Object.assign({}, dup.payoutEstimate) : null,
       entries: dup.entries ? dup.entries.map(function (e) { return Object.assign({}, e); }) : []
     } : {});
     var f = formShell(edit ? (arch ? 'Edit FD (history)' : 'Edit FD') : (dup ? 'Duplicate FD' : 'Add FD'));
@@ -520,6 +542,17 @@
       cells.appendChild(fdCell('Interest', Calc.inr(Calc.fdInterest(fd)), !usedMv ? 'simple interest (est.)' : 'from PNB value'));
       var expTip = usedMv ? 'bank-stated maturity value' : (Calc.normFdType(fd) !== 'fd' ? 'principal returned at maturity (interest paid out)' : 'computed (P + simple interest)');
       cells.appendChild(fdCell('Expected total', Calc.inr(exp), expTip));
+    }
+    var sched = Calc.fdPayoutSchedule(fd);
+    if (sched.length) {
+      var sg = 0; sched.forEach(function (r) { sg += r.amount; });
+      var next = sched.filter(function (r) { return r.date >= Calc.todayISO(); })[0];
+      var lines = sched.map(function (r) {
+        return Calc.fmtDate(r.date) + ' · ' + (r.kind === 'full' ? 'full' : r.kind === 'start' ? 'broken start' : 'broken end') + ' · est ' + Calc.inr(r.amount);
+      });
+      cells.appendChild(fdCell('Est. payout', next ? (Calc.inr(next.amount) + ' by ' + Calc.fmtDate(next.date)) : 'done',
+        'Estimated payout schedule (true periods — full = principal \u00d7 rate \u00f7 ' + (Calc.normFdType(fd) === 'rbi' ? 2 : 4) + '; broken ends as set in this record)\n' +
+        lines.join('\n') + '\n\nEstimated total gross: ' + Calc.inr(sg)));
     }
     cells.appendChild(fdCell('Maturity', Calc.fmtDate(fd.maturityDate), fd.maturityDate ? ('issued ' + Calc.fmtDate(fd.issueDate)) : ''));
 
@@ -630,11 +663,53 @@
     f.actions.appendChild(saveBtn); f.actions.appendChild(cancel);
     modal(f.box, true);
   }
+  /* SCSS / FRB: estimated payout schedule (true-period dates + amounts). */
+  function appendPayoutSchedule(fd, box) {
+    var sched = Calc.fdPayoutSchedule(fd);
+    if (!sched.length) return;
+    var est = fd.payoutEstimate || {};
+    var fullAmt = est.full != null ? est.full : Math.round((fd.amount * fd.rate / 100) / (Calc.normFdType(fd) === 'rbi' ? 2 : 4));
+    var perLabel = Calc.normFdType(fd) === 'rbi' ? 'half-year' : 'quarter';
+    var stbl = el('table', 'intTable');
+    var sth = el('tr');
+    ['Period end', 'Days', 'Kind', 'Est. gross', 'Est. TDS', 'Est. net'].forEach(function (h) { sth.appendChild(el('th', '', h)); });
+    stbl.appendChild(sth);
+    sched.forEach(function (row) {
+      var tr = el('tr');
+      var kindTxt = row.kind === 'start' ? 'broken start' : row.kind === 'end' ? 'broken end' : 'full ' + perLabel;
+      tr.appendChild(el('td', '', Calc.fmtDate(row.date)));
+      tr.appendChild(el('td', '', row.days != null ? String(row.days) : '\u2014'));
+      var kindTd = el('td', '', kindTxt);
+      if (row.kind === 'full') kindTd.title = 'Full ' + perLabel + ': principal \u00d7 rate \u00f7 ' + (Calc.normFdType(fd) === 'rbi' ? 2 : 4) + ' \u2014 the bank pays this on the true ' + perLabel + ', not on the day count.';
+      else kindTd.title = 'Broken period: the amount is the bank\u2019s figure (day-count dependent) \u2014 confirm it in the record\u2019s edit form.';
+      tr.appendChild(kindTd);
+      tr.appendChild(el('td', 'num', Calc.inr(row.amount)));
+      var tds = row.amount > 0 && fd.tdsRate ? Math.round(row.amount * fd.tdsRate / 100) : 0;
+      tr.appendChild(el('td', 'num', tds ? Calc.inr(tds) : '\u2014'));
+      tr.appendChild(el('td', 'num', Calc.inr(row.amount - tds)));
+      stbl.appendChild(tr);
+    });
+    var st = el('tr');
+    var sg = 0; sched.forEach(function (r) { sg += r.amount; });
+    st.appendChild(el('td', '', sched.length + ' payouts'));
+    st.appendChild(el('td', ''));
+    st.appendChild(el('td', '', 'estimated total'));
+    st.appendChild(el('td', 'num strong', Calc.inr(sg)));
+    st.appendChild(el('td', 'num'));
+    st.appendChild(el('td', 'num'));
+    stbl.appendChild(st);
+    var sw = el('div', 'archWrap');
+    sw.appendChild(stbl);
+    box.appendChild(sw);
+    box.appendChild(el('p', 'hint', 'Estimated schedule: full ' + perLabel + ' = ' + Calc.inr(fullAmt) + (est.full == null ? ' (principal \u00d7 rate \u00f7 ' + (Calc.normFdType(fd) === 'rbi' ? 2 : 4) + ')' : ' (as entered)') + '. Broken ends use the bank\u2019s day-count \u2014 edit the record to set them. This is an estimate, not a bank promise.'));
+  }
+
   function renderInterestList(fd, box, readOnly, onEdit) {
     box.textContent = '';
     var rows = Calc.fdEntries(fd);
     if (!rows.length) {
       box.appendChild(el('p', 'muted', readOnly ? 'No payouts were recorded for this FD.' : 'No payouts recorded yet.'));
+      appendPayoutSchedule(fd, box);
       return;
     }
     var tbl = el('table', 'intTable');
@@ -692,6 +767,7 @@
       }
       box.appendChild(el('p', 'hint', 'By financial year (recorded payouts, 1 Apr \u2013 31 Mar) \u2014 ' + fyBits.join('  \u00b7  ')));
     }
+    appendPayoutSchedule(fd, box);
   }
 
   function renderFd() {
