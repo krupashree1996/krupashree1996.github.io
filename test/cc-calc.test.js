@@ -300,22 +300,26 @@ eq('amount-differs day list empty', rc2.bookOnlyCount, 1);
 /* ------------------------------------------------------------------ */
 section('migrateBundle / schema');
 var m0 = Calc.migrateBundle({ version: 0, records: [{ periodTo: '18/03/2025', total: '9012.15' }], ledger: [{ desc: 'x', amount: '100', category: 'upi' }] });
-eq('upgraded version', m0.version, 4);
+eq('upgraded version', m0.version, 5);
 eq('record total coerced', m0.records[0].total, 9012.15);
 eq('ledger amount coerced', m0.ledger[0].amount, 100);
 eq('card defaulted', m0.card.no, '');
 ok('future schema rejected', Calc.migrateBundle({ version: 99 }).incompatible);
 ok('garbage rejected', Calc.migrateBundle(null).incompatible);
-eq('SCHEMA_VERSION', Calc.SCHEMA_VERSION, 4);
+eq('SCHEMA_VERSION', Calc.SCHEMA_VERSION, 5);
 
-section('schema v1 → v4 (rewards & payments fields carried through)');
+section('schema v1 → v5 (rewards & payments fields carried through)');
 var m1 = Calc.migrateBundle({ version: 1, card: { no: 'x' }, records: [], ledger: [], redemptions: [{ coins: '100', value: '25' }], payments: [{ amount: '500', forPeriod: '18/11/2025' }] });
-eq('migrated to v4', m1.version, 4);
+eq('migrated to v5', m1.version, 5);
 ok('redemptions array present', Array.isArray(m1.redemptions));
-ok('payments array present', Array.isArray(m1.payments));
+ok('payments array drained into ledger', Array.isArray(m1.payments) && m1.payments.length === 0);
 eq('redemption coins coerced', m1.redemptions[0].coins, 100);
 eq('redemption value coerced', m1.redemptions[0].value, 25);
-eq('payment amount coerced', m1.payments[0].amount, 500);
+eq('payment moved to ledger as Payment entry', m1.ledger.length, 1);
+eq('payment ledger category', m1.ledger[0].category, 'payment');
+eq('payment amount coerced', m1.ledger[0].amount, 500);
+eq('payment forPeriod kept', m1.ledger[0].forPeriod, '18/11/2025');
+eq('feeConfig defaulted', m1.feeConfig.target, 300000);
 eq('coin value defaults to 0.25', m1.rewardsConfig.valuePerCoin, 0.25);
 var m2 = Calc.migrateBundle({ version: 0, records: [], ledger: [], rewardsConfig: { valuePerCoin: 1 } });
 eq('coin value preserved when set', m2.rewardsConfig.valuePerCoin, 1);
@@ -343,25 +347,49 @@ section('dues & payments');
 var recP = { periodTo: '18/11/2025', statementDate: '18/11/2025', total: 10000, minimumDue: 500 };
 eq('no payment → none', Calc.paymentForRecord(recP, []).kind, 'none');
 eq('no payment outstanding', Calc.paymentForRecord(recP, []).outstanding, 10000);
-eq('full', Calc.paymentForRecord(recP, [{ amount: 10000, forPeriod: '18/11/2025' }]).kind, 'full');
-eq('full outstanding 0', Calc.paymentForRecord(recP, [{ amount: 10000, forPeriod: '18/11/2025' }]).outstanding, 0);
-eq('minimum', Calc.paymentForRecord(recP, [{ amount: 500, forPeriod: '18/11/2025' }]).kind, 'minimum');
-eq('partial', Calc.paymentForRecord(recP, [{ amount: 200, forPeriod: '18/11/2025' }]).kind, 'partial');
-eq('sum of two payments', Calc.paymentForRecord(recP, [{ amount: 6000, forPeriod: '18/11/2025' }, { amount: 4000, forPeriod: '18/11/2025' }]).totalPaid, 10000);
+eq('full', Calc.paymentForRecord(recP, [{ category: 'payment', amount: 10000, forPeriod: '18/11/2025' }]).kind, 'full');
+eq('full outstanding 0', Calc.paymentForRecord(recP, [{ category: 'payment', amount: 10000, forPeriod: '18/11/2025' }]).outstanding, 0);
+eq('minimum', Calc.paymentForRecord(recP, [{ category: 'payment', amount: 500, forPeriod: '18/11/2025' }]).kind, 'minimum');
+eq('partial', Calc.paymentForRecord(recP, [{ category: 'payment', amount: 200, forPeriod: '18/11/2025' }]).kind, 'partial');
+eq('sum of two payments', Calc.paymentForRecord(recP, [{ category: 'payment', amount: 6000, forPeriod: '18/11/2025' }, { category: 'payment', amount: 4000, forPeriod: '18/11/2025' }]).totalPaid, 10000);
+ok('reversal (non-payment category) is ignored', Calc.paymentForRecord(recP, [{ category: 'base', amount: -10000, forPeriod: '18/11/2025' }]).kind, 'none');
 var dsPast = Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 500 }, [], new Date(2025, 11, 10));
 ok('past due overdue', dsPast.overdue === true);
 eq('past due days left', dsPast.daysLeft, -2);
-var dsFut = Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 500 }, [{ amount: 500, forPeriod: '' }], new Date(2025, 11, 1));
+var dsFut = Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 500 }, [{ category: 'payment', amount: 500, forPeriod: '' }], new Date(2025, 11, 1));
 eq('future due days left', dsFut.daysLeft, 7);
 ok('not overdue when due ahead', dsFut.overdue === false);
-ok('settled after payment', Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 500, periodTo: '18/11/2025' }, [{ amount: 10000, forPeriod: '18/11/2025' }], new Date(2025, 11, 1)).settled === true);
+ok('settled after payment', Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 500, periodTo: '18/11/2025' }, [{ category: 'payment', amount: 10000, forPeriod: '18/11/2025' }], new Date(2025, 11, 1)).settled === true);
 eq('utilization 25%', Calc.utilizationOf({ total: 25000, creditLimit: 100000 }), 25);
 eq('utilization null when no limit', Calc.utilizationOf({ total: 25000 }), null);
-var isum = Calc.interestSummary([{ periodTo: '18/04/2025', finance: 0 }, { periodTo: '18/05/2025', finance: 12.5 }]);
-eq('interest total', isum.total, 12.5);
-eq('interest records', isum.perRecord.length, 2);
+ var isum = Calc.interestSummary([{ periodTo: '18/04/2025', finance: 0 }, { periodTo: '18/05/2025', finance: 12.5 }]);
+ eq('interest total', isum.total, 12.5);
+ eq('interest records', isum.perRecord.length, 2);
 
-section('PRIVACY GUARD — no personal data anywhere in neu-tracker/');
+ section('annual fee waiver');
+ /* window is [Jan 19 → next Jan 18]; spent = purchases of bills whose periodTo
+  * falls in the window. Today = 2026-10-04 → window is 19/01/2026 → 18/01/2027. */
+ var today26 = new Date(2026, 9, 4);
+ var recInWin = [{ periodTo: '18/02/2026', purchases: 100000 }, { periodTo: '18/08/2026', purchases: 200000 }];
+ var wOk = Calc.waiverStatus(recInWin, today26);
+ eq('waiver window start month', wOk.windowFrom.getMonth(), 0);
+ eq('waiver window start day', wOk.windowFrom.getDate(), 19);
+ eq('waiver spent sums window bills', wOk.spent, 300000);
+ eq('waiver met at exactly target', wOk.waived, true);
+ eq('waiver remaining 0', wOk.remaining, 0);
+ var wNo = Calc.waiverStatus([{ periodTo: '18/02/2026', purchases: 150000 }], today26);
+ eq('waiver not met below target', wNo.waived, false);
+ eq('waiver remaining is shortfall', wNo.remaining, 150000);
+ /* a bill dated after the window (20/01/2027, past the 19/01/2027 end) is excluded */
+ eq('waiver excludes post-window bill', Calc.waiverStatus([{ periodTo: '20/01/2027', purchases: 300000 }], today26).spent, 0);
+ /* a bill dated before the window (18/01/2026, before the 19/01/2026 start) is excluded */
+ eq('waiver excludes pre-window bill', Calc.waiverStatus([{ periodTo: '18/01/2026', purchases: 300000 }], today26).spent, 0);
+ /* the last bill in the window (18/01/2027) is included */
+ eq('waiver includes the 18/01 boundary bill', Calc.waiverStatus([{ periodTo: '18/01/2027', purchases: 100000 }], today26).spent, 100000);
+ /* a custom target is honored */
+ eq('waiver custom target', Calc.waiverStatus(recInWin, today26, { target: 400000 }).remaining, 100000);
+
+ section('PRIVACY GUARD — no personal data anywhere in neu-tracker/');
 var ROOT = path.join(__dirname, '..', 'neu-tracker');
 var FORBIDDEN = ['TESTACCT0201', 'TEST', 'TESTSURNAME', '5432', '0000000000000000000', '1 TEST LANE', 'TEST RESIDENCE', 'TESTHOLDER@EXAMPLE.COM'];
 var walk = [];

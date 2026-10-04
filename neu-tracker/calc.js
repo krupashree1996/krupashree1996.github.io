@@ -50,7 +50,7 @@ const Calc = (function () {
     base:    { label: 'Base',      rate: 0.015, program: 'BaseNeuCoins',         note: '1.5% base' },
     tata:    { label: 'Tata',      rate: 0.035, program: 'Add_TataPayment',      note: '3.5% — bonus lands next statement' },
     nocoins: { label: 'NoCoins',   rate: 0,     program: '',                     note: 'no NeuCoins' },
-    payment: { label: 'Payment',   rate: 0,     program: '',                     note: 'repayment, no NeuCoins' }
+    payment: { label: 'Payment',   rate: 0,     program: '',                     note: 'repayment to the bank — pick “for period” to reduce that bill’s outstanding' }
   };
 
   function predictedCoins(entry) {
@@ -427,9 +427,12 @@ const Calc = (function () {
   /* ---------- dues & payments ---------- */
   function startOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
 
-  /* Every payment logged against a statement period, classified full/min/partial. */
-  function paymentForRecord(rec, payments) {
-    var list = (payments || []).filter(function (p) {
+  /* Every payment logged against a statement period, classified full/min/partial.
+   * Payments live in the ledger as category 'payment' entries (optionally with a
+   * forPeriod); negative entries in other categories are reversals, not payments. */
+  function paymentForRecord(rec, ledger) {
+    var list = (ledger || []).filter(function (p) {
+      if (p.category !== 'payment') return false;
       var fp = String(p.forPeriod || '');
       return fp === rec.periodTo || fp === rec.statementDate;
     });
@@ -471,8 +474,11 @@ const Calc = (function () {
    * (capped at that bill's total) so the old bill shows 'settled' without manual
    * entry. The `auto` flag makes this idempotent: a re-import or schema re-run
    * never double-counts. Returns the number of payments added. */
-  function autoSettlePrior(records, payments, newRecord) {
-    if (!newRecord || !Array.isArray(records) || !Array.isArray(payments)) return 0;
+  function autoSettlePrior(records, ledger, newRecord) {
+    if (!newRecord || !Array.isArray(records) || !Array.isArray(ledger)) return 0;
+    /* pre-v5 bundles pass the legacy DATA.payments array, whose entries have no
+     * category — every one of those is a payment. */
+    var payments = ledger.filter(function (e) { return e && (e.category === undefined || e.category === 'payment'); });
     var nt = pdate(newRecord.periodTo);
     if (!nt || !isFinite(newRecord.payments) || newRecord.payments <= 0) return 0;
     // the single most-recent bill strictly before the new statement
@@ -489,12 +495,55 @@ const Calc = (function () {
     if (covered >= prior.total - 1) return 0;
     var amount = round2(Math.min(newRecord.payments, prior.total));
     if (!(amount > 0)) return 0;
-    payments.push({
-      id: 'auto-' + prior.id + '-paid', date: newRecord.statementDate || prior.dueDate || '',
-      amount: amount, forPeriod: prior.periodTo, method: 'statement',
-      note: 'auto: paid off in the ' + (newRecord.periodTo || newRecord.statementDate || 'next') + ' statement', auto: true
+    ledger.push({
+      id: 'auto-' + prior.id + '-paid',
+      date: newRecord.statementDate || prior.dueDate || '',
+      desc: 'Payment to bank (auto)',
+      category: 'payment',
+      amount: amount,
+      forPeriod: prior.periodTo,
+      method: 'statement',
+      note: 'auto: paid off in the ' + (newRecord.periodTo || newRecord.statementDate || 'next') + ' statement',
+      reconciled: '', sourcePeriod: '', auto: true
     });
     return 1;
+  }
+
+  /* ---------- annual fee waiver ----------
+   * The card's annual fee is waived for the window [Jan 19, Jan 18 of the next
+   * year] if at least `target` (default ₹3,00,000) is spent in that window.
+   * Spend = sum of each statement's purchases whose periodTo falls in the window.
+   * cfg: { target, month (0-based), day } — month/day define the window start. */
+  var DEFAULT_WAIVER = { target: 300000, month: 0, day: 19 };
+
+  function waiverWindowStart(year, cfg) {
+    cfg = cfg || {};
+    return new Date(year, cfg.month != null ? cfg.month : 0, cfg.day != null ? cfg.day : 19);
+  }
+
+  function waiverStatus(records, today, cfg) {
+    cfg = Object.assign({}, DEFAULT_WAIVER, cfg || {});
+    today = today || new Date();
+    var y = today.getFullYear();
+    var start = waiverWindowStart(y, cfg);
+    if (today < start) start = waiverWindowStart(y - 1, cfg);
+    var end = waiverWindowStart(start.getFullYear() + 1, cfg);
+    var s = +start, e = +end;
+    var spent = 0;
+    (records || []).forEach(function (r) {
+      var t = pdate(r && r.periodTo);
+      if (isFinite(t) && t >= s && t < e && isFinite(r && r.purchases)) spent += r.purchases;
+    });
+    spent = round2(spent);
+    var target = cfg.target || 0;
+    return {
+      windowFrom: start, windowTo: end,
+      target: target,
+      spent: spent,
+      remaining: round2(Math.max(target - spent, 0)),
+      waived: target > 0 && spent >= target,
+      daysLeft: Math.ceil((e - +today) / 86400000)
+    };
   }
 
   /* outstanding ÷ credit limit as a percentage; null when unknowable. */
@@ -514,7 +563,7 @@ const Calc = (function () {
   }
 
   /* ---------- schema migration ---------- */
-  var SCHEMA_VERSION = 4;
+  var SCHEMA_VERSION = 5;
   var MIGRATIONS = {
     0: function (d) { d.version = 1; if (!Array.isArray(d.records)) d.records = []; if (!Array.isArray(d.ledger)) d.ledger = []; return d; },
     1: function (d) {
@@ -544,12 +593,37 @@ const Calc = (function () {
     /* Backfill auto-settlement for bills already imported before this feature:
      * for every statement except the first, the next statement's payments prove
      * the previous bill was paid. Idempotent — guarded by the `auto` flag. */
-    3: function (d) {
+     3: function (d) {
       d.version = 4;
       if (!Array.isArray(d.records)) d.records = [];
       if (!Array.isArray(d.payments)) d.payments = [];
       var recs = d.records.slice().sort(function (a, b) { return (pdate(a.periodTo) || 0) - (pdate(b.periodTo) || 0); });
       for (var i = 1; i < recs.length; i++) autoSettlePrior(recs, d.payments, recs[i]);
+      return d;
+    },
+    /* Payments move from the separate DATA.payments array into the ledger as
+     * category 'payment' entries (with forPeriod). The expense ledger becomes
+     * the single entry point: a Payment entry with a period reduces that
+     * bill's outstanding on the due-date board. */
+    4: function (d) {
+      d.version = 5;
+      if (!Array.isArray(d.ledger)) d.ledger = [];
+      if (!Array.isArray(d.payments)) d.payments = [];
+      d.payments.forEach(function (p) {
+        if (!p) return;
+        d.ledger.push({
+          id: String(p.id || ('l-' + (Math.random() + Date.now()).toString(36).slice(2))),
+          date: String(p.date || ''),
+          desc: String(p.note && p.note.indexOf('auto:') === 0 ? 'Payment to bank (auto)' : (p.desc || 'Payment to bank')),
+          category: 'payment',
+          amount: isFinite(Number(p.amount)) ? round2(Number(p.amount)) : NaN,
+          forPeriod: String(p.forPeriod || ''),
+          method: String(p.method || ''),
+          reconciled: '', sourcePeriod: '',
+          auto: !!p.auto
+        });
+      });
+      d.payments = [];
       return d;
     }
   };
@@ -590,6 +664,8 @@ const Calc = (function () {
     e.category = CATEGORIES[e.category] ? e.category : (e.amount < 0 ? 'payment' : classifyMerchant(e.desc, false));
     e.reconciled = e.reconciled || '';
     e.sourcePeriod = String(e.sourcePeriod || '');
+    e.forPeriod = String(e.forPeriod || '');
+    e.method = String(e.method || '');
     return e;
   }
 
@@ -623,6 +699,10 @@ const Calc = (function () {
       p.note = String(p.note || '');
     });
     d.records.sort(function (a, b) { return (pdate(a.periodTo) || 0) - (pdate(b.periodTo) || 0); });
+    if (!d.feeConfig || typeof d.feeConfig !== 'object') d.feeConfig = {};
+    if (!isFinite(Number(d.feeConfig.target)) || d.feeConfig.target <= 0) d.feeConfig.target = DEFAULT_WAIVER.target;
+    d.feeConfig.month = isFinite(Number(d.feeConfig.month)) ? d.feeConfig.month : DEFAULT_WAIVER.month;
+    d.feeConfig.day = isFinite(Number(d.feeConfig.day)) ? d.feeConfig.day : DEFAULT_WAIVER.day;
     if (!d.card || typeof d.card !== 'object') d.card = { no: '', aan: '', name: '' };
     d.card.no = String(d.card.no || '');
     d.card.aan = String(d.card.aan || '');
@@ -643,6 +723,7 @@ const Calc = (function () {
     redemptionReconcile: redemptionReconcile, rewardsTimeline: rewardsTimeline,
     paymentForRecord: paymentForRecord, dueStatus: dueStatus, autoSettlePrior: autoSettlePrior,
     utilizationOf: utilizationOf, interestSummary: interestSummary,
+    waiverStatus: waiverStatus,
     DEFAULT_COIN_VALUE: DEFAULT_COIN_VALUE,
     SCHEMA_VERSION: SCHEMA_VERSION, migrateBundle: migrateBundle, BLOCKING: BLOCKING
   };

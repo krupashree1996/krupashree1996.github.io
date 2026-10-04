@@ -1,7 +1,7 @@
 'use strict';
 /* DOM integration test: boots the real neu-tracker/ app in jsdom and verifies
  * the Rewards and Bills views, ledger/redemption/payment data flows, and the
- * schema-v2 bundle. Scripts are injected manually since jsdom cannot fetch
+ * schema-v5 bundle. Scripts are injected manually since jsdom cannot fetch
  * file:// siblings. Run: node test/cc-dom.test.js  (needs jsdom)
  */
 var path = require('path');
@@ -55,10 +55,12 @@ whenReady(function run() {
   var Calc = dom.window.Calc;
   var DATA = dom.window.DATA;
 
-  console.log('1) boot — bundle migrated to schema v3 on load');
-  eq('data version 4', DATA.version, 4);
+  console.log('1) boot — bundle migrated to schema v5 on load');
+  eq('data version 5', DATA.version, 5);
   ok('redemptions array', Array.isArray(DATA.redemptions));
-  ok('payments array', Array.isArray(DATA.payments));
+  ok('payments array (drained into ledger at v5)', Array.isArray(DATA.payments));
+  eq('payments drained', DATA.payments.length, 0);
+  ok('feeConfig present', !!DATA.feeConfig);
   eq('coin value default', DATA.rewardsConfig.valuePerCoin, 0.25);
   ok('landing section present', !!$('#landing'));
 
@@ -103,7 +105,11 @@ whenReady(function run() {
   eq('interest on home', $('#blInterest').textContent.indexOf('No statements yet') >= 0, true);
   eq('payment log on ledger', $('#ledger').style.display !== 'block', true);
   $('#ledgerGo').click();
-  eq('payment log form on ledger', $('#ledger').textContent.indexOf('Payments to the bank') >= 0, true);
+  eq('ledger form has a For-period selector (for Payment entries)', !!$('#lePeriod'), true);
+  eq('period selector hidden for the default (upi) category', $('#lePeriodWrap').style.display, 'none');
+  setValue('#leCat', 'payment');
+  eq('period selector shown for Payment category', $('#lePeriodWrap').style.display !== 'none', true);
+  setValue('#leCat', 'upi');
 
   console.log('6) reconcile engine against the in-app ledger');
   DATA.records.push({ id: 's-1', periodTo: '18/11/2025', periodFrom: '19/10/2025', total: 200, minimumDue: 10, prevDues: 0, payments: 0, purchases: 200, finance: 0, creditLimit: 100000, availLimit: 99800, dueDate: '08/12/2025', earnedNeuCoins: 3, transferredNeuCoins: 0, openingNeuCoins: 0, adjustedNeuCoins: 0, closingNeuCoins: 3, bonusPrograms: [{ program: 'Base_Grocery', coins: 3 }], txns: [{ date: '10/11/2025', desc: 'DMART', amount: 200, credit: false, base: 0 }] });
@@ -112,14 +118,22 @@ whenReady(function run() {
   eq('redeem reconcile shows net −97 (3 earned − 0 transferred − 100 redeemed)', $('#rwReconcile').textContent.indexOf('more redeemed than earned') >= 0 && $('#rwReconcile').textContent.indexOf('-97') >= 0, true);
   $('#homeGo').click();
   eq('due board row rendered (home)', $('#blDue').textContent.indexOf('due 08/12/2025') >= 0, true);
-  setValue('#blDate', '12/11/2025');
-  setValue('#blAmt', '200');
-  $('#blAddBtn').click();
-  eq('payment logged', DATA.payments.length, 1);
+  /* log the repayment as a ledger Payment entry (replaces the old Payments panel) */
+  $('#ledgerGo').click();
+  eq('period selector now offers the new bill', Array.from($('#lePeriod').options).some(function (o) { return o.value === '18/11/2025'; }), true);
+  setValue('#leDate', '12/11/2025');
+  setValue('#leDesc', 'paid off 18/11 bill');
+  setValue('#leCat', 'payment');
+  setValue('#lePeriod', '18/11/2025');
+  setValue('#leAmt', '200');
+  $('#addBtn').click();
+  eq('payment logged as a ledger entry', DATA.ledger.length, 2);
+  eq('payment entry is category payment', DATA.ledger[1].category, 'payment');
+  eq('payment entry carries forPeriod', DATA.ledger[1].forPeriod, '18/11/2025');
   $('#homeGo').click();
   eq('due board shows payment', $('#blDue').textContent.indexOf('paid') >= 0, true);
   $('#ledgerGo').click();
-  eq('payment listed on ledger', $('#blPayments').textContent.indexOf('for 18/11/2025') >= 0, true);
+  eq('payment listed on ledger', $('#ledgerList').textContent.indexOf('for 18/11/2025') >= 0, true);
 
   console.log('6c) home — bulk-book statement rows into the ledger (no Reconcile needed)');
   /* isolated record: one statement row not yet in the ledger, and (because
@@ -147,8 +161,9 @@ whenReady(function run() {
 
       console.log('7) persistence round-trip');
       var saved = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
-      eq('persisted version', saved.version, 4);
-      eq('persisted ledger entries', saved.ledger.length, 2); // 1 payment log + 1 bulk-booked statement row (6c)
+      eq('persisted version', saved.version, 5);
+      eq('persisted ledger entries', saved.ledger.length, 3); // 1 grocery (2) + 1 payment (6) + 1 bulk-booked statement row (6c)
+      eq('persisted payments drained', saved.payments.length, 0);
       eq('persisted redemptions', saved.redemptions.length, 1);
       ok('no password persisted', !('password' in saved));
 
@@ -166,7 +181,7 @@ whenReady(function run() {
         eq('record id from JSON', now.records[0].id, 's-test');
         eq('ledger from JSON', now.ledger.length, 0);
         var saved2 = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
-        eq('persisted bare-JSON bundle version (migrated)', saved2.version, 4);
+        eq('persisted bare-JSON bundle version (migrated)', saved2.version, 5);
 
         console.log('\n' + passed + ' passed, ' + failed + ' failed');
         process.exit(failed ? 1 : 0);

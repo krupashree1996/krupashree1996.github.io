@@ -34,16 +34,6 @@
 
 <main>
   <section id="landing" class="panel">
-    <div class="hero">
-      <h2>Track every card cycle in one place</h2>
-      <ol class="steps">
-        <li>Click <b>Import statement</b> and pick your <i>encrypted</i> HDFC Tata Neu statement PDF.</li>
-        <li>The app unlocks it with the password you type (kept on this device only), reads every line and verifies the printed amounts and NeuCoins against the confirmed formulas.</li>
-        <li>Log each spend in the <b>Ledger</b> as you make it (UPI / Grocery / Base / Tata / NoCoins / Payment).</li>
-        <li>Reconcile each statement to see what matched and what didn’t — plus expected vs. earned NeuCoins.</li>
-      </ol>
-      <button id="heroImport" class="btn primary big">Import your first statement</button>
-    </div>
     <div class="cards">
       <div class="card" id="landingStats"></div>
       <div class="card chart"><h4>Monthly purchases</h4><div class="cv"><canvas id="chartMonthly"></canvas></div></div>
@@ -53,6 +43,8 @@
     </div>
     <h4>Due dates</h4>
     <div id="blDue"></div>
+    <h4>Annual fee waiver</h4>
+    <div id="blFee"></div>
     <p id="importCounter" class="muted"></p>
     <p id="importHint" class="muted" style="min-height:1.2em"></p>
   </section>
@@ -81,6 +73,9 @@
       <div><label>Category</label>
         <select id="leCat"></select>
       </div>
+      <div id="lePeriodWrap" style="display:none"><label>For period</label>
+        <select id="lePeriod"></select>
+      </div>
       <div><label>Amount (₹)</label><input id="leAmt" type="number" min="1" step="0.01" placeholder="0.00"></div>
       <div class="align-end"><button id="addBtn" class="btn primary">Add entry</button></div>
     </div>
@@ -89,16 +84,6 @@
     <div id="ledgerTotals"></div>
     <h4>Entries</h4>
     <div id="ledgerList"></div>
-    <h4>Payments to the bank</h4>
-    <div class="form ledger-form">
-      <div><label>Date</label><input id="blDate" type="text" placeholder="dd/mm/yyyy"></div>
-      <div><label>For period</label><select id="blFor"></select></div>
-      <div><label>Amount (₹)</label><input id="blAmt" type="number" min="0" step="0.01" placeholder="0.00"></div>
-      <div><label>Method</label><input id="blMethod" type="text" placeholder="netbanking / UPI / auto" list="blMethods"></div>
-      <div class="align-end"><button id="blAddBtn" class="btn primary">Add payment</button></div>
-    </div>
-    <datalist id="blMethods"><option value="Netbanking"></option><option value="UPI"></option><option value="Autopay"></option></datalist>
-    <div id="blPayments"></div>
   </section>
 
   <section id="reconcile" class="panel" style="display:none">
@@ -144,8 +129,6 @@
 <script src="app.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  var hi = document.getElementById('heroImport');
-  if (hi) hi.addEventListener('click', function () { document.getElementById('importFile').click(); });
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function () { /* offline-only mode */ });
   }

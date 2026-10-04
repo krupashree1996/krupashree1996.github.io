@@ -18,7 +18,7 @@
 
   var STORE_KEY = 'ne.tracker.data';
   var PW_KEY = 'ne.tracker.pw';
-  var APP_VERSION = 3;
+  var APP_VERSION = 4;
 
   /* ---------------- tiny DOM helpers ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -192,6 +192,13 @@
     box.appendChild(kvRow('Transferred', fmtCoins(st.transferredNeuCoins)));
     box.appendChild(kvRow('Adjusted/Lapsed', fmtCoins(st.adjustedNeuCoins)));
     box.appendChild(kvRow('Closing NeuCoins', fmtCoins(st.closingNeuCoins)));
+    /* Unbilled (approx) = the part of current outstanding not yet on this bill.
+     * creditLimit − availLimit is total outstanding (billed + unbilled); subtract
+     * this bill's total due to approximate what's accrued but not yet billed. */
+    if (isFinite(st.creditLimit) && isFinite(st.availLimit) && isFinite(st.total) && st.creditLimit > 0) {
+      var unbilled = Math.max(Math.round((st.creditLimit - st.availLimit - st.total) * 100) / 100, 0);
+      box.appendChild(kvRow('Unbilled (approx)', fmtMoney(unbilled)));
+    }
     return box;
   }
   function checkRow(c, onAccept, onRaise) {
@@ -346,7 +353,7 @@
     DATA.records.sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); });
     /* importing this statement proves the previous bill's dues were paid →
      * auto-record that payment so the old bill shows 'settled'. */
-    if (Calc.autoSettlePrior(DATA.records, DATA.payments, rec) > 0) {
+    if (Calc.autoSettlePrior(DATA.records, DATA.ledger, rec) > 0) {
       toast('Previous bill marked paid (auto).', 'ok');
     }
     persist();
@@ -390,10 +397,16 @@
     if (!date) { toast('Date required.', 'warn'); return; }
     if (!desc) { toast('Description required.', 'warn'); return; }
     if (!isFinite(amount) || amount <= 0) { toast('Amount must be a positive number.', 'warn'); return; }
-    DATA.ledger.push({
+    var entry = {
       id: 'e-' + Date.now().toString(36),
       date: date, desc: desc, category: cat, amount: Math.round(amount * 100) / 100, reconciled: ''
-    });
+    };
+    if (cat === 'payment') {
+      /* a Payment entry with a linked period is the repayment that reduces
+       * that bill's outstanding on the due-date board */
+      entry.forPeriod = $('lePeriod').value;
+    }
+    DATA.ledger.push(entry);
     persist();
     renderLedger();
     $('leDesc').value = '';
@@ -410,6 +423,7 @@
     row.appendChild(el('span', 'l-date', fmtDate(e.date)));
     var d = el('span', 'l-desc', e.desc);
     if (guess && guess !== Calc.CATEGORIES[e.category].label) d.appendChild(el('span', 'meta', ' guessed ' + guess));
+    if (e.category === 'payment' && e.forPeriod) d.appendChild(el('span', 'meta', ' · for ' + fmtDate(e.forPeriod)));
     row.appendChild(d);
     var p = Calc.predictedCoins(e);
     row.appendChild(el('span', 'l-cat', Calc.CATEGORIES[e.category].label + (p.coins ? ' +' + fmtCoins(p.coins) : '')));
@@ -456,7 +470,7 @@
       });
     });
     if (!months.length) $('ledgerList').appendChild(el('p', 'muted', 'No entries yet. Add your card spends here and reconcile each statement after importing it.'));
-    renderPayments();
+    lePeriodOptions();
   }
 
   /* ---------------- reconcile ---------------- */
@@ -772,17 +786,22 @@
     setTimeout(function () { inp.focus(); }, 30);
   }
 
-  /* ---------------- dues, payments & interest (merged into Home + Ledger) --- */
-  function blForOptions() {
-    var sel = $('blFor');
+  /* ---------------- dues & interest (due board + interest on Home) ----------- */
+  /* "For period" options for Payment ledger entries: pick the bill this
+   * repayment clears (optionally "Not linked" = spend against the current
+   * balance with no specific bill). Rebuilt whenever records change. */
+  function lePeriodOptions() {
+    var sel = $('lePeriod');
+    if (!sel) return;
+    var cur = sel.value;
     sel.replaceChildren();
-    if (!DATA.records.length) { sel.appendChild(el('option', '', 'No statements yet')); return; }
+    sel.appendChild(el('option', '', 'Not linked (current balance)'));
     DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); }).forEach(function (r) {
       var o = el('option', '', r.periodTo + (r.reconciled ? ' ✓' : ''));
       o.value = r.periodTo;
       sel.appendChild(o);
     });
-    if (sel.selectedIndex === -1) sel.selectedIndex = 0;
+    sel.value = cur || '';
   }
   function renderDueBoard() {
     var body = el('div');
@@ -794,7 +813,7 @@
     var recs = DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); });
     var t = el('div', 'table');
     recs.forEach(function (r) {
-      var ds = Calc.dueStatus(r, DATA.payments);
+      var ds = Calc.dueStatus(r, DATA.ledger);
       var row = el('div', 'lrow');
       row.appendChild(el('span', 'l-date', fmtDate(r.periodTo)));
       var d = el('span', 'l-desc', 'due ' + fmtDate(ds.dueDate) + ' · total ' + fmtMoney(r.total) + ' · min ' + fmtMoney(r.minimumDue));
@@ -809,49 +828,47 @@
     body.appendChild(t);
     $('blDue').replaceChildren(body);
   }
-  function addPayment() {
-    var date = $('blDate').value, forPeriod = $('blFor').value;
-    var amount = parseFloat(String($('blAmt').value).replace(/[, ]/g, ''));
-    var method = $('blMethod').value.trim();
-    if (!date) { toast('Date required.', 'warn'); return; }
-    if (!forPeriod || !DATA.records.some(function (r) { return r.periodTo === forPeriod; })) { toast('Pick a statement period.', 'warn'); return; }
-    if (!isFinite(amount) || amount <= 0) { toast('Amount must be positive.', 'warn'); return; }
-    DATA.payments.push({ id: 'p-' + Date.now().toString(36), date: date, amount: Math.round(amount * 100) / 100, forPeriod: forPeriod, method: method, note: '' });
-    persist();
-    $('blAmt').value = ''; $('blMethod').value = '';
-    renderLedger();
-    renderDueBoard();
+  /* Annual fee waiver: spend the configured target (default ₹3L) in the
+   * [Jan 19 → next Jan 18] window. Spend = statement purchases with periodTo
+   * in the window. */
+  function renderFeeWaiver() {
+    var cfg = DATA.feeConfig || {};
+    var w = Calc.waiverStatus(DATA.records, new Date(), cfg);
+    var box = el('div');
+    var kw = el('div', 'kv');
+    var mname = (function () { var n = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; return n[w.windowFrom.getMonth()]; })();
+    kw.appendChild(kvRow('Window', mname + ' ' + w.windowFrom.getDate() + ' → ' + (function () { var n = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; return n[w.windowTo.getMonth()]; })() + ' ' + w.windowTo.getDate()));
+    kw.appendChild(kvRow('Target spend', fmtMoney(w.target)));
+    kw.appendChild(kvRow('Spent in window', fmtMoney(w.spent)));
+    kw.appendChild(kvRow(w.waived ? 'Status' : 'Still needed', w.waived ? 'fees waived ✓' : fmtMoney(w.remaining) + ' · ' + w.daysLeft + ' day(s) left'));
+    box.appendChild(kw);
+    var btn = el('button', 'ghost', 'Waiver target…');
+    btn.title = 'Change the waiver spend target / window start';
+    btn.onclick = function () { feeConfig(); };
+    box.appendChild(el('div', 'form'));
+    box.lastChild.appendChild(btn);
+    $('blFee').replaceChildren(box);
   }
-  function delPayment(id) {
-    DATA.payments = DATA.payments.filter(function (p) { return p.id !== id; });
-    persist();
-    renderLedger();
-    renderDueBoard();
-  }
-  function renderPayments() {
-    blForOptions();
-    var body = el('div');
-    if (!DATA.payments.length) {
-      body.appendChild(el('p', 'muted', 'No payments logged. Record what you actually paid the bank each cycle.'));
-      $('blPayments').replaceChildren(body);
-      return;
-    }
-    var t = el('div', 'table');
-    DATA.payments.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).forEach(function (p) {
-      var row = el('div', 'lrow');
-      row.appendChild(el('span', 'l-date', fmtDate(p.date)));
-      var d = el('span', 'l-desc', 'for ' + fmtDate(p.forPeriod));
-      if (p.method) d.appendChild(el('span', 'meta', p.method));
-      row.appendChild(d);
-      row.appendChild(el('span', 'l-cat', 'payment'));
-      row.appendChild(el('span', 'l-amt', fmtMoney(p.amount)));
-      var del = el('button', 'danger small', '✕');
-      del.onclick = function () { delPayment(p.id); };
-      row.appendChild(del);
-      t.appendChild(row);
-    });
-    body.appendChild(t);
-    $('blPayments').replaceChildren(body);
+  function feeConfig() {
+    var box = el('div');
+    box.appendChild(el('h2', '', 'Fee waiver'));
+    box.appendChild(el('p', 'muted', 'Spend at least this much between Jan 19 and Jan 18 (next year) and the annual fee is waived. Default ₹3,00,000.'));
+    var row = el('div', 'form');
+    var inp = el('input'); inp.type = 'number'; inp.min = '0'; inp.step = '1000';
+    inp.value = isFinite(Number(DATA.feeConfig.target)) ? DATA.feeConfig.target : 300000;
+    row.appendChild(inp);
+    var ok = el('button', 'primary', 'Save');
+    ok.onclick = function () {
+      var v = parseFloat(String(inp.value).replace(/[, ]/g, ''));
+      DATA.feeConfig.target = isFinite(v) && v > 0 ? v : 300000;
+      persist();
+      closeModal();
+      renderFeeWaiver();
+    };
+    row.appendChild(ok);
+    box.appendChild(row);
+    modal(box, true);
+    setTimeout(function () { inp.focus(); }, 30);
   }
   function renderInterest() {
     var box = el('div');
@@ -987,6 +1004,7 @@
     renderLedger();
     if (window.Chart) requestAnimationFrame(drawCharts); else drawCharts();
     renderDueBoard();
+    renderFeeWaiver();
     renderInterest();
     if ($('rewards').style.display === 'block') renderRewards();
     if (S.recId && $('rcSel') && $('reconcile').style.display === 'block') renderReconcile();
@@ -1004,7 +1022,6 @@
     h.appendChild(kw);
 
     if (DATA.records.length) {
-      $('heroImport').textContent = 'Import another statement';
       h.appendChild(el('h4', '', 'History'));
       var t = el('div', 'table');
       DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); }).forEach(function (r) {
@@ -1034,8 +1051,7 @@
       });
       h.appendChild(t);
     } else {
-      $('heroImport').textContent = 'Import your first statement';
-      h.appendChild(el('p', 'muted', 'No statements recorded. Import your HDFC Neu statement PDF below to start verifying.'));
+      h.appendChild(el('p', 'muted', 'No statements recorded. Use “Import statement” above to import your HDFC Neu statement PDF and start verifying.'));
     }
     $('landingStats').replaceChildren(h);
     $('importCounter').textContent = DATA.records.length ? 'Stored: ' + DATA.records.length + ' · last ' + fmtDate(DATA.records[DATA.records.length - 1].periodTo) : 'No statements stored yet.';
@@ -1131,8 +1147,12 @@
     $('rwAddBtn').addEventListener('click', addRedemption);
     $('rwConfigBtn').addEventListener('click', coinConfig);
     $('rwDate').value = todayStr();
-    $('blAddBtn').addEventListener('click', addPayment);
-    $('blDate').value = todayStr();
+    $('leCat').addEventListener('change', function () {
+      /* the "For period" picker only makes sense for Payment entries — the
+       * repayment that clears a specific bill */
+      $('lePeriodWrap').style.display = $('leCat').value === 'payment' ? '' : 'none';
+      lePeriodOptions();
+    });
     $('saveBundleBtn').addEventListener('click', saveBundle);
     $('openBundleInput').addEventListener('change', function (e) {
       var f = e.target.files && e.target.files[0];
