@@ -191,6 +191,15 @@ whenReady(function run() {
   eq('hist result table wrapped', $$('#sec-hist .tableWrap > table').length >= 1, true);
   eq('per-PAN table wrapped', $$('#sec-hist .tableWrap > table').length >= 2, true);
 
+  console.log('10) Unsold chip — allotted but not sold');
+  var unsoldChip = $$('#sumChips .chip').filter(function (c) { return c.textContent.indexOf('unsold') >= 0; })[0];
+  eq('unsold chip present', !!unsoldChip, true);
+  eq('allotted-not-sold counted as 1', unsoldChip.textContent, '1 unsold');
+  App.DATA.applications[1].soldPrice = 560;
+  App.renderAll();
+  unsoldChip = $$('#sumChips .chip').filter(function (c) { return c.textContent.indexOf('unsold') >= 0; })[0];
+  eq('after marking sold, chip drops to 0', unsoldChip.textContent, '0 unsold');
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
     process.exit(failed ? 1 : 0);
   }, 300);

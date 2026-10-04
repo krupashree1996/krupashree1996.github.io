@@ -7,7 +7,7 @@
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 19;
+  var APP_VERSION = 20;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
   /* Google Drive backup. Get a client id at Google Cloud Console
    * (APIs & Services > Credentials > Create OAuth client ID > Web application),
@@ -225,10 +225,14 @@
     var open = 0;
     DATA.ipos.forEach(function (i) { if (Calc.ipoStatus(i) === 'open') open++; });
     var pending = filterApps(DATA.applications).filter(function (a) { return a.status === 'applied'; }).length;
+    var unsold = filterApps(DATA.applications).filter(function (a) { return a.status === 'allotted' && !(a.soldPrice > 0); }).length;
     var pnl = 0;
     DATA.ipos.forEach(function (i) { pnl += mySummary(i).pnl; });
     wrap.appendChild(el('span', 'chip', open ? open + ' open now' : (DATA.ipos.length ? 'no IPO open' : '0 IPOs')));
     wrap.appendChild(el('span', 'chip', pending ? pending + ' awaiting allotment' : '0 awaiting'));
+    var us = el('span', 'chip', unsold ? unsold + ' unsold' : '0 unsold');
+    us.title = 'Allotted applications not yet marked sold (no sold price recorded)';
+    wrap.appendChild(us);
     var c = el('span', 'chip pnl' + (pnl < 0 ? ' neg' : (pnl > 0 ? ' pos' : '')), 'P&L ' + Calc.compact(pnl));
     wrap.appendChild(c);
   }
