@@ -428,13 +428,33 @@ const Calc = (function () {
   function startOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
 
   /* Every payment logged against a statement period, classified full/min/partial.
-   * Payments live in the ledger as category 'payment' entries (optionally with a
-   * forPeriod); negative entries in other categories are reversals, not payments. */
-  function paymentForRecord(rec, ledger) {
+   * A payment is attributed to `rec` when:
+   *  1. it explicitly carries forPeriod = rec's period (or statementDate), or
+   *  2. it is unlinked (no forPeriod) and its date falls in rec's payment
+   *     window — strictly after rec's period-to (the bill closes) up to and
+   *     including the next bill's period-to: a bill is paid off after it
+   *     closes, before the next one does. For the newest bill (no statement
+   *     after it yet) the window extends indefinitely: a payment after its
+   *     closing date settles it immediately (e.g. a bill closing 18/09 and
+   *     paid off on 03/10 shows settled before the next statement arrives).
+   * Negative entries in other categories are reversals, not payments. */
+  function paymentForRecord(rec, ledger, records) {
+    var start = pdate(rec.periodTo);
+    var isLatest = true, end = Infinity;
+    (records || []).forEach(function (r) {
+      if (!r || r.id === rec.id) return;
+      var t2 = pdate(r.periodTo);
+      if (!isFinite(t2)) return;
+      if (t2 > start) { isLatest = false; if (t2 < end) end = t2; }
+    });
     var list = (ledger || []).filter(function (p) {
-      if (p.category !== 'payment') return false;
+      if (!p || p.category !== 'payment') return false;
       var fp = String(p.forPeriod || '');
-      return fp === rec.periodTo || fp === rec.statementDate;
+      if (fp && (fp === rec.periodTo || fp === rec.statementDate)) return true;
+      if (fp) return false;
+      var t = pdate(p.date);
+      if (!isFinite(t) || !isFinite(start)) return false;
+      return t > start && t <= end;
     });
     var totalPaid = 0;
     list.forEach(function (p) { if (isFinite(p.amount)) totalPaid += p.amount; });
@@ -453,11 +473,12 @@ const Calc = (function () {
     };
   }
 
-  function dueStatus(rec, payments, today) {
+  function dueStatus(rec, ledger, records, today) {
+    if (records instanceof Date) { today = records; records = undefined; }
     var ref = today || new Date();
     var due = isFinite(pdate(rec.dueDate)) ? pdate(rec.dueDate) : NaN;
     var daysLeft = isFinite(due) ? Math.round((due - startOfDay(ref)) / 86400000) : null;
-    var pay = paymentForRecord(rec, payments);
+    var pay = paymentForRecord(rec, ledger, records);
     return {
       dueDate: rec.dueDate,
       daysLeft: daysLeft,

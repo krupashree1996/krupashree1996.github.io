@@ -360,6 +360,32 @@ var dsFut = Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 50
 eq('future due days left', dsFut.daysLeft, 7);
 ok('not overdue when due ahead', dsFut.overdue === false);
 ok('settled after payment', Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 500, periodTo: '18/11/2025' }, [{ category: 'payment', amount: 10000, forPeriod: '18/11/2025' }], new Date(2025, 11, 1)).settled === true);
+/* payment-window attribution: a bill is paid off AFTER it closes, so an unlinked
+ * payment belongs to the bill whose period-to is just before the payment date
+ * (window = (period-to, next period-to]). The LATEST bill's window is open-ended
+ * (regression: 18/09/2026 bill showed outstanding after its 03/10/2026 payment). */
+var recs2 = [
+  { id: 'b0', periodTo: '18/07/2026', total: 219972, minimumDue: 11000, dueDate: '08/08/2026' },
+  { id: 'b1', periodTo: '18/08/2026', total: 17755, minimumDue: 890, dueDate: '08/09/2026' },
+  { id: 'b2', periodTo: '18/09/2026', total: 71513, minimumDue: 3580, dueDate: '08/10/2026' }
+];
+var lg2 = [
+  { category: 'payment', date: '23/07/2026', amount: 11000 },   // after b0 closed → b0
+  { category: 'payment', date: '22/08/2026', amount: 890 },     // after b1 closed → b1
+  { category: 'payment', date: '31/08/2026', amount: 16865 },   // after b1 closed → b1
+  { category: 'payment', date: '20/09/2026', amount: 3580 },    // after b2 closed → b2 (latest)
+  { category: 'payment', date: '03/10/2026', amount: 67933 }    // after b2 closed → b2, paid post-close
+];
+var now26 = new Date(2026, 9, 4);
+var ds2 = Calc.dueStatus(recs2[2], lg2, recs2, now26);
+eq('latest bill settled by its post-close payment', ds2.kind, 'full');
+eq('latest bill outstanding 0', ds2.outstanding, 0);
+eq('middle bill settled by in-window payments', Calc.dueStatus(recs2[1], lg2, recs2, now26).kind, 'full');
+eq('older bill settled by its window payment', Calc.dueStatus(recs2[0], lg2, recs2, now26).paid, 11000);
+/* a payment dated BEFORE the bill's period-to belongs to no window */
+eq('pre-close unlinked payment ignored', Calc.dueStatus(recs2[2], [{ category: 'payment', date: '05/09/2026', amount: 71513 }], recs2, now26).kind, 'none');
+/* an explicitly linked payment still wins over the window */
+eq('linked payment attributed to its bill', Calc.dueStatus(recs2[0], [{ category: 'payment', date: '03/10/2026', amount: 219972, forPeriod: '18/07/2026' }], recs2, now26).kind, 'full');
 eq('utilization 25%', Calc.utilizationOf({ total: 25000, creditLimit: 100000 }), 25);
 eq('utilization null when no limit', Calc.utilizationOf({ total: 25000 }), null);
  var isum = Calc.interestSummary([{ periodTo: '18/04/2025', finance: 0 }, { periodTo: '18/05/2025', finance: 12.5 }]);
@@ -428,7 +454,7 @@ section('PRIVACY GUARD — investments/ + test/ use synthetic fixtures only');
 (function () {
   var ROOT2 = path.join(__dirname, '..');
   var TREES = ['investments', 'test'];
-  var SYNTHETIC_ACCTS = /^130910DP(00000001|00004001|00004002|00004003|00004004|00004006|00004007|00004008|00004009|00004010|00004011|00004012)$|^130910TR00000009$/;
+  var SYNTHETIC_ACCTS = /^130910DP(00000001|00004001|00004002|00004003|00004004|00004006|00004007|00004008|00004009|00004010|00004011|00004012)$|^130910TR00000009$|^130910SC00004020$/;
   var PNB_ACCT = /\b130910[A-Z]{2}\d{8}\b/g;
   var bad = [];
   TREES.forEach(function (tree) {

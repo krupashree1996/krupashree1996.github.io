@@ -18,7 +18,7 @@
 
   var STORE_KEY = 'ne.tracker.data';
   var PW_KEY = 'ne.tracker.pw';
-  var APP_VERSION = 4;
+  var APP_VERSION = 5;
 
   /* ---------------- tiny DOM helpers ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -813,7 +813,7 @@
     var recs = DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); });
     var t = el('div', 'table');
     recs.forEach(function (r) {
-      var ds = Calc.dueStatus(r, DATA.ledger);
+      var ds = Calc.dueStatus(r, DATA.ledger, DATA.records);
       var row = el('div', 'lrow');
       row.appendChild(el('span', 'l-date', fmtDate(r.periodTo)));
       var d = el('span', 'l-desc', 'due ' + fmtDate(ds.dueDate) + ' · total ' + fmtMoney(r.total) + ' · min ' + fmtMoney(r.minimumDue));
