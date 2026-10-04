@@ -178,6 +178,19 @@ whenReady(function run() {
   var sp = App.DATA.ipos.find(function (i) { return i.symbol === 'SPECTT'; });
   eq('added record is the new IPO, not a match of the old one', sp && sp.name, 'Spectra Test Co');
 
+  console.log('9) Table scroll wrappers — Applications and History & P&L');
+  main.openDate = '2026-09-01';
+  main.closeDate = '2026-09-10';
+  main.listingDate = '2026-09-15';
+  main.listingPrice = 550;
+  App.DATA.applications.push({ id: 'app-main-1', ipoId: main.id, panId: 'pan-1', lots: 1, price: 500, status: 'allotted', shares: 5, appliedOn: '2026-09-05' });
+  App.renderAll();
+  document.querySelector('#tabs [data-tab="apps"]').click();
+  eq('apps table wrapped in .tableWrap', !!document.querySelector('#sec-apps .tableWrap > table'), true);
+  document.querySelector('#tabs [data-tab="hist"]').click();
+  eq('hist result table wrapped', $$('#sec-hist .tableWrap > table').length >= 1, true);
+  eq('per-PAN table wrapped', $$('#sec-hist .tableWrap > table').length >= 2, true);
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
     process.exit(failed ? 1 : 0);
   }, 300);

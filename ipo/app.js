@@ -7,7 +7,7 @@
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 18;
+  var APP_VERSION = 19;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
   /* Google Drive backup. Get a client id at Google Cloud Console
    * (APIs & Services > Credentials > Create OAuth client ID > Web application),
@@ -253,6 +253,11 @@
     var m = APP_META[a.status] || APP_META.applied;
     return el('span', 'badge ' + m.cls, m.label);
   }
+  function wrapTable(t) {
+    var w = el('div', 'tableWrap');
+    w.appendChild(t);
+    return w;
+  }
   function pnlCell(pnl, hasp) {
     var td = el('td', 'num');
     if (hasp) {
@@ -443,7 +448,7 @@
       fr.appendChild(fc2);
       foot.appendChild(fr);
       t.appendChild(foot);
-      card.appendChild(t);
+      card.appendChild(wrapTable(t));
     }
     sec.appendChild(card);
   }
@@ -554,7 +559,7 @@
         tb.appendChild(tr);
       });
       t.appendChild(tb);
-      card.appendChild(t);
+      card.appendChild(wrapTable(t));
     }
     sec.appendChild(card);
 
@@ -602,7 +607,7 @@
       rt.appendChild(pnlCell(gTot.pnl, true));
       ptb.appendChild(rt);
       pt.appendChild(ptb);
-      panCard.appendChild(pt);
+      panCard.appendChild(wrapTable(pt));
     }
     sec.appendChild(panCard);
 
