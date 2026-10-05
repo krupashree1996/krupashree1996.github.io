@@ -215,7 +215,8 @@ whenReady(function run() {
   setValue('#imInt', '9999');
   $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
   eq('different amount on same date allowed', fd0.entries.length, 3);
-  eq('table rendered with 3 rows', $$('#interestModal .intTable tr').length - 1, 3);
+  // the modal also carries the estimated schedule table below the ledger, so count the first table only
+  eq('ledger table rendered with 3 rows', $$('#interestModal table.intTable')[0].querySelectorAll('tr').length - 1, 3);
 
   // Edit an existing payout: pencil prefills the form, "Save changes" updates it.
   // Entries so far: 28/06 (8108, tds 811), 28/06 (9999), 24/09 (8282) — date-sorted,
@@ -547,6 +548,44 @@ whenReady(function run() {
   // FD keeps hiding the estimate fields
   App.buildFdForm(null);
   eq('estimate fields hidden again for FD', $('#fEstFull').parentNode.style.display, 'none');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
+
+  console.log('14) FD quarterly estimates (compound credited in / payout paid out)');
+  // compound FD: estimate fields stay hidden (nothing to confirm), row shows value at maturity
+  App.buildFdForm(null);
+  eq('compound FD hides estimate fields', $('#fEstFull').parentNode.style.display, 'none');
+  setValue('#fAcc', '999999DP99999901');
+  setValue('#fAmt', '400000');
+  setValue('#fRate', '8.1');
+  setValue('#fIssue', '20/02/2026');
+  setValue('#fMaturity', '19/06/2028');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
+  var cfd = App.DATA.fds.filter(function (f) { return f.account === '999999DP99999901'; })[0];
+  eq('compound FD added', !!cfd, true);
+  eq('compound FD stores no payoutEstimate', cfd.payoutEstimate, null);
+  var cfdRow = $$('#sec-fd .fdRow').filter(function (r) { return r.getAttribute('data-account') === '999999DP99999901'; })[0];
+  var cfdCell = Array.prototype.slice.call(cfdRow.querySelectorAll('.fdCell')).filter(function (c) { return c.querySelector('small') && c.querySelector('small').textContent === 'Est. at maturity'; })[0];
+  eq('Est. at maturity cell on compound row', !!cfdCell, true);
+  eq('compound tooltip mentions credited in', cfdCell.title.indexOf('credited in') >= 0, true);
+  eq('compound tooltip has maturity value line', cfdCell.title.indexOf('Estimated value at maturity') >= 0, true);
+  // interest modal shows the running-value schedule
+  App.buildInterestForm(cfd);
+  var cTbls = $$('#interestModal table.intTable');
+  eq('compound schedule table in interest modal', cTbls.length >= 1, true);
+  var cTbl = cTbls[cTbls.length - 1];
+  var cText = cTbl.textContent;
+  cTbl.querySelectorAll('th').forEach(function (th) { if (th.textContent === 'Worth after') eq('compound schedule has Worth after column', true, true); });
+  eq('compound schedule marks broken start', cText.indexOf('broken start') >= 0, true);
+  eq('compound schedule marks final period', cText.indexOf('final period') >= 0, true);
+  eq('compound schedule totals value at maturity', cText.indexOf('value at maturity') >= 0, true);
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
+  // payout FD: estimate fields appear when interest type = payout
+  App.buildFdForm(null);
+  setValue('#fType', 'fd');
+  setValue('#fImode', 'payout');
+  eq('payout FD shows estimate fields', $('#fEstFull').parentNode.style.display, '');
+  setValue('#fImode', 'compound');
+  eq('compound FD hides estimate fields again', $('#fEstFull').parentNode.style.display, 'none');
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
 
   console.log('\n' + passed + ' passed, ' + failed + ' failed');

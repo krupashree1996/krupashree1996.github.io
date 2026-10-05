@@ -492,24 +492,26 @@ var Calc = (function () {
    * Returns [] when dates/amount are incomplete. */
    function fdPayoutSchedule(fd) {
     var type = normFdType(fd);
-    if (type !== 'scss' && type !== 'rbi') return [];
     if (!fd.issueDate || !fd.maturityDate || !(fd.amount > 0) || !(fd.rate > 0)) return [];
     var frb = type === 'rbi';
-    var q = frb ? 2 : 4;                       // payouts per year
+    var compound = type === 'fd' && normInterestMode(fd) === 'compound';
+    var q = frb ? 2 : 4;                       // payouts per year (FD: quarterly)
     var gap = 12 / q;                          // months between period ends
     var per = Math.round((fd.amount * fd.rate / 100) / q);
     var perDay = fd.amount * fd.rate / 100 / 365;   // day-based pro-rata for broken ends
     var est = fd.payoutEstimate || {};
     var full = est.full != null ? est.full : per;
+    var rateFrac = fd.rate / 100;
     var p = String(fd.issueDate).split('-');
     var iy = +p[0], im = +p[1];
     var out = [];
-    var start = frb ? 1 : 3;                   // first boundary month (FRB: 1,7 / SCSS: 3,6,9,12)
+    var start = frb ? 1 : 3;                   // first boundary month (FRB: 1,7 / others: 3,6,9,12)
     var mo = start + Math.ceil((im - start) / gap) * gap;  // first boundary month >= issue month
+    var bal = fd.amount;                        // running value (compound: credited-in grows it)
     for (;;) {
       var y = iy + Math.floor((mo - 1) / 12);
       var mn = ((mo - 1) % 12) + 1;
-      var lastDay = frb ? 1 : new Date(y, mn, 0).getDate(); // FRB: 1st; SCSS: last day
+      var lastDay = frb ? 1 : new Date(y, mn, 0).getDate(); // FRB: 1st; others: last day
       var iso = y + '-' + pad(mn) + '-' + pad(lastDay);
       if (iso <= fd.issueDate) { mo += gap; continue; }
       if (iso >= fd.maturityDate) break;
@@ -518,18 +520,30 @@ var Calc = (function () {
       // a short first period (issue close to the boundary) is a broken start,
       // otherwise a full period
       var kind = out.length || days >= Math.round(gap * 30) ? 'full' : 'start';
-      out.push({
-        date: iso, days: days, kind: kind,
-        amount: kind === 'full' ? full : (est.brokenStart != null ? est.brokenStart : Math.round(days * perDay))
-      });
+      var amt;
+      if (compound) {
+        // credited in: each period's interest compounds on the running value
+        amt = kind === 'full' ? Math.round(bal * rateFrac / q) : Math.round(days * bal * rateFrac / 365);
+        bal += amt;
+        out.push({ date: iso, days: days, kind: kind, amount: amt, after: bal });
+      } else {
+        amt = kind === 'full' ? full : (est.brokenStart != null ? est.brokenStart : Math.round(days * perDay));
+        out.push({ date: iso, days: days, kind: kind, amount: amt });
+      }
       mo += gap;
     }
     if (!out.length) return [];
     var endDays = daysBetweenISO(out[out.length - 1].date, fd.maturityDate);
-    out.push({
-      date: fd.maturityDate, days: endDays, kind: 'end',
-      amount: est.brokenEnd != null ? est.brokenEnd : Math.round(endDays * perDay)
-    });
+    if (compound) {
+      // last period's credit on the running value; `after` = value at maturity
+      var finalCredit = Math.round(endDays * bal * rateFrac / 365);
+      out.push({ date: fd.maturityDate, days: endDays, kind: 'end', amount: finalCredit, after: bal + finalCredit });
+    } else {
+      out.push({
+        date: fd.maturityDate, days: endDays, kind: 'end',
+        amount: est.brokenEnd != null ? est.brokenEnd : Math.round(endDays * perDay)
+      });
+    }
     return out;
   }
   /* Estimated coupon + redemption schedule for an SGB holding (kind 'sgb').

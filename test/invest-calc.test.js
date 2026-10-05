@@ -407,14 +407,54 @@ console.log('fdPayoutSchedule — SCSS true-quarter / FRB half-year estimates');
   eq('frb broken start 01 Jul 2025', frb2[0].date, '2025-07-01');
   eq('frb broken start kind', frb2[0].kind, 'start');
   eq('frb broken start is day-based', frb2[0].amount, Math.round(167 * 150000 * 7.4 / 100 / 365));
-  eq('fd type -> no schedule', Calc.fdPayoutSchedule({ type: 'fd', amount: 1, rate: 1, issueDate: '2026-01-01', maturityDate: '2027-01-01' }).length, 0);
-  eq('incomplete -> no schedule', Calc.fdPayoutSchedule({ type: 'scss', amount: 100, issueDate: '2026-01-01' }).length, 0);
-  // day-based pro-rata fallback for the two broken ends when no estimate entered
-  var perDay = 1000000 * 8.2 / 100 / 365;
-  eq('broken start = days * perDay', s[0].amount, Math.round(s[0].days * perDay));
-  eq('broken end = days * perDay', s[20].amount, Math.round(s[20].days * perDay));
-  eq('broken start days', s[0].days, 40);
-  eq('broken end days', s[20].days, 49);
+   eq('incomplete -> no schedule', Calc.fdPayoutSchedule({ type: 'scss', amount: 100, issueDate: '2026-01-01' }).length, 0);
+   // day-based pro-rata fallback for the two broken ends when no estimate entered
+   var perDay = 1000000 * 8.2 / 100 / 365;
+   eq('broken start = days * perDay', s[0].amount, Math.round(s[0].days * perDay));
+   eq('broken end = days * perDay', s[20].amount, Math.round(s[20].days * perDay));
+   eq('broken start days', s[0].days, 40);
+   eq('broken end days', s[20].days, 49);
+})();
+
+console.log('fdPayoutSchedule — FD quarterly (compound credited in / payout paid out)');
+(function () {
+  var P = 400000, R = 8.1;
+  // compound: credited in quarterly on the running value
+  var c = Calc.fdPayoutSchedule({ type: 'fd', interestMode: 'compound', amount: P, rate: R, issueDate: '2026-02-20', maturityDate: '2028-06-19' });
+  eq('compound 9 qtrs + end', c.length, 10);
+  eq('first end 31 Mar 2026', c[0].date, '2026-03-31');
+  eq('last full qtr end 31 Mar 2028', c[8].date, '2028-03-31');
+  eq('last is maturity', c[9].date, '2028-06-19');
+  eq('kind sequence first/mid/last', JSON.stringify([c[0].kind, c[1].kind, c[9].kind]), '["start","full","end"]');
+  // hand-computed reference (same quarterly convention)
+  var b = P;
+  c.forEach(function (r, i) {
+    var amt;
+    if (i === 0) amt = Math.round(r.days * b * R / 100 / 365);           // broken start, day-based on principal
+    else if (i < c.length - 1) amt = Math.round(b * R / 100 / 4);        // full quarter on running value
+    else amt = Math.round(r.days * b * R / 100 / 365);                   // broken end
+    eq('credit ' + i + ' matches reference', c[i].amount, amt);
+    b += amt;
+    eq('running value ' + i, c[i].after, b);
+  });
+  eq('value at maturity beats simple-interest estimate', c[9].after > P + Math.round(850 * P * R / 100 / 365), true);
+  // compound issued 1 day after a boundary: first period is a full quarter
+  var c2 = Calc.fdPayoutSchedule({ type: 'fd', interestMode: 'compound', amount: P, rate: R, issueDate: '2026-04-01', maturityDate: '2026-12-31' });
+  eq('compound 3 rows', c2.length, 3);
+  eq('compound first full quarter', c2[0].amount, Math.round(P * R / 100 / 4));
+  eq('compound first kind full', c2[0].kind, 'full');
+  eq('compound last is end', c2[2].kind, 'end');
+  // payout FD: principal stays fixed, same broken-end day-based math as scss
+  var pd = Calc.fdPayoutSchedule({ type: 'fd', interestMode: 'payout', amount: P, rate: R, issueDate: '2026-02-20', maturityDate: '2028-06-19' });
+  eq('payout 10 rows', pd.length, 10);
+  eq('payout full quarter = P*r/4', pd[1].amount, Math.round(P * R / 100 / 4));
+  eq('payout no running value', pd[0].after, undefined);
+  var perDayP = P * R / 100 / 365;
+  eq('payout broken start day-based', pd[0].amount, Math.round(39 * perDayP));
+  eq('payout broken end day-based', pd[9].amount, Math.round(80 * perDayP));
+  // user-set broken end still honored for payout FDs
+  var pd2 = Calc.fdPayoutSchedule({ type: 'fd', interestMode: 'payout', amount: P, rate: R, issueDate: '2026-02-20', maturityDate: '2028-06-19', payoutEstimate: { brokenEnd: 1234 } });
+  eq('payout end uses entered figure', pd2[9].amount, 1234);
 })();
 
 console.log('commodityPayoutSchedule — SGB coupons + face redemption');
