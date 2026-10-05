@@ -207,6 +207,11 @@ whenReady(function run() {
   eq('export filename starts with ipo_', gotName.indexOf('ipo_') === 0, true);
   eq('export filename has yyyymmdd suffix', /\d{8}\.js$/.test(gotName), true);
 
+  console.log('12) Sticky heading — tabs are part of the heading block');
+  var head = document.getElementById('head');
+  eq('#head wraps topbar and tabs', !!head && head.contains(document.getElementById('topbar')) && head.contains(document.getElementById('tabs')), true);
+  eq('tabs are direct children of #head', head && head.querySelector(':scope > nav#tabs') !== null, true);
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
     process.exit(failed ? 1 : 0);
   }, 300);
