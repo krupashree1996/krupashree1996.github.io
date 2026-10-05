@@ -1058,8 +1058,6 @@
     kw.appendChild(kvRow('Latest total', k ? fmtMoney(k.total) : '—'));
     /* a number of 8 digits or less is shown as-is (e.g. just the last four:
      * "8311"), never "8311 … 8311" */
-    /* a number of 8 digits or less is shown as-is (e.g. just the last four:
-     * "8311"), never "8311 … 8311" */
     var cno = DATA.card.no || '';
     var cardRow = el('div');
     cardRow.appendChild(el('b', '', 'Profile card'));
@@ -1076,28 +1074,24 @@
     if (k) {
       var from = Calc.pdate(k.periodTo);
       var coins = { base: 0, upi: 0, grocery: 0, tata: 0 };
+      var unbilled = 0;
       DATA.ledger.forEach(function (e) {
-        if (!coins[e.category]) return;
         var t = Calc.pdate(e.date);
         if (!isFinite(t) || isFinite(from) && t <= from) return; // open cycle only
-        coins[e.category] += Calc.predictedCoins(e).coins;
+        if (e.category === 'payment') return; // a payment is a credit, not new spend
+        unbilled += e.amount; // every other open-cycle entry (incl. nocoins) is new spend
+        if (e.category in coins) coins[e.category] += Calc.predictedCoins(e).coins;
       });
       var ds = Calc.dueStatus(k, DATA.ledger, DATA.records);
       /* unpaid portion of the current bill rolls into the next one */
       var carried = Math.max(Math.round((k.total - ds.paid) * 100) / 100, 0);
-      /* unbilled (approx): total outstanding (billed + unbilled) minus the
-       * current bill's printed total = spend since the last statement */
-      var unbilled = (isFinite(k.creditLimit) && isFinite(k.availLimit) && isFinite(k.total))
-        ? Math.max(Math.round((k.creditLimit - k.availLimit - k.total) * 100) / 100, 0) : null;
       /* finance estimate: none if the last bill is fully paid, otherwise the
        * last printed finance charge rolls over once */
       var finEst = (isFinite(k.finance) && carried > 0) ? k.finance : 0;
-      var projected = unbilled != null
-        ? Math.round((carried + unbilled + finEst) * 100) / 100
-        : Math.round((carried + finEst) * 100) / 100;
+      var projected = Math.round((carried + unbilled + finEst) * 100) / 100;
       var up = el('div', 'kv');
       up.appendChild(kvRow('Upcoming bill (est.)', fmtMoney(projected)));
-      if (unbilled != null) up.appendChild(kvRow('Unbilled (approx)', fmtMoney(unbilled)));
+      up.appendChild(kvRow('Unbilled (new spend)', fmtMoney(unbilled)));
       up.appendChild(kvRow('Carried from last bill', fmtMoney(carried)));
       if (finEst > 0) up.appendChild(kvRow('Finance (est.)', fmtMoney(finEst)));
       var coinLine = Object.keys(coins).filter(function (c) { return coins[c] > 0; })

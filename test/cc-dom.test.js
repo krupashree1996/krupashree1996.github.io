@@ -179,12 +179,20 @@ whenReady(function run() {
   dueMore().click();
   eq('due board shows all 9 after second click', dueRows(), 9);
   eq('due board show-more gone once all shown', !!dueMore(), false);
-  /* latest statement s-1: creditLimit 100000 − availLimit 99800 − total 200 = 0 unbilled */
+  /* upcoming bill (est.) — unbilled is now the post-statement ledger spend,
+   * not creditLimit − availLimit − total (availLimit lags a full cycle) */
   eq('upcoming bill (est.) shown on home', $('#landingStats').textContent.indexOf('Upcoming bill (est.)') >= 0, true);
-  eq('unbilled (approx) in upcoming bill', $('#landingStats').textContent.indexOf('Unbilled (approx)') >= 0, true);
-  DATA.records.forEach(function (r) { if (r.id === 's-1') r.availLimit = 99700; });
+  /* the only ledger entry so far (10/11/2025) is INSIDE s-1's cycle → no open-cycle spend yet */
+  eq('unbilled 0 before any open-cycle spend', $('#landingStats').textContent.indexOf('Unbilled (new spend)') >= 0 && $('#landingStats').textContent.indexOf('₹0.00') >= 0, true);
+  /* add a post-statement purchase (20/11/2025 > 18/11/2025) → unbilled = 500 */
+  setValue('#leDate', '20/11/2025');
+  setValue('#leDesc', 'POST STATEMENT buy');
+  setValue('#leCat', 'grocery');
+  setValue('#leAmt', '500');
+  $('#addBtn').click();
   $('#homeGo').click();
-  eq('unbilled = limit − avail − total (100)', $('#landingStats').textContent.indexOf('₹100.00') >= 0, true);
+  eq('unbilled = post-statement spend (500)', $('#landingStats').textContent.indexOf('₹500.00') >= 0, true);
+  ok('open-cycle coins still earnable shown', $('#landingStats').textContent.indexOf('grocery +') >= 0, true);
 
   console.log('6f) home — profile card setter (Profile card row is the entry point)');
   /* unset state: the "Profile card" value is itself the tappable button */
@@ -216,7 +224,7 @@ whenReady(function run() {
       console.log('7) persistence round-trip');
       var saved = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
       eq('persisted version', saved.version, 5);
-      eq('persisted ledger entries', saved.ledger.length, 3); // 1 grocery (2) + 1 payment (6) + 1 bulk-booked statement row (6c)
+      eq('persisted ledger entries', saved.ledger.length, 4); // 1 grocery (2) + 1 payment (6) + 1 bulk-booked statement row (6c) + 1 post-statement buy (6e)
       eq('persisted payments drained', saved.payments.length, 0);
       eq('persisted redemptions', saved.redemptions.length, 1);
       ok('no password persisted', !('password' in saved));
