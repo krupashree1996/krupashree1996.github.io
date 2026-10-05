@@ -831,14 +831,6 @@
       more.onclick = function () { S.dueCount += 3; renderDueBoard(); };
       body.appendChild(more);
     }
-    /* Unbilled (approx): creditLimit − availLimit is total outstanding (billed +
-     * unbilled); subtract the latest bill's printed total. Only the latest
-     * statement carries the current available-credit figures. */
-    var last = recs[0];
-    if (last && isFinite(last.creditLimit) && isFinite(last.availLimit) && isFinite(last.total)) {
-      var unbilled = Math.max(Math.round((last.creditLimit - last.availLimit - last.total) * 100) / 100, 0);
-      body.appendChild(el('p', 'muted', 'Unbilled (approx) · as of ' + fmtDate(last.periodTo) + ': ' + fmtMoney(unbilled)));
-    }
     $('blDue').replaceChildren(body);
   }
   /* Annual fee waiver: spend the configured target (default ₹3L) in the
@@ -877,6 +869,28 @@
       persist();
       closeModal();
       renderFeeWaiver();
+    };
+    row.appendChild(ok);
+    box.appendChild(row);
+    modal(box, true);
+    setTimeout(function () { inp.focus(); }, 30);
+  }
+  function cardProfile() {
+    var box = el('div');
+    box.appendChild(el('h2', '', 'Profile card'));
+    box.appendChild(el('p', 'muted', 'Store the full card number for the Neu card you track. At import, statements whose printed card number differs are flagged. Only the first 4 / last 4 digits are ever displayed.'));
+    var row = el('div', 'form');
+    var inp = el('input'); inp.type = 'text'; inp.inputMode = 'numeric'; inp.autocomplete = 'off';
+    inp.placeholder = '16-digit card number'; inp.value = DATA.card.no || '';
+    row.appendChild(inp);
+    var ok = el('button', 'primary', 'Save');
+    ok.onclick = function () {
+      var v = String(inp.value || '').replace(/\D/g, '');
+      DATA.card.no = v;
+      persist();
+      closeModal();
+      renderLanding();
+      toast(v ? 'Profile card set.' : 'Profile card cleared.', 'ok');
     };
     row.appendChild(ok);
     box.appendChild(row);
@@ -1007,11 +1021,6 @@
   }
 
   /* ---------------- history ---------------- */
-  function ledgerCoins() {
-    var t = 0;
-    DATA.ledger.forEach(function (e) { t += Calc.predictedCoins(e).coins; });
-    return t;
-  }
   function renderAll() {
     renderLanding();
     renderLedger();
@@ -1025,14 +1034,55 @@
   function renderLanding() {
     var h = el('div');
     var kw = el('div', 'kv');
-    var k = DATA.records.length ? DATA.records[DATA.records.length - 1] : null;
-    kw.appendChild(kvRow('Statements verified', String(DATA.records.length)));
-    kw.appendChild(kvRow('Ledger entries', String(DATA.ledger.length)));
+    var k = null;
+    DATA.records.forEach(function (r) {
+      var t = Calc.pdate(r.periodTo) || 0;
+      if (!k || t > (Calc.pdate(k.periodTo) || 0)) k = r;
+    });
     kw.appendChild(kvRow('Latest period', fmtDate(k ? k.periodTo : '—')));
     kw.appendChild(kvRow('Latest total', k ? fmtMoney(k.total) : '—'));
-    kw.appendChild(kvRow('Predicted ledger coins', fmtCoins(ledgerCoins())));
     kw.appendChild(kvRow('Profile card', (DATA.card.no ? DATA.card.no.slice(0, 4) + ' … ' + DATA.card.no.slice(-4) : 'not set')));
     h.appendChild(kw);
+
+    /* Upcoming bill (est.): what the NEXT bill will look like, from the open
+     * cycle — spend booked since the last statement + coins still earnable,
+     * plus the carried-over dues and a finance estimate. */
+    if (k) {
+      var from = Calc.pdate(k.periodTo);
+      var coins = { base: 0, upi: 0, grocery: 0, tata: 0 };
+      DATA.ledger.forEach(function (e) {
+        if (!coins[e.category]) return;
+        var t = Calc.pdate(e.date);
+        if (!isFinite(t) || isFinite(from) && t <= from) return; // open cycle only
+        coins[e.category] += Calc.predictedCoins(e).coins;
+      });
+      var ds = Calc.dueStatus(k, DATA.ledger, DATA.records);
+      /* unpaid portion of the current bill rolls into the next one */
+      var carried = Math.max(Math.round((k.total - ds.paid) * 100) / 100, 0);
+      /* unbilled (approx): total outstanding (billed + unbilled) minus the
+       * current bill's printed total = spend since the last statement */
+      var unbilled = (isFinite(k.creditLimit) && isFinite(k.availLimit) && isFinite(k.total))
+        ? Math.max(Math.round((k.creditLimit - k.availLimit - k.total) * 100) / 100, 0) : null;
+      /* finance estimate: none if the last bill is fully paid, otherwise the
+       * last printed finance charge rolls over once */
+      var finEst = (isFinite(k.finance) && carried > 0) ? k.finance : 0;
+      var projected = unbilled != null
+        ? Math.round((carried + unbilled + finEst) * 100) / 100
+        : Math.round((carried + finEst) * 100) / 100;
+      var up = el('div', 'kv');
+      up.appendChild(kvRow('Upcoming bill (est.)', fmtMoney(projected)));
+      if (unbilled != null) up.appendChild(kvRow('Unbilled (approx)', fmtMoney(unbilled)));
+      up.appendChild(kvRow('Carried from last bill', fmtMoney(carried)));
+      if (finEst > 0) up.appendChild(kvRow('Finance (est.)', fmtMoney(finEst)));
+      var coinLine = Object.keys(coins).filter(function (c) { return coins[c] > 0; })
+        .map(function (c) { return c + ' +' + fmtCoins(coins[c]); }).join(' · ') || 'no coins yet';
+      up.appendChild(kvRow('Coins still earnable', coinLine));
+      h.appendChild(up);
+    }
+    var cardBtn = el('button', 'ghost small', 'Set card number…');
+    cardBtn.title = 'Store the full card number so imports are checked against it (only the first 4 / last 4 digits are ever shown).';
+    cardBtn.onclick = function () { cardProfile(); };
+    h.appendChild(cardBtn);
 
     if (DATA.records.length) {
       h.appendChild(el('h4', '', 'History'));

@@ -179,11 +179,25 @@ whenReady(function run() {
   dueMore().click();
   eq('due board shows all 9 after second click', dueRows(), 9);
   eq('due board show-more gone once all shown', !!dueMore(), false);
-  /* latest statement s-1: creditLimit 100000 − availLimit 99800 − total 200 = 0 */
-  eq('unbilled (approx) shown on home', $('#blDue').textContent.indexOf('Unbilled (approx)') >= 0, true);
+  /* latest statement s-1: creditLimit 100000 − availLimit 99800 − total 200 = 0 unbilled */
+  eq('upcoming bill (est.) shown on home', $('#landingStats').textContent.indexOf('Upcoming bill (est.)') >= 0, true);
+  eq('unbilled (approx) in upcoming bill', $('#landingStats').textContent.indexOf('Unbilled (approx)') >= 0, true);
   DATA.records.forEach(function (r) { if (r.id === 's-1') r.availLimit = 99700; });
   $('#homeGo').click();
-  eq('unbilled = limit − avail − total (100)', $('#blDue').textContent.indexOf('₹100') >= 0, true);
+  eq('unbilled = limit − avail − total (100)', $('#landingStats').textContent.indexOf('₹100.00') >= 0, true);
+
+  console.log('6f) home — profile card setter');
+  var cardBtns = $$('#landingStats button', document).filter(function (b) { return b.textContent.trim() === 'Set card number…'; });
+  ok('profile card button present', cardBtns.length === 1, true);
+  cardBtns[0].click();
+  var profInp = $('#modalBox input');
+  ok('profile modal has an input', !!profInp, true);
+  profInp.value = '1234567812345678';
+  $('#modalBox button').click();
+  eq('card number stored', DATA.card.no, '1234567812345678');
+  $('#homeGo').click();
+  eq('profile card shown masked', $('#landingStats').textContent.indexOf('1234 … 5678') >= 0, true);
+  ok('full number not displayed', $('#landingStats').textContent.indexOf('1234567812345678') < 0, true);
 
   console.log('6b) home charts draw without crashing (regression: h4 lookup)');
   $('#homeGo').click();
