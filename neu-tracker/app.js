@@ -57,7 +57,7 @@
   function saveFile(name, text, mime) {
     var b = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
     var a = document.createElement('a');
-    a.href = URL.createObjectURL(b);
+    try { a.href = URL.createObjectURL(b); } catch (e) { a.href = 'data:,'; }
     a.download = name;
     document.body.appendChild(a);
     a.click();
@@ -1148,8 +1148,10 @@
       JSON.stringify(DATA, null, 1) + ';\n';
   }
   function saveBundle() {
-    download('bundle.js', bundleText(), 'text/javascript');
-    toast('bundle.js downloaded. Replace data/bundle.js to make this folder portable.', 'ok');
+    var d = new Date();
+    var ymd = String(d.getFullYear()) + (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1) + (d.getDate() < 10 ? '0' : '') + d.getDate();
+    download('neu_tracker_' + ymd + '.js', bundleText(), 'text/javascript');
+    toast('Bundle downloaded as neu_tracker_' + ymd + '.js. Replace data/bundle.js to make this folder portable.', 'ok');
   }
   function loadBundleFile(file) {
     file.text().then(function (t) {

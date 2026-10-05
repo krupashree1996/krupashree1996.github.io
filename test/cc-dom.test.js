@@ -215,7 +215,18 @@ whenReady(function run() {
       eq('persisted redemptions', saved.redemptions.length, 1);
       ok('no password persisted', !('password' in saved));
 
-      console.log('8) bundle import — bare JSON backup (no window.DATA wrapper)');
+      console.log('8a) bundle export — dated filename (neu_tracker_yyyymmdd)');
+  /* jsdom has no createObjectURL; stub it and capture the download name via a
+   * capture-phase click listener on the anchor saveFile() creates */
+  dom.window.eval('window.__savedName = null; if (!URL.createObjectURL) URL.createObjectURL = function () { return "blob:fake"; }; if (!URL.revokeObjectURL) URL.revokeObjectURL = function () {}; document.addEventListener("click", function (e) { if (e.target && e.target.download) { window.__savedName = e.target.download; e.preventDefault(); } }, true);');
+  $('#saveBundleBtn').click();
+  var expectedPrefix = 'neu_tracker_';
+  var got = dom.window.__savedName || '';
+  ok('export filename starts with neu_tracker_', got.indexOf(expectedPrefix) === 0, true);
+  ok('export filename has yyyymmdd suffix', /\d{8}\.js$/.test(got), true);
+  eq('export is a .js bundle', got.slice(-3), '.js');
+
+  console.log('8) bundle import — bare JSON backup (no window.DATA wrapper)');
       /* run last: loadBundleFile replaces the app's DATA object, so the
        * captured `DATA` reference above goes stale afterwards. */
       var payload = JSON.stringify({ version: 1, records: [{ id: 's-test', periodTo: '15/15/2020', periodFrom: '16/14/2020', total: 100, purchases: 100 }], ledger: [] });
