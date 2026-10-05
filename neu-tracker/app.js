@@ -75,7 +75,7 @@
 
   /* ---------------- state ---------------- */
   var DATA = null;      // migrated copy of window.DATA / localStorage
-  var S = { st: null, checks: null, decisions: {}, curRecord: null, recId: null, rwRec: null, chartB: null, chartC: null, autoScheduled: false, committed: false, autoTimer: null, histCount: 3 };
+  var S = { st: null, checks: null, decisions: {}, curRecord: null, recId: null, rwRec: null, chartB: null, chartC: null, autoScheduled: false, committed: false, autoTimer: null, histCount: 3, dueCount: 3 };
   var importing = false;
 
   function persist() {
@@ -812,7 +812,7 @@
     }
     var recs = DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); });
     var t = el('div', 'table');
-    recs.forEach(function (r) {
+    recs.slice(0, S.dueCount).forEach(function (r) {
       var ds = Calc.dueStatus(r, DATA.ledger, DATA.records);
       var row = el('div', 'lrow');
       row.appendChild(el('span', 'l-date', fmtDate(r.periodTo)));
@@ -826,6 +826,11 @@
       t.appendChild(row);
     });
     body.appendChild(t);
+    if (recs.length > S.dueCount) {
+      var more = el('button', 'small', 'Show ' + Math.min(3, recs.length - S.dueCount) + ' more');
+      more.onclick = function () { S.dueCount += 3; renderDueBoard(); };
+      body.appendChild(more);
+    }
     $('blDue').replaceChildren(body);
   }
   /* Annual fee waiver: spend the configured target (default ₹3L) in the

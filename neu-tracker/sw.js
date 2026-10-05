@@ -1,6 +1,6 @@
 /* HDFC Tata Neu Credit Card Tracker — offline-first service worker. */
 'use strict';
-var VERSION = 'neu-tracker-v6';
+var VERSION = 'neu-tracker-v7';
 var ASSETS = [
   './',
   './index.html',

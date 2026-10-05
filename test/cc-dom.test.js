@@ -169,6 +169,17 @@ whenReady(function run() {
   eq('second click shows the remaining 3', histRows(), 9);
   eq('show-more button gone once all shown', !!moreBtn(), false);
 
+  console.log('6e) home due board — last 3 bills + show-more (3 at a time)');
+  function dueRows() { return $$('#blDue .table .lrow', document).length; }
+  function dueMore() { return $$('#blDue button', document).filter(function (b) { return /^Show \d+ more$/.test(b.textContent.trim()); })[0]; }
+  eq('due board shows only the last 3 bills', dueRows(), 3);
+  ok('due board show-more button appears', !!dueMore(), true);
+  dueMore().click();
+  eq('due board shows 6 after click', dueRows(), 6);
+  dueMore().click();
+  eq('due board shows all 9 after second click', dueRows(), 9);
+  eq('due board show-more gone once all shown', !!dueMore(), false);
+
   console.log('6b) home charts draw without crashing (regression: h4 lookup)');
   $('#homeGo').click();
   /* drawCharts runs on requestAnimationFrame — wait a frame */
