@@ -75,7 +75,7 @@
 
   /* ---------------- state ---------------- */
   var DATA = null;      // migrated copy of window.DATA / localStorage
-  var S = { st: null, checks: null, decisions: {}, curRecord: null, recId: null, rwRec: null, chartB: null, chartC: null, autoScheduled: false, committed: false, autoTimer: null };
+  var S = { st: null, checks: null, decisions: {}, curRecord: null, recId: null, rwRec: null, chartB: null, chartC: null, autoScheduled: false, committed: false, autoTimer: null, histCount: 3 };
   var importing = false;
 
   function persist() {
@@ -1024,7 +1024,8 @@
     if (DATA.records.length) {
       h.appendChild(el('h4', '', 'History'));
       var t = el('div', 'table');
-      DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); }).forEach(function (r) {
+      var recs = DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); });
+      recs.slice(0, S.histCount).forEach(function (r) {
         var row = el('div', 'lrow');
         row.appendChild(el('span', 'l-date', fmtDate(r.periodTo)));
         var dsc = el('span', 'l-desc', 'total ' + fmtMoney(r.total) + ' · purchased ' + fmtMoney(r.purchases) + ' · coins ' + fmtCoins(r.closingNeuCoins));
@@ -1050,6 +1051,11 @@
         t.appendChild(row);
       });
       h.appendChild(t);
+      if (recs.length > S.histCount) {
+        var more = el('button', 'small', 'Show ' + Math.min(3, recs.length - S.histCount) + ' more');
+        more.onclick = function () { S.histCount += 3; renderLanding(); };
+        h.appendChild(more);
+      }
     } else {
       h.appendChild(el('p', 'muted', 'No statements recorded. Use “Import statement” above to import your HDFC Neu statement PDF and start verifying.'));
     }

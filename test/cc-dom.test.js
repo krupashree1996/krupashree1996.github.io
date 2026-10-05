@@ -151,6 +151,24 @@ whenReady(function run() {
     eq('button is gone once the row is booked', $$('#landingStats button', document).filter(function (b) { return b.textContent.trim() === 'Add 1 to ledger'; }).length, 0);
   }
 
+  console.log('6d) home history — last 3 entries + show-more (3 at a time)');
+  [6, 5, 4, 3, 2, 1, 12].forEach(function (mm) { // 7 more records → 9 total (Dec is 2024)
+    var y = mm === 12 ? 2024 : 2025;
+    var mm2 = (mm === 12 ? 11 : mm - 1);
+    var p2 = function (n) { return String(n).length < 2 ? '0' + n : String(n); };
+    DATA.records.push({ id: 's-h' + y + mm, periodTo: '18/' + p2(mm) + '/' + y, periodFrom: '19/' + p2(mm2) + '/' + y, total: 10 * mm, minimumDue: 5, prevDues: 0, payments: 0, purchases: 10 * mm, finance: 0, creditLimit: 100000, availLimit: 99900, dueDate: '08/' + p2(mm) + '/' + y, closingNeuCoins: 0, bonusPrograms: [], txns: [] });
+  });
+  $('#homeGo').click();
+  function histRows() { return $$('#landingStats .table .lrow', document).length; }
+  function moreBtn() { return $$('#landingStats button', document).filter(function (b) { return /^Show \d+ more$/.test(b.textContent.trim()); })[0]; }
+  eq('history shows only the last 3 entries', histRows(), 3);
+  ok('show-more button appears when there are more than 3', !!moreBtn(), true);
+  moreBtn().click();
+  eq('clicking show-more adds 3 more', histRows(), 6);
+  moreBtn().click();
+  eq('second click shows the remaining 3', histRows(), 9);
+  eq('show-more button gone once all shown', !!moreBtn(), false);
+
   console.log('6b) home charts draw without crashing (regression: h4 lookup)');
   $('#homeGo').click();
   /* drawCharts runs on requestAnimationFrame — wait a frame */
