@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 19;
+  var APP_VERSION = 20;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');

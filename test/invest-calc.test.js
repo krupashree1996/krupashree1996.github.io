@@ -394,12 +394,19 @@ console.log('fdPayoutSchedule — SCSS true-quarter / FRB half-year estimates');
   var s5 = Calc.fdPayoutSchedule(Object.assign({}, scss, { payoutEstimate: { full: 20500, brokenStart: 5000 } }));
   eq('short first period stays start', s5[0].kind, 'start');
   eq('short first period amount', s5[0].amount, 5000);
-  // FRB: half-yearly, P*r/2, ends on Jun/Dec
+  // FRB: half-yearly, P*r/2, credited on 01-Jan / 01-Jul
   var frb = Calc.fdPayoutSchedule({ type: 'rbi', amount: 150000, rate: 7.4, issueDate: '2025-07-01', maturityDate: '2030-06-30' });
   eq('frb 10 half-years', frb.length, 10);
-  eq('frb first end 31 Dec 2025', frb[0].date, '2025-12-31');
-  eq('frb second end 30 Jun 2026', frb[1].date, '2026-06-30');
+  eq('frb first credit 01 Jan 2026', frb[0].date, '2026-01-01');
+  eq('frb second credit 01 Jul 2026', frb[1].date, '2026-07-01');
+  eq('frb last credit 01 Jan 2030', frb[8].date, '2030-01-01');
+  eq('frb end at maturity', frb[9].date, '2030-06-30');
   eq('frb half = P*r/2', frb[1].amount, 5550);
+  // FRB issue close to a boundary: 01 Jan -> first credit 01 Jul, broken start
+  var frb2 = Calc.fdPayoutSchedule({ type: 'rbi', amount: 150000, rate: 7.4, issueDate: '2025-01-15', maturityDate: '2030-07-01' });
+  eq('frb broken start 01 Jul 2025', frb2[0].date, '2025-07-01');
+  eq('frb broken start kind', frb2[0].kind, 'start');
+  eq('frb broken start is day-based', frb2[0].amount, Math.round(167 * 150000 * 7.4 / 100 / 365));
   eq('fd type -> no schedule', Calc.fdPayoutSchedule({ type: 'fd', amount: 1, rate: 1, issueDate: '2026-01-01', maturityDate: '2027-01-01' }).length, 0);
   eq('incomplete -> no schedule', Calc.fdPayoutSchedule({ type: 'scss', amount: 100, issueDate: '2026-01-01' }).length, 0);
   // day-based pro-rata fallback for the two broken ends when no estimate entered

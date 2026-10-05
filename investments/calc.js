@@ -485,15 +485,17 @@ var Calc = (function () {
    * come from the record's user-entered estimates
    * (`payoutEstimate.{brokenStart,brokenEnd}`); the full-period amount comes
    * from `payoutEstimate.full` (default P*r/q). Period ends fall on the end of
-   * Mar/Jun/Sep/Dec (SCSS) or Jun/Dec (FRB), starting with the first end AFTER
-   * the issue date; the last item is always the maturity date.
+   * Mar/Jun/Sep/Dec (SCSS) or on 01-Jul / 01-Jan (FRB — the bank credits the
+   * semi-annual interest on the first of those months), starting with the first
+   * end AFTER the issue date; the last item is always the maturity date.
    * Each item: { date, days, kind: 'start'|'full'|'end', amount }.
    * Returns [] when dates/amount are incomplete. */
-  function fdPayoutSchedule(fd) {
+   function fdPayoutSchedule(fd) {
     var type = normFdType(fd);
     if (type !== 'scss' && type !== 'rbi') return [];
     if (!fd.issueDate || !fd.maturityDate || !(fd.amount > 0) || !(fd.rate > 0)) return [];
-    var q = type === 'rbi' ? 2 : 4;            // payouts per year
+    var frb = type === 'rbi';
+    var q = frb ? 2 : 4;                       // payouts per year
     var gap = 12 / q;                          // months between period ends
     var per = Math.round((fd.amount * fd.rate / 100) / q);
     var perDay = fd.amount * fd.rate / 100 / 365;   // day-based pro-rata for broken ends
@@ -502,12 +504,13 @@ var Calc = (function () {
     var p = String(fd.issueDate).split('-');
     var iy = +p[0], im = +p[1];
     var out = [];
-    var mo = Math.ceil(im / gap) * gap;        // first boundary month (1-12 scale: 3,6,9,12 / 6,12)
+    var start = frb ? 1 : 3;                   // first boundary month (FRB: 1,7 / SCSS: 3,6,9,12)
+    var mo = start + Math.ceil((im - start) / gap) * gap;  // first boundary month >= issue month
     for (;;) {
       var y = iy + Math.floor((mo - 1) / 12);
       var mn = ((mo - 1) % 12) + 1;
-      var last = new Date(y, mn, 0);           // last day of that month
-      var iso = y + '-' + pad(mn) + '-' + pad(last.getDate());
+      var lastDay = frb ? 1 : new Date(y, mn, 0).getDate(); // FRB: 1st; SCSS: last day
+      var iso = y + '-' + pad(mn) + '-' + pad(lastDay);
       if (iso <= fd.issueDate) { mo += gap; continue; }
       if (iso >= fd.maturityDate) break;
       var prev = out.length ? out[out.length - 1].date : fd.issueDate;
