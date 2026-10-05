@@ -7,7 +7,7 @@
   var LS_PAN = 'ipo.tracker.curPan';
   var CLEANUP_DAYS = 45;
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 20;
+  var APP_VERSION = 21;
   var DEFAULT_CAL_URL = 'https://krupashree1996.github.io/ipo-exchange-scrape/data/ipos.json';
   /* Google Drive backup. Get a client id at Google Cloud Console
    * (APIs & Services > Credentials > Create OAuth client ID > Web application),
@@ -1208,13 +1208,13 @@
     var out = { version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, ipos: DATA.ipos, applications: DATA.applications };
     var blob = new Blob(['window.DATA = ' + JSON.stringify(out, null, 1) + ';\n'], { type: 'text/javascript' });
     var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'data/bundle.js';
+    try { a.href = URL.createObjectURL(blob); } catch (e) { a.href = 'data:,'; }
+    a.download = 'ipo_' + Calc.todayISO().replace(/-/g, '') + '.js';
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-    toast('Bundle downloaded. Place it in this app\u2019s data/ folder to move your data. Note: it compacts your personal data \u2014 treat it as private.');
+    toast('Bundle downloaded. Restore it with \u2018Open bundle\u2019, or place it in this app\u2019s data/ folder as bundle.js to move your data. Note: it compacts your personal data \u2014 treat it as private.');
   }
   function loadBundle(file) {
     var rd = new FileReader();

@@ -200,6 +200,13 @@ whenReady(function run() {
   unsoldChip = $$('#sumChips .chip').filter(function (c) { return c.textContent.indexOf('unsold') >= 0; })[0];
   eq('after marking sold, chip drops to 0', unsoldChip.textContent, '0 unsold');
 
+  console.log('11) Bundle export — dated filename (ipo_yyyymmdd)');
+  dom.window.eval('window.__ipoSavedName = null; document.addEventListener("click", function (e) { if (e.target && e.target.download) { window.__ipoSavedName = e.target.download; e.preventDefault(); } }, true);');
+  document.getElementById('btnSave').click();
+  var gotName = dom.window.__ipoSavedName || '';
+  eq('export filename starts with ipo_', gotName.indexOf('ipo_') === 0, true);
+  eq('export filename has yyyymmdd suffix', /\d{8}\.js$/.test(gotName), true);
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
     process.exit(failed ? 1 : 0);
   }, 300);
