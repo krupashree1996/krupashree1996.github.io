@@ -841,8 +841,11 @@
     var w = Calc.waiverStatus(DATA.records, new Date(), cfg);
     var box = el('div');
     var kw = el('div', 'kv');
-    var mname = (function () { var n = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; return n[w.windowFrom.getMonth()]; })();
-    kw.appendChild(kvRow('Window', mname + ' ' + w.windowFrom.getDate() + ' → ' + (function () { var n = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; return n[w.windowTo.getMonth()]; })() + ' ' + w.windowTo.getDate()));
+    /* window is [Jan 19, y) → the last included day is Jan 18, y+1; show both
+     * years (same month-day otherwise reads "Jan 19 → Jan 19") */
+    var lastDay = new Date(+w.windowTo - 86400000);
+    var fdate = function (d) { var n = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; return n[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear(); };
+    kw.appendChild(kvRow('Window', fdate(w.windowFrom) + ' → ' + fdate(lastDay)));
     kw.appendChild(kvRow('Target spend', fmtMoney(w.target)));
     kw.appendChild(kvRow('Spent in window', fmtMoney(w.spent)));
     kw.appendChild(kvRow(w.waived ? 'Status' : 'Still needed', w.waived ? 'fees waived ✓' : fmtMoney(w.remaining) + ' · ' + w.daysLeft + ' day(s) left'));
@@ -878,7 +881,7 @@
   function cardProfile() {
     var box = el('div');
     box.appendChild(el('h2', '', 'Profile card'));
-    box.appendChild(el('p', 'muted', 'Store the full card number for the Neu card you track. At import, statements whose printed card number differs are flagged. Only the first 4 / last 4 digits are ever displayed.'));
+    box.appendChild(el('p', 'muted', 'Store the full 16-digit card number for the Neu card you track — a statement whose printed number differs is flagged at import. If you only know the last 4 (e.g. 8311), enter just those; they are shown as-is. Full numbers display as "1234 … 8311".'));
     var row = el('div', 'form');
     var inp = el('input'); inp.type = 'text'; inp.inputMode = 'numeric'; inp.autocomplete = 'off';
     inp.placeholder = '16-digit card number'; inp.value = DATA.card.no || '';
@@ -945,7 +948,9 @@
     if (!window.Chart) return;
     destroyCharts();
     /* monthly spend bar (from records) */
-    var recs = DATA.records.slice().sort(function (a, b) { return a.periodTo < b.periodTo ? -1 : 1; }).filter(function (r) { return isFinite(r.purchases); });
+    /* last 12 cycles only, sorted by real date (string sort on dd/mm/yyyy
+     * interleaves years: 01/2025, 01/2026, 02/2025, …) */
+    var recs = DATA.records.slice().sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); }).filter(function (r) { return isFinite(r.purchases); }).slice(-12);
     var cv1 = $('chartMonthly');
     var has1 = recs.length > 0;
     setH4(cv1, has1);
@@ -1001,7 +1006,7 @@
     }
 
     /* utilization line (home chart, from records) */
-    var utRecs = DATA.records.filter(function (r) { return Calc.utilizationOf(r) != null; }).sort(function (a, b) { return a.periodTo < b.periodTo ? -1 : 1; });
+    var utRecs = DATA.records.filter(function (r) { return Calc.utilizationOf(r) != null; }).sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); }).slice(-12);
     var cvU = $('chartUtil');
     var hasU = utRecs.length > 0;
     setH4(cvU, hasU);
@@ -1041,7 +1046,10 @@
     });
     kw.appendChild(kvRow('Latest period', fmtDate(k ? k.periodTo : '—')));
     kw.appendChild(kvRow('Latest total', k ? fmtMoney(k.total) : '—'));
-    kw.appendChild(kvRow('Profile card', (DATA.card.no ? DATA.card.no.slice(0, 4) + ' … ' + DATA.card.no.slice(-4) : 'not set')));
+    /* a number of 8 digits or less is shown as-is (e.g. just the last four:
+     * "8311"), never "8311 … 8311" */
+    var cno = DATA.card.no || '';
+    kw.appendChild(kvRow('Profile card', (cno ? (cno.length <= 8 ? cno : cno.slice(0, 4) + ' … ' + cno.slice(-4)) : 'not set')));
     h.appendChild(kw);
 
     /* Upcoming bill (est.): what the NEXT bill will look like, from the open
