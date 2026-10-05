@@ -82,6 +82,10 @@ main { max-width: 1080px; margin: 0 auto; padding: 22px 16px 40px; }
 .btn.primary:disabled { background: #c9b98a; border-color: #c9b98a; cursor: not-allowed; }
 .btn.ghost { background: transparent; color: var(--muted); }
 .btn.ghost:hover { color: var(--ink); border-color: var(--line); }
+/* ghost buttons in the dark header: light text + visible border (regression:
+ * invisible on phone where the muted gray blends into the ink background) */
+header .btn.ghost { color: #d8cfba; border-color: rgba(216, 207, 186, .45); }
+header .btn.ghost:hover { color: #fff; border-color: rgba(255, 255, 255, .6); }
 .btn.danger { background: #fff; border-color: #e0b9b6; color: var(--bad); }
 .btn.danger:hover { background: var(--bad); color: #fff; }
 .btn.small { padding: 4px 9px; font-size: .83rem; }
