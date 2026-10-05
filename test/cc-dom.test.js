@@ -179,6 +179,11 @@ whenReady(function run() {
   dueMore().click();
   eq('due board shows all 9 after second click', dueRows(), 9);
   eq('due board show-more gone once all shown', !!dueMore(), false);
+  /* latest statement s-1: creditLimit 100000 − availLimit 99800 − total 200 = 0 */
+  eq('unbilled (approx) shown on home', $('#blDue').textContent.indexOf('Unbilled (approx)') >= 0, true);
+  DATA.records.forEach(function (r) { if (r.id === 's-1') r.availLimit = 99700; });
+  $('#homeGo').click();
+  eq('unbilled = limit − avail − total (100)', $('#blDue').textContent.indexOf('₹100') >= 0, true);
 
   console.log('6b) home charts draw without crashing (regression: h4 lookup)');
   $('#homeGo').click();

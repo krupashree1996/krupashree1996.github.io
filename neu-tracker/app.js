@@ -831,6 +831,14 @@
       more.onclick = function () { S.dueCount += 3; renderDueBoard(); };
       body.appendChild(more);
     }
+    /* Unbilled (approx): creditLimit − availLimit is total outstanding (billed +
+     * unbilled); subtract the latest bill's printed total. Only the latest
+     * statement carries the current available-credit figures. */
+    var last = recs[0];
+    if (last && isFinite(last.creditLimit) && isFinite(last.availLimit) && isFinite(last.total)) {
+      var unbilled = Math.max(Math.round((last.creditLimit - last.availLimit - last.total) * 100) / 100, 0);
+      body.appendChild(el('p', 'muted', 'Unbilled (approx) · as of ' + fmtDate(last.periodTo) + ': ' + fmtMoney(unbilled)));
+    }
     $('blDue').replaceChildren(body);
   }
   /* Annual fee waiver: spend the configured target (default ₹3L) in the
