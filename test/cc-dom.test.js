@@ -186,18 +186,24 @@ whenReady(function run() {
   $('#homeGo').click();
   eq('unbilled = limit − avail − total (100)', $('#landingStats').textContent.indexOf('₹100.00') >= 0, true);
 
-  console.log('6f) home — profile card setter');
-  var cardBtns = $$('#landingStats button', document).filter(function (b) { return b.textContent.trim() === 'Set card number…'; });
-  ok('profile card button present', cardBtns.length === 1, true);
-  cardBtns[0].click();
+  console.log('6f) home — profile card setter (Profile card row is the entry point)');
+  /* unset state: the "Profile card" value is itself the tappable button */
+  var setBtns = $$('#landingStats button', document).filter(function (b) { return b.textContent.trim() === 'not set — tap to set'; });
+  ok('profile card "not set" tappable row', setBtns.length === 1, true);
+  setBtns[0].click();
   var profInp = $('#modalBox input');
   ok('profile modal has an input', !!profInp, true);
   profInp.value = '1234567812345678';
-  $('#modalBox button').click();
+  $('#modalBox button').click(); /* first modal button = Save */
   eq('card number stored', DATA.card.no, '1234567812345678');
   $('#homeGo').click();
   eq('profile card shown masked', $('#landingStats').textContent.indexOf('1234 … 5678') >= 0, true);
   ok('full number not displayed', $('#landingStats').textContent.indexOf('1234567812345678') < 0, true);
+  /* short number (last 4 only) displays as-is, never "8311 … 8311" */
+  DATA.card.no = '8311';
+  $('#homeGo').click();
+  ok('short card number shown as-is', $('#landingStats').textContent.indexOf('8311') >= 0, true);
+  ok('short card number not doubled', $('#landingStats').textContent.indexOf('8311 … 8311') < 0, true);
 
   console.log('6b) home charts draw without crashing (regression: h4 lookup)');
   $('#homeGo').click();

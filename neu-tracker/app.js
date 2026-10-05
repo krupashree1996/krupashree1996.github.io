@@ -881,10 +881,11 @@
   function cardProfile() {
     var box = el('div');
     box.appendChild(el('h2', '', 'Profile card'));
-    box.appendChild(el('p', 'muted', 'Store the full 16-digit card number for the Neu card you track — a statement whose printed number differs is flagged at import. If you only know the last 4 (e.g. 8311), enter just those; they are shown as-is. Full numbers display as "1234 … 8311".'));
+    box.appendChild(el('p', 'muted', 'When you import a statement, its printed card number is checked against this. If it matches, the import is accepted; if it differs, the import is flagged so you can double-check.'));
+    box.appendChild(el('p', 'muted', 'Type the last 4 digits (e.g. 8311) or the full 16-digit number — either works. It is stored on this device only and never sent anywhere.'));
     var row = el('div', 'form');
     var inp = el('input'); inp.type = 'text'; inp.inputMode = 'numeric'; inp.autocomplete = 'off';
-    inp.placeholder = '16-digit card number'; inp.value = DATA.card.no || '';
+    inp.placeholder = 'e.g. 8311 (last 4) or all 16 digits'; inp.value = DATA.card.no || '';
     row.appendChild(inp);
     var ok = el('button', 'primary', 'Save');
     ok.onclick = function () {
@@ -896,6 +897,15 @@
       toast(v ? 'Profile card set.' : 'Profile card cleared.', 'ok');
     };
     row.appendChild(ok);
+    var clr = el('button', 'ghost', 'Clear');
+    clr.onclick = function () {
+      DATA.card.no = '';
+      persist();
+      closeModal();
+      renderLanding();
+      toast('Profile card cleared.', 'ok');
+    };
+    row.appendChild(clr);
     box.appendChild(row);
     modal(box, true);
     setTimeout(function () { inp.focus(); }, 30);
@@ -1048,8 +1058,16 @@
     kw.appendChild(kvRow('Latest total', k ? fmtMoney(k.total) : '—'));
     /* a number of 8 digits or less is shown as-is (e.g. just the last four:
      * "8311"), never "8311 … 8311" */
+    /* a number of 8 digits or less is shown as-is (e.g. just the last four:
+     * "8311"), never "8311 … 8311" */
     var cno = DATA.card.no || '';
-    kw.appendChild(kvRow('Profile card', (cno ? (cno.length <= 8 ? cno : cno.slice(0, 4) + ' … ' + cno.slice(-4)) : 'not set')));
+    var cardRow = el('div');
+    cardRow.appendChild(el('b', '', 'Profile card'));
+    var cardVal = el('button', cno ? 'primary small' : 'primary', cno ? (cno.length <= 8 ? cno : cno.slice(0, 4) + ' … ' + cno.slice(-4)) : 'not set — tap to set');
+    cardVal.title = 'Tap to set or change the card number used to verify imports.';
+    cardVal.onclick = function () { cardProfile(); };
+    cardRow.appendChild(cardVal);
+    kw.appendChild(cardRow);
     h.appendChild(kw);
 
     /* Upcoming bill (est.): what the NEXT bill will look like, from the open
@@ -1087,11 +1105,6 @@
       up.appendChild(kvRow('Coins still earnable', coinLine));
       h.appendChild(up);
     }
-    var cardBtn = el('button', 'ghost small', 'Set card number…');
-    cardBtn.title = 'Store the full card number so imports are checked against it (only the first 4 / last 4 digits are ever shown).';
-    cardBtn.onclick = function () { cardProfile(); };
-    h.appendChild(cardBtn);
-
     if (DATA.records.length) {
       h.appendChild(el('h4', '', 'History'));
       var t = el('div', 'table');
