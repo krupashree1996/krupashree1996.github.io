@@ -488,6 +488,50 @@ console.log('commodityPayoutSchedule — SGB coupons + face redemption');
   eq('no units -> no redemption row', Calc.commodityPayoutSchedule(Object.assign({}, sgb, { units: 0 })).some(function (r) { return r.kind === 'redemption'; }), false);
 })();
 
+console.log('mergeSchedule / nextUnrecorded — matching actuals to estimated periods');
+(function () {
+  var sched = [
+    { date: '2026-03-31', days: 40, kind: 'start', amount: 9211 },
+    { date: '2026-06-30', days: 91, kind: 'full', amount: 20500 },
+    { date: '2026-09-30', days: 92, kind: 'full', amount: 20500 }
+  ];
+  // no entries -> every row unrecorded
+  var m0 = Calc.mergeSchedule(sched, [], 10);
+  eq('no entries -> 3 rows, none matched', m0.length, 3);
+  eq('no entries -> none matched', m0.every(function (r) { return !r.matched; }), true);
+  // entry within tolerance matches its nearest period
+  var m1 = Calc.mergeSchedule(sched, [{ date: '2026-06-27', int: 20500, tax: 2050 }], 10);
+  eq('within-tol entry matches', m1[1].matched != null, true);
+  eq('other periods stay unmatched', m1[0].matched == null && m1[2].matched == null, true);
+  // entry outside tolerance becomes its own extra row
+  var m2 = Calc.mergeSchedule(sched, [{ date: '2026-07-20', int: 500 }], 10);
+  eq('out-of-tol entry is extra', m2.some(function (r) { return r.extra && r.matched && r.matched.date === '2026-07-20'; }), true);
+  eq('extra row count', m2.length, 4);
+  // nearest period wins when two are within tol
+  var m3 = Calc.mergeSchedule(sched, [{ date: '2026-07-01', int: 1 }], 10);
+  eq('nearest period wins (Jun 30)', m3[1].matched != null, true);
+  // two entries cannot match the same period
+  var m4 = Calc.mergeSchedule(sched, [{ date: '2026-06-28', int: 1 }, { date: '2026-06-29', int: 2 }], 10);
+  eq('one period holds one match', m4[1].matched != null, true);
+  eq('second entry spills to extra', m4.some(function (r) { return r.extra; }), true);
+  // result is date-sorted
+  var m5 = Calc.mergeSchedule(sched, [{ date: '2026-01-15', int: 1 }], 10);
+  eq('sorted by date', m5[0].date, '2026-01-15');
+  eq('extra first row', m5[0].extra, true);
+
+  // nextUnrecorded: first scheduled period with no match, at/after today
+  var entries = [{ date: '2026-03-29', int: 9211 }];
+  var n1 = Calc.nextUnrecorded(sched, entries, '2026-03-01', 10);
+  eq('first period recorded -> next is Jun', n1.date, '2026-06-30');
+  var n2 = Calc.nextUnrecorded(sched, [{ date: '2026-03-29', int: 1 }, { date: '2026-06-29', int: 1 }], '2026-03-01', 10);
+  eq('two recorded -> next is Sep', n2.date, '2026-09-30');
+  var n3 = Calc.nextUnrecorded(sched, [{ date: '2026-03-29', int: 1 }, { date: '2026-06-29', int: 1 }, { date: '2026-09-29', int: 1 }], '2026-03-01', 10);
+  eq('all recorded -> none', n3, null);
+  // a period due before today but unrecorded is not "next" (it's overdue, not upcoming)
+  var n4 = Calc.nextUnrecorded(sched, [], '2026-08-01', 10);
+  eq('today past first two -> next is Sep', n4.date, '2026-09-30');
+})();
+
 console.log('commodities — market value / coupons / return / XIRR');
 (function () {
   var sgb = {

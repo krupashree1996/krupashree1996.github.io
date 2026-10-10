@@ -582,7 +582,47 @@ var Calc = (function () {
     if (c.units > 0) out.push({ date: redeem, days: 0, kind: 'redemption', amount: Math.round(c.units * 1000) });
     return out;
   }
-  function validFd(fd) {
+   /* Merge an estimated payout schedule with the recorded entries so the UI can
+    * show ONE table: each estimated period row, with the bank's actual filled in
+    * beside it. A recorded entry "matches" a period when its date is within
+    * `tol` days of the period date (banks credit a few days early/late).
+    * Each entry matches at most one period (nearest wins); an entry that matches
+    * nothing becomes its own row (extra: true). Result rows:
+    * { date, days, kind, amount, after, matched: entry|null, extra: bool },
+    * sorted by date. `entries` items need at least { date, int } (or .amount). */
+   function mergeSchedule(sched, entries, tol) {
+     tol = tol || 10;
+     var rows = (sched || []).map(function (r) {
+       return { date: r.date, days: r.days, kind: r.kind, amount: r.amount, after: r.after, matched: null, extra: false };
+     });
+     (entries || []).forEach(function (e) {
+       var d = parseISO(e && e.date);
+       if (!d) return;
+       var best = -1, bestDiff = Infinity;
+       for (var i = 0; i < rows.length; i++) {
+         if (rows[i].extra || rows[i].matched) continue;
+         var rd = parseISO(rows[i].date);
+         if (!rd) continue;
+         var diff = Math.round(Math.abs(d - rd) / 86400000);
+         if (diff <= tol && diff < bestDiff) { best = i; bestDiff = diff; }
+       }
+       if (best >= 0) rows[best].matched = e;
+       else rows.push({ date: e.date, days: null, kind: 'extra', amount: null, after: null, matched: e, extra: true });
+     });
+     rows.sort(function (a, b) { return String(a.date) < String(b.date) ? -1 : String(a.date) > String(b.date) ? 1 : 0; });
+     return rows;
+   }
+   /* The first scheduled period that has no recorded entry within `tol` days —
+    * i.e. the next interest payment still to be recorded (null when none). */
+   function nextUnrecorded(sched, entries, today, tol) {
+     today = today || todayISO();
+     var rows = mergeSchedule(sched, entries, tol);
+     for (var i = 0; i < rows.length; i++) {
+       if (!rows[i].extra && !rows[i].matched && rows[i].date >= today) return rows[i];
+     }
+     return null;
+   }
+   function validFd(fd) {
     var e = [];
     if (!(fd.account || '').trim()) e.push('Account number is required.');
     if (!(fd.amount > 0)) e.push('Invested amount is required.');
@@ -610,6 +650,7 @@ var Calc = (function () {
     xirr: xirr, fdXirr: fdXirr, sortFds: sortFds, fdSummary: fdSummary,
     fdCloseNowValue: fdCloseNowValue, fyOfDate: fyOfDate, fyYearOf: fyYearOf, fyLabel: fyLabel, fdFySummary: fdFySummary,
     normFdType: normFdType, fdTypeLabel: fdTypeLabel, fdPayoutSchedule: fdPayoutSchedule,
+    mergeSchedule: mergeSchedule, nextUnrecorded: nextUnrecorded,
     validFd: validFd, fdDateCheck: fdDateCheck, fdFileMaturity: fdFileMaturity,
     commodityMarketValue: commodityMarketValue, commodityPayoutSchedule: commodityPayoutSchedule, commodityCouponSummary: commodityCouponSummary,
     commodityFinalValue: commodityFinalValue, commodityReturnPct: commodityReturnPct,

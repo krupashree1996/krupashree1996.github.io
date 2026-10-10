@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 24;
+  var APP_VERSION = 25;
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -41,59 +41,27 @@
     return [{ v: '', l: '— custom / not a listed series —' }].concat(SGB_SERIES.map(function (s) { return { v: s.l, l: s.l }; }));
   }
 
-  /* ---- received tick marks + "up next" reminders ----
+  /* ---- "up next" reminders ----
    * Each interest-bearing record (FD/SCSS/FRB/SGB) has an estimated schedule of
-   * payment dates. `rec.received` is a list of dates already ticked off (received),
-   * so the app can show a ✓ and stop nagging about a period you've recorded. */
-  function recReceived(rec) {
-    if (!rec || !Array.isArray(rec.received)) return [];
-    return rec.received.filter(function (d) { return String(d); });
-  }
-  function isReceived(rec, date) { return recReceived(rec).indexOf(String(date)) >= 0; }
-  function toggleReceived(rec, date) {
-    var list = recReceived(rec);
-    var i = list.indexOf(String(date));
-    if (i >= 0) list.splice(i, 1); else list.push(String(date));
-    rec.received = list.sort();
-    persist();
-  }
-  /* A ✓/○ toggle for one scheduled payment. onTick re-renders so the banner
-   * and the "next" cells refresh immediately. */
-  function tickButton(rec, date, onTick) {
-    var got = isReceived(rec, date);
-    var b = el('button', 'tick' + (got ? ' on' : ''), got ? '✓' : '○');
-    b.type = 'button';
-    b.title = got ? 'Marked received — click to undo' : 'Mark this period as received';
-    b.onclick = function () { toggleReceived(rec, date); if (onTick) onTick(); };
-    return b;
-  }
-  /* All pending (unreceived, not yet due) entries across FDs + SGBs,
+   * payment dates. A period counts as received once an actual payout/coupon has
+   * been recorded near its date (see Calc.nextUnrecorded), so no manual tick
+   * marks are needed. */
+  /* All pending (unrecorded, not yet due) entries across FDs + SGBs,
    * nearest first — feeds the "up next" reminder banner. */
   function upcomingEntries(today) {
     today = today || Calc.todayISO();
     var out = [];
     function pushFd(fd) {
       if (!fd || fd.maturityDate < today) return;
-      var sched = Calc.fdPayoutSchedule(fd);
-      for (var i = 0; i < sched.length; i++) {
-        var d = sched[i].date;
-        if (d >= today && !isReceived(fd, d)) {
-          out.push({ label: fd.account || 'FD', kind: Calc.fdTypeLabel(fd.type), date: d, amount: sched[i].amount, rec: fd });
-          break;
-        }
-      }
+      var next = Calc.nextUnrecorded(Calc.fdPayoutSchedule(fd), fd.entries || [], today, 10);
+      if (next) out.push({ label: fd.account || 'FD', kind: Calc.fdTypeLabel(fd.type), date: next.date, amount: next.amount, rec: fd });
     }
     function pushCom(c) {
       if (!c || c.kind !== 'sgb' || c.soldDate) return;
-      var sched = Calc.commodityPayoutSchedule(c);
-      for (var i = 0; i < sched.length; i++) {
-        if (sched[i].kind === 'redemption') continue; // face return of principal, not interest
-        var d = sched[i].date;
-        if (d >= today && !isReceived(c, d)) {
-          out.push({ label: c.name || 'SGB', kind: 'SGB', date: d, amount: sched[i].amount, rec: c });
-          break;
-        }
-      }
+      // SGB coupons only (skip the face-value redemption — that's principal, not interest).
+      var sched = Calc.commodityPayoutSchedule(c).filter(function (r) { return r.kind !== 'redemption'; });
+      var next = Calc.nextUnrecorded(sched, c.coupons || [], today, 10);
+      if (next) out.push({ label: c.name || 'SGB', kind: 'SGB', date: next.date, amount: next.amount, rec: c });
     }
     filterFds(DATA.fds).forEach(pushFd);
     filterFds(DATA.archived || []).forEach(pushFd);
@@ -122,7 +90,7 @@
       ul.appendChild(liEl);
     });
     card.appendChild(ul);
-    card.appendChild(el('p', 'hint', 'Estimated dates from each record’s schedule. Tick a period as received in the interest/coupon schedule to clear it.'));
+    card.appendChild(el('p', 'hint', 'Estimated dates from each record’s schedule. Record a payout or coupon in the interest/coupon table to clear its period.'));
     sec.appendChild(card);
   }
 
@@ -737,7 +705,7 @@
   function fdById(id) { for (var i = 0; i < DATA.fds.length; i++) if (DATA.fds[i].id === id) return DATA.fds[i]; return null; }
   /* Works for an active FD or a freshly-archived matured record, so the final
    * (maturity-day) payout can still be recorded after the FD moved to history. */
-  function buildInterestForm(fd) {
+   function buildInterestForm(fd) {
     if (fd.archivedAt) fd.xirr = Calc.fdXirr(fd); // refresh the archived XIRR after edits
     var f = formShell('Interest \u2014 ' + (fd.account || 'No account'));
     f.box.id = 'interestModal';
@@ -746,9 +714,7 @@
       { v: 'compound', l: 'Compound (credited into principal)' },
       { v: 'payout', l: 'Payout (paid out, principal fixed)' }
     ], mode)));
-    f.form.appendChild(el('p', 'hint', mode === 'compound'
-      ? 'Each payout is credited into the running principal; the "calc" column is a simple-interest estimate on that running amount, to cross-check against the bank figure.'
-      : 'Each payout is paid out; the "calc" column is a simple-interest estimate on the original principal, to cross-check against the bank figure.'));
+    f.form.appendChild(el('p', 'hint', 'One table: each expected period with the bank\u2019s actual filled in beside it. Tap a period to pre-fill the form; record it and the row turns green. \u201cDiff\u201d = actual \u2212 estimate.'));
     var box = el('div', 'intList');
     f.form.appendChild(box);
 
@@ -762,12 +728,21 @@
       saveBtn.textContent = 'Save changes';
       f.err.textContent = '';
     }
-    function rebuildList() { renderInterestList(fd, box, false, startEdit, rebuildList); renderAll(); }
-    renderInterestList(fd, box, false, startEdit, rebuildList);
+    // Tap an unrecorded period -> pre-fill the form with its date + estimate.
+    function startRecord(row) {
+      editIndex = -1;
+      document.getElementById('imDate').value = Calc.isoToDDMMYYYY(row.date);
+      document.getElementById('imInt').value = row.amount != null ? row.amount : '';
+      document.getElementById('imTax').value = (fd.tdsRate && row.amount != null) ? Math.round(row.amount * fd.tdsRate / 100) : '';
+      saveBtn.textContent = 'Add payout';
+      f.err.textContent = '';
+      document.getElementById('imInt').focus();
+    }
+    renderInterestList(fd, box, false, startEdit, startRecord);
     var addForm = el('div', 'intAdd');
     addForm.appendChild(field('Date', dateInput('imDate', '')));
-    addForm.appendChild(field('Gross interest (₹)', numInput('imInt', '', 'e.g. 7589')));
-    addForm.appendChild(field('TDS (₹)', numInput('imTax', '', 'e.g. 759')));
+    addForm.appendChild(field('Gross interest (\u20b9)', numInput('imInt', '', 'e.g. 7589')));
+    addForm.appendChild(field('TDS (\u20b9)', numInput('imTax', '', 'e.g. 759')));
     addForm.appendChild(el('p', 'hint', 'Leave TDS blank for 0. Net = gross \u2212 TDS.'));
     f.form.appendChild(addForm);
     var saveBtn = el('button', 'primary', 'Add payout');
@@ -782,7 +757,7 @@
       // Collision check ignores the row being edited, so changing only its date
       // is fine, but reusing another payout's date + gross is still flagged.
       var dupE = fd.entries.some(function (e, i) { return i !== editIndex && e.date === d && e.int === g; });
-      if (dupE) { f.err.textContent = 'A payout for ' + d + ' (₹' + Calc.inr(g) + ') is already recorded.'; return; }
+      if (dupE) { f.err.textContent = 'A payout for ' + d + ' (\u20b9' + Calc.inr(g) + ') is already recorded.'; return; }
       if (editIndex >= 0) {
         fd.entries[editIndex] = { date: d, int: g, tax: t || 0 };
       } else {
@@ -800,131 +775,101 @@
     f.actions.appendChild(saveBtn); f.actions.appendChild(cancel);
     modal(f.box, true);
   }
-  /* Estimated schedule for SCSS (quarterly, paid out) / FRB (01-Jan/01-Jul,
-   * paid out) / FD (quarterly: compound = credited in, payout = paid out). */
-  function appendPayoutSchedule(fd, box, rebuild) {
-    var sched = Calc.fdPayoutSchedule(fd);
-    if (!sched.length) return;
+  /* One merged table: the estimated payout schedule with the recorded actuals
+   * filled in beside each period (matched within ~10 days). Recorded rows turn
+   * green with a \u2713; unrecorded periods offer a "record" button that pre-fills
+   * the form. `onEdit(entry)` / `onRecord(row)` wire the row actions. */
+  function renderInterestList(fd, box, readOnly, onEdit, onRecord) {
+    box.textContent = '';
     var type = Calc.normFdType(fd);
     var compound = type === 'fd' && Calc.normInterestMode(fd) === 'compound';
-    var q = type === 'rbi' ? 2 : 4;
-    var perLabel = type === 'rbi' ? 'half-year' : 'quarter';
-    var est = fd.payoutEstimate || {};
-    var stbl = el('table', 'intTable');
-    var sth = el('tr');
-    (compound ? ['Period end', 'Days', 'Kind', 'Credited in', 'Worth after'] : ['Period end', 'Days', 'Kind', 'Est. gross', 'Est. TDS', 'Est. net']).concat(['Received']).forEach(function (h) { sth.appendChild(el('th', '', h)); });
-    stbl.appendChild(sth);
-    sched.forEach(function (row) {
-      var tr = el('tr');
-      var kindTxt = row.kind === 'start' ? 'broken start' : row.kind === 'end' ? (compound ? 'final period' : 'broken end') : 'full ' + perLabel;
-      tr.appendChild(el('td', '', Calc.fmtDate(row.date)));
-      tr.appendChild(el('td', '', row.days != null ? String(row.days) : '\u2014'));
-      var kindTd = el('td', '', kindTxt);
-      if (compound) {
-        kindTd.title = row.kind === 'full'
-          ? 'Credited in: running value \u00d7 ' + fd.rate + '% \u00f7 ' + q + ' \u2014 compounds each period'
-          : 'Broken period: running value \u00d7 rate \u00d7 days \u00f7 365, credited in.';
-      } else if (row.kind === 'full') {
-        kindTd.title = 'Full ' + perLabel + ': principal \u00d7 rate \u00f7 ' + q + ' \u2014 the bank pays this on the true ' + perLabel + ', not on the day count.';
-      } else {
-        kindTd.title = 'Broken period: day-count dependent \u2014 ' + (type === 'fd' ? 'day-based estimate' : 'the bank\u2019s figure when set in this record, else a day-based estimate');
-      }
-      tr.appendChild(kindTd);
-      tr.appendChild(el('td', 'num', Calc.inr(row.amount)));
-      if (compound) {
-        var afterTd = el('td', 'num', row.after != null ? Calc.inr(row.after) : '\u2014');
-        if (row.kind === 'end') afterTd.title = 'Estimated value at maturity (principal + all credited interest).';
-        tr.appendChild(afterTd);
-      } else {
-        var tds = row.amount > 0 && fd.tdsRate ? Math.round(row.amount * fd.tdsRate / 100) : 0;
-        tr.appendChild(el('td', 'num', tds ? Calc.inr(tds) : '\u2014'));
-        tr.appendChild(el('td', 'num', Calc.inr(row.amount - tds)));
-      }
-      var got = isReceived(fd, row.date);
-      var tickTd = el('td', 'tickCell');
-      tickTd.appendChild(tickButton(fd, row.date, rebuild));
-      tr.appendChild(tickTd);
-      if (got) tr.className = 'got';
-      stbl.appendChild(tr);
-    });
-    var st = el('tr');
-    var sg = 0; sched.forEach(function (r) { sg += r.amount; });
-    var total = compound ? sched[sched.length - 1].after : sg;
-    st.appendChild(el('td', '', sched.length + ' ' + (compound ? 'credits' : 'payouts')));
-    st.appendChild(el('td', ''));
-    st.appendChild(el('td', '', compound ? 'value at maturity' : 'estimated total'));
-    st.appendChild(el('td', 'num strong', Calc.inr(total)));
-    for (var i = 0; i < (compound ? 1 : 2); i++) st.appendChild(el('td', 'num'));
-    st.appendChild(el('td', ''));
-    stbl.appendChild(st);
-    var sw = el('div', 'archWrap');
-    sw.appendChild(stbl);
-    box.appendChild(sw);
-    var hint;
-    if (compound) {
-      hint = 'Estimated schedule: interest credited in every ' + perLabel + ' (compounded on the running value), so each period is a little larger. Value at maturity = principal + all credited interest. This is an estimate, not a bank promise.';
-    } else {
-      var fullAmt = est.full != null ? est.full : Math.round((fd.amount * fd.rate / 100) / q);
-      hint = 'Estimated schedule: full ' + perLabel + ' = ' + Calc.inr(fullAmt) + (est.full == null ? ' (principal \u00d7 rate \u00f7 ' + q + ')' : ' (as entered)') + '. Broken ends: ' + (type === 'fd' ? 'day-based estimate (principal \u00d7 rate \u00d7 days \u00f7 365)' : 'the bank\u2019s figure when set in this record, else day-based estimate') + '. This is an estimate, not a bank promise.';
+    var sched = Calc.fdPayoutSchedule(fd);
+    var rows = Calc.mergeSchedule(sched, fd.entries || [], 10);
+    if (!(fd.entries || []).length) {
+      box.appendChild(el('p', 'muted', readOnly ? 'No payouts were recorded for this FD.' : 'No payouts recorded yet \u2014 tap a period to pre-fill it, or add one below.'));
     }
-    box.appendChild(el('p', 'hint', hint));
-  }
-
-  function renderInterestList(fd, box, readOnly, onEdit, rebuild) {
-    box.textContent = '';
-    var rows = Calc.fdEntries(fd);
-    if (!rows.length) {
-      box.appendChild(el('p', 'muted', readOnly ? 'No payouts were recorded for this FD.' : 'No payouts recorded yet.'));
-      appendPayoutSchedule(fd, box, rebuild);
-      return;
-    }
-    var tbl = el('table', 'intTable');
+    var tbl = el('table', 'intTable merged');
     var thead = el('tr');
-    // Compound: 'Worth after' = running balance (principal + credited net).
-    // Payout: the FD is always worth the principal (interest was paid out), so
-    // the column is the cumulative cash received instead — same figure, honest label.
-    var worthLabel = Calc.normInterestMode(fd) === 'compound' ? 'Worth after' : 'Received (cum.)';
-    ['Date', 'Days', 'Gross', 'TDS', 'Net', worthLabel, 'Calc (est.)'].concat(readOnly ? [] : ['']).forEach(function (h) { thead.appendChild(el('th', '', h)); });
+    (compound
+      ? ['Date', 'Kind', 'Est. credited', 'Worth after (est.)', 'Credited (act.)', 'Worth after (act.)', 'Diff', '']
+      : ['Date', 'Kind', 'Est. gross', 'Actual gross', 'TDS', 'Net', 'Diff', '']
+    ).forEach(function (h) { thead.appendChild(el('th', '', h)); });
     tbl.appendChild(thead);
-    rows.forEach(function (r) {
+    var runAfter = fd.amount || 0; // running value for compound actuals
+    rows.forEach(function (row) {
+      var m = row.matched;
       var tr = el('tr');
-      tr.appendChild(el('td', '', Calc.fmtDate(r.date)));
-      tr.appendChild(el('td', '', r.days != null ? String(r.days) : '\u2014'));
-      tr.appendChild(el('td', '', Calc.inr(r.int)));
-      tr.appendChild(el('td', '', Calc.inr(r.tax)));
-      tr.appendChild(el('td', 'num', Calc.inr(r.net)));
-      tr.appendChild(el('td', 'num', Calc.inr(r.after)));
-      var calc = el('td', 'num', r.expected != null ? Calc.inr(r.expected) : '\u2014');
-      if (r.expected != null && r.int > 0) {
-        var diff = r.int - r.expected;
-        calc.title = 'bank \u2212 calc = ' + Calc.inr(diff);
-        calc.className = 'num ' + (Math.abs(diff) <= 5 ? 'ok' : 'warn');
+      tr.appendChild(el('td', '', Calc.fmtDate(row.date)));
+      var kindTxt = row.kind === 'extra' ? 'extra payout'
+        : row.kind === 'start' ? 'broken start'
+        : row.kind === 'end' ? (compound ? 'final period' : 'broken end')
+        : (compound ? 'full quarter' : 'full ' + (type === 'rbi' ? 'half-year' : 'quarter'));
+      var kindTd = el('td', '', kindTxt);
+      kindTd.title = row.kind === 'extra' ? 'Recorded payout that did not match an expected period.' : 'Estimated period.';
+      tr.appendChild(kindTd);
+      if (compound) {
+        tr.appendChild(el('td', 'num', row.amount != null ? Calc.inr(row.amount) : '\u2014'));
+        tr.appendChild(el('td', 'num', row.after != null ? Calc.inr(row.after) : '\u2014'));
+        if (m) {
+          var net = (m.int || 0) - (m.tax || 0);
+          runAfter += net;
+          var actTd = el('td', 'num', Calc.inr(net));
+          actTd.title = 'gross ' + Calc.inr(m.int || 0) + ' \u2212 TDS ' + Calc.inr(m.tax || 0);
+          tr.appendChild(actTd);
+          tr.appendChild(el('td', 'num', Calc.inr(runAfter)));
+          var d1 = row.amount != null ? net - row.amount : null;
+          tr.appendChild(diffCell(d1));
+        } else {
+          tr.appendChild(el('td', 'num', ''));
+          tr.appendChild(el('td', 'num', ''));
+          tr.appendChild(diffCell(null));
+        }
+      } else {
+        tr.appendChild(el('td', 'num', row.amount != null ? Calc.inr(row.amount) : '\u2014'));
+        if (m) {
+          var net2 = (m.int || 0) - (m.tax || 0);
+          tr.appendChild(el('td', 'num', Calc.inr(m.int || 0)));
+          tr.appendChild(el('td', 'num', Calc.inr(m.tax || 0)));
+          tr.appendChild(el('td', 'num', Calc.inr(net2)));
+          var d2 = row.amount != null ? (m.int || 0) - row.amount : null;
+          tr.appendChild(diffCell(d2));
+        } else {
+          tr.appendChild(el('td', 'num', ''));
+          tr.appendChild(el('td', 'num', ''));
+          tr.appendChild(el('td', 'num', ''));
+          tr.appendChild(diffCell(null));
+        }
       }
-      tr.appendChild(calc);
-      if (!readOnly) {
-        var act = el('td', '');
-        var ed = el('button', 'mini', '\u270E\uFE0F');
-        ed.type = 'button'; // inside the form — without this it submits (navigates to ?)
-        ed.title = 'Edit this payout';
-        ed.onclick = function () { if (onEdit) onEdit(fd.entries[r.idx]); };
-        var rm = el('button', 'mini danger', '\u00d7');
-        rm.type = 'button';
-        rm.title = 'Delete this payout';
-        rm.onclick = function () {
-          confirmDel('Delete the payout on ' + Calc.fmtDate(r.date) + '?', function () {
-            fd.entries = fd.entries.filter(function (e) { return !(e.date === r.date && e.int === r.int); });
-            persist(); renderAll(); buildInterestForm(fd);
-          });
-        };
-        act.appendChild(ed);
-        act.appendChild(rm);
-        tr.appendChild(act);
+      var act = el('td', 'rowAct');
+      if (m) {
+        act.appendChild(el('span', 'tickOk', '\u2713'));
+        if (!readOnly) {
+          var ed = el('button', 'mini', '\u270E\uFE0F');
+          ed.title = 'Edit this payout';
+          ed.onclick = function () { if (onEdit) onEdit(m); };
+          var rm = el('button', 'mini danger', '\u00d7');
+          rm.title = 'Delete this payout';
+          rm.onclick = function () {
+            confirmDel('Delete the payout on ' + Calc.fmtDate(m.date) + '?', function () {
+              fd.entries = fd.entries.filter(function (e) { return !(e.date === m.date && e.int === m.int); });
+              persist(); renderAll(); buildInterestForm(fd);
+            });
+          };
+          act.appendChild(ed); act.appendChild(rm);
+        }
+      } else if (!readOnly) {
+        var rec = el('button', 'mini record', 'record');
+        rec.title = 'Pre-fill the form with this period\u2019s date + estimate';
+        rec.onclick = function () { if (onRecord) onRecord(row); };
+        act.appendChild(rec);
       }
+      tr.appendChild(act);
+      if (m) tr.className = 'got';
       tbl.appendChild(tr);
     });
     box.appendChild(tbl);
     var s = Calc.fdEntrySummary(fd);
-    var afterTxt = Calc.normInterestMode(fd) === 'compound'
+    var afterTxt = compound
       ? 'worth now ' + Calc.inr(s.after)
       : 'received in total ' + Calc.inr(s.after) + ' (FD still worth the principal)';
     box.appendChild(el('p', 'hint', 'Total: ' + s.count + ' payout' + (s.count > 1 ? 's' : '') + ' \u00b7 gross ' + Calc.inr(s.gross) + ' \u00b7 TDS ' + Calc.inr(s.tax) + ' \u00b7 net interest ' + Calc.inr(s.net) + ' \u00b7 ' + afterTxt));
@@ -936,11 +881,18 @@
       ];
       var olderCount = s.count - fy.cur.count - fy.prev.count;
       if (olderCount > 0) {
-        fyBits.push('older FYs: ' + olderCount + ' payout' + (olderCount > 1 ? 's' : '') + ' \u00b7 ' + Calc.inr(s.gross - fy.cur.interest - fy.prev.interest) + ' int \u00b7 TDS ' + Calc.inr(s.tax - fy.cur.tax - fy.prev.tax));
+        fyBits.push('older FYs: ' + olderCount + ' payout' + (olderCount > 1 ? 's' : '') + ' \u00b7 ' + Calc.inr(s.gross - fy.cur.interest - fy.prev.interest) + ' int \u00b7 ' + Calc.inr(s.tax - fy.cur.tax - fy.prev.tax) + ' TDS');
       }
       box.appendChild(el('p', 'hint', 'By financial year (recorded payouts, 1 Apr \u2013 31 Mar) \u2014 ' + fyBits.join('  \u00b7  ')));
     }
-    appendPayoutSchedule(fd, box, rebuild);
+  }
+  function diffCell(d) {
+    var c = el('td', 'num');
+    if (d == null) { c.textContent = ''; return c; }
+    c.textContent = (d > 0 ? '+' : '') + Calc.inr(d);
+    c.title = 'actual \u2212 estimate';
+    c.className = 'num ' + (Math.abs(d) <= 5 ? 'ok' : 'warn');
+    return c;
   }
 
   function renderFd() {
@@ -1511,56 +1463,62 @@
     f.actions.appendChild(save); f.actions.appendChild(cancel);
     modal(f.box, true);
   }
-  /* Estimated coupon + redemption schedule table for an SGB (true semi-annual
-   * on the purchase anniversary; face-value redemption at maturity). */
-  function appendCommoditySchedule(c, box, rebuild) {
+  /* One merged table for an SGB: the estimated coupon + redemption schedule with
+   * the recorded coupons filled in beside each period (matched within ~10 days).
+   * Redemption (face) is a reference row — no actual to record. */
+  function appendCommoditySchedule(c, box) {
     var sched = Calc.commodityPayoutSchedule(c);
     if (!sched.length) return;
     var rate = c.couponRate != null ? c.couponRate : 2.5;
     var full = Math.round((c.invested * rate / 100) / 2);
-    var stbl = el('table', 'intTable');
+    var rows = Calc.mergeSchedule(sched, c.coupons || [], 10);
+    var stbl = el('table', 'intTable merged');
     var sth = el('tr');
-    ['Date', 'Days', 'Kind', 'Est. amount', 'Received'].forEach(function (h) { sth.appendChild(el('th', '', h)); });
+    ['Date', 'Kind', 'Est. amount', 'Received', 'Diff'].forEach(function (h) { sth.appendChild(el('th', '', h)); });
     stbl.appendChild(sth);
-    sched.forEach(function (row) {
+    rows.forEach(function (row) {
+      var m = row.matched;
       var tr = el('tr');
       tr.appendChild(el('td', '', Calc.fmtDate(row.date)));
-      tr.appendChild(el('td', '', row.days != null && row.days > 0 ? String(row.days) : '\u2014'));
-      var kindTxt = row.kind === 'coupon' ? 'coupon' : row.kind === 'end' ? 'broken end' : 'redemption (face)';
+      var kindTxt = row.kind === 'extra' ? 'extra coupon' : row.kind === 'coupon' ? 'coupon' : row.kind === 'end' ? 'broken end' : 'redemption (face)';
       var kindTd = el('td', '', kindTxt);
       if (row.kind === 'coupon') kindTd.title = 'Semi-annual coupon: invested \u00d7 ' + rate + '% \u00f7 2. Actual SGB coupon dates vary by a few days per series.';
       else if (row.kind === 'end') kindTd.title = 'Broken end: day-based pro-rata (invested \u00d7 rate \u00d7 days \u00f7 365).';
-      else kindTd.title = 'Redemption at face value: ' + c.units + ' units \u00d7 \u20b91,000.';
+      else if (row.kind === 'redemption') kindTd.title = 'Redemption at face value: ' + c.units + ' units \u00d7 \u20b91,000.';
+      else kindTd.title = 'Recorded coupon that did not match an expected period.';
       tr.appendChild(kindTd);
-      tr.appendChild(el('td', 'num', Calc.inr(row.amount)));
-      var got = isReceived(c, row.date);
-      var tickTd = el('td', 'tickCell');
-      tickTd.appendChild(tickButton(c, row.date, rebuild));
-      tr.appendChild(tickTd);
-      if (got) tr.className = 'got';
+      tr.appendChild(el('td', 'num', row.amount != null ? Calc.inr(row.amount) : '\u2014'));
+      if (m) {
+        tr.appendChild(el('td', 'num', Calc.inr(m.amount != null ? m.amount : 0)));
+        var d = row.amount != null ? (m.amount != null ? m.amount : 0) - row.amount : null;
+        tr.appendChild(diffCell(d));
+      } else {
+        tr.appendChild(el('td', 'num', ''));
+        tr.appendChild(diffCell(null));
+      }
+      if (m) tr.className = 'got';
       stbl.appendChild(tr);
     });
     var st = el('tr');
     var sg = 0; sched.forEach(function (r) { sg += r.amount; });
     st.appendChild(el('td', '', sched.length + ' items'));
-    st.appendChild(el('td', ''));
     st.appendChild(el('td', '', 'estimated total'));
     st.appendChild(el('td', 'num strong', Calc.inr(sg)));
-    st.appendChild(el('td', ''));
+    st.appendChild(el('td', 'num'));
+    st.appendChild(el('td', 'num'));
     stbl.appendChild(st);
     var sw = el('div', 'archWrap');
     sw.appendChild(stbl);
     box.appendChild(sw);
-    box.appendChild(el('p', 'hint', 'Estimated schedule: coupon = invested \u00d7 ' + rate + '% \u00f7 2 = ' + Calc.inr(full) + ' every ~6 months on the purchase date, plus face-value redemption (' + Calc.inr(Math.round((c.units || 0) * 1000)) + ') at maturity. This is an estimate, not a bank promise.'));
+    box.appendChild(el('p', 'hint', 'Estimated schedule: coupon = invested \u00d7 ' + rate + '% \u00f7 2 = ' + Calc.inr(full) + ' every ~6 months on the purchase date, plus face-value redemption (' + Calc.inr(Math.round((c.units || 0) * 1000)) + ') at maturity. Record a coupon below and its period fills in green. This is an estimate, not a bank promise.'));
   }
   function commodityCoupon(c) {
     c.coupons = c.coupons || [];
     var f = formShell('Coupon — ' + (c.name || c.id));
-    f.form.appendChild(el('p', 'hint', 'SGB pays a 2.5% p.a. coupon on face value, semi-annually. Record each receipt; it feeds the return and XIRR. Tick ✓ to mark a period received.'));
+    f.form.appendChild(el('p', 'hint', 'SGB pays a 2.5% p.a. coupon on face value, semi-annually. Record each receipt; it feeds the return and XIRR.'));
     var cSchedBox = el('div', 'comSched');
     f.form.appendChild(cSchedBox);
-    function rebuildC() { cSchedBox.innerHTML = ''; appendCommoditySchedule(c, cSchedBox, rebuildC); renderAll(); }
-    appendCommoditySchedule(c, cSchedBox, rebuildC);
+    appendCommoditySchedule(c, cSchedBox);
     f.form.appendChild(field('Date', dateInput('cpDate', '')));
     f.form.appendChild(field('Amount (₹)', numInput('cpAmt', '', 'e.g. 3000')));
     var save = el('button', 'primary', 'Add coupon');

@@ -192,12 +192,13 @@ whenReady(function run() {
   eq('malformed date rejected', fd0.entries.length, 0);
   eq('malformed date shows error', $('#interestModal .err').textContent.indexOf('DD/MM/YYYY') >= 0, true);
 
-  // Add two payouts (compound is the default).
-  setValue('#imDate', '28/06/2026');
+  // Add two payouts (compound is the default). Dates land within ~10 days of the
+  // quarterly period ends (10 Jun / 10 Sep 2026) so they match the schedule.
+  setValue('#imDate', '08/06/2026');
   setValue('#imInt', '8108');
   setValue('#imTax', '811');
   $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
-  setValue('#imDate', '24/09/2026');
+  setValue('#imDate', '08/09/2026');
   setValue('#imInt', '8282');
   setValue('#imTax', '829');
   $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
@@ -206,54 +207,58 @@ whenReady(function run() {
   eq('mode defaulted to compound', fd0.interestMode, 'compound');
 
   // Re-adding the exact same payout (date + gross) is blocked.
-  setValue('#imDate', '28/06/2026');
+  setValue('#imDate', '08/06/2026');
   setValue('#imInt', '8108');
   setValue('#imTax', '811');
   $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
   eq('duplicate payout blocked', fd0.entries.length, 2);
   eq('duplicate error shown', $('#interestModal .err').textContent.indexOf('already recorded') >= 0, true);
-  // A different amount on the same date is allowed.
-  setValue('#imInt', '9999');
+  // A different payout on a later period is allowed (recorded in its own row).
+  setValue('#imDate', '08/12/2026');
+  setValue('#imInt', '8400');
+  setValue('#imTax', '840');
   $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
-  eq('different amount on same date allowed', fd0.entries.length, 3);
-  // the modal also carries the estimated schedule table below the ledger, so count the first table only
-  eq('ledger table rendered with 3 rows', $$('#interestModal table.intTable')[0].querySelectorAll('tr').length - 1, 3);
+  eq('third payout stored', fd0.entries.length, 3);
+  // The merged table shows one row per estimated period; the 3 recorded periods
+  // are filled in (green), the rest stay unrecorded.
+  eq('3 recorded period rows turn green', $$('#interestModal .intTable tr.got').length, 3);
 
   // Edit an existing payout: pencil prefills the form, "Save changes" updates it.
-  // Entries so far: 28/06 (8108, tds 811), 28/06 (9999), 24/09 (8282) — date-sorted,
-  // so row 0 is the 28/06/8108 entry.
+  // Entries so far: 08/06 (8108), 08/09 (8282), 08/12 (8400) — date-sorted,
+  // so the first green row is the 08/06/8108 entry.
   var editBtns = $$('#interestModal .intTable button[title="Edit this payout"]');
-  eq('pencil buttons present (one per row)', editBtns.length, 3);
+  eq('pencil buttons present (one per recorded row)', editBtns.length, 3);
   // No button inside the modal may be an implicit submit (it would navigate to '?').
   eq('no implicit submit buttons in the modal',
     $$('#interestModal form button').every(function (b) { return b.type === 'button'; }), true);
   editBtns[0].click();
   eq('save button switched to "Save changes"', $$('#interestModal .actions button').some(function (b) { return b.textContent === 'Save changes'; }), true);
-  eq('date prefilled', $('#imDate').value, '28/06/2026');
+  eq('date prefilled', $('#imDate').value, '08/06/2026');
   eq('gross prefilled', $('#imInt').value, '8108');
   // Change the gross and save.
   setValue('#imInt', '8200');
   $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Save changes') b.click(); });
   eq('entry count unchanged after edit', fd0.entries.length, 3);
-  eq('gross updated to 8200', fd0.entries.some(function (e) { return e.date === '2026-06-28' && e.int === 8200; }), true);
+  eq('gross updated to 8200', fd0.entries.some(function (e) { return e.date === '2026-06-08' && e.int === 8200; }), true);
   // Editing a row to another payout's date + gross is still flagged as a duplicate.
   var editBtns2 = $$('#interestModal .intTable button[title="Edit this payout"]');
-  editBtns2[0].click(); // row 0 = 28/06, 8200
-  setValue('#imDate', '24/09/2026'); // = the 8282 entry's date
+  editBtns2[0].click(); // row 0 = 08/06, 8200
+  setValue('#imDate', '08/09/2026'); // = the 8282 entry's date
   setValue('#imInt', '8282');
   $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Save changes') b.click(); });
   eq('edit collision still blocked', fd0.entries.length, 3);
   eq('collision error shown', $('#interestModal .err').textContent.indexOf('already recorded') >= 0, true);
-  // Reset the row back to 28/06 / 8108 so the earlier "worth-after" assertion holds.
+  // Reset the row back to 08/06 / 8108 so the earlier "worth-after" assertion holds.
   var editBtns3 = $$('#interestModal .intTable button[title="Edit this payout"]');
   editBtns3[0].click();
-  setValue('#imDate', '28/06/2026');
+  setValue('#imDate', '08/06/2026');
   setValue('#imInt', '8108');
   $$('#interestModal .actions button').forEach(function (b) { if (b.textContent === 'Save changes') b.click(); });
 
-  // Compound running: first after = 400000 + (8108-811) = 407297.
-  var rows = $$('#interestModal .intTable tr');
-  eq('first row worth-after', rows[1].cells[5].textContent.indexOf('4,07,297') >= 0, true);
+  // Compound running: first credited-in net = 8108-811 = 7297, so the first
+  // recorded row's "Worth after (act.)" = 400000 + 7297 = 407297.
+  var gotRows = $$('#interestModal .intTable tr.got');
+  eq('first recorded row worth-after (act.)', gotRows[0].cells[5].textContent.indexOf('4,07,297') >= 0, true);
   // Row shows interest (paid) + worth now cells.
   App.renderAll();
   eq('row shows interest (paid) cell', $$('#sec-fd .fdCell').some(function (c) { return c.querySelector('small').textContent === 'Interest (paid)'; }), true);
@@ -578,15 +583,17 @@ whenReady(function run() {
   eq('schedule has first quarter end', schedText.indexOf('31 Mar 2026') >= 0, true);
   eq('schedule marks broken start', schedText.indexOf('broken start') >= 0, true);
   eq('schedule marks broken end', schedText.indexOf('broken end') >= 0, true);
-  eq('schedule shows estimated total', schedText.indexOf('estimated total') >= 0, true);
-  eq('schedule row count (21 periods)', schedTbl.querySelectorAll('tr').length - 1, 22); // 21 + total row
+  eq('merged schedule has a Diff column', schedText.indexOf('Diff') >= 0, true);
+  eq('unrecorded period offers a record button', !!schedTbl.querySelector('button.record'), true);
+  eq('schedule row count (21 periods)', schedTbl.querySelectorAll('tr').length - 1, 21); // 21 period rows (header excluded)
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
-  // payout-mode ledger column is labelled honestly (cash received, not "worth")
+  // payout-mode merged table shows the bank's actual beside the estimate
   sc2.entries = [{ date: '2026-03-31', int: 9211, tax: 0 }];
   App.buildInterestForm(sc2);
   var payoutHdr = $$('#interestModal .intTable th').map(function (t) { return t.textContent; });
-  eq('payout ledger column is Received (cum.)', payoutHdr.indexOf('Received (cum.)') >= 0, true);
-  eq('payout ledger has no Worth after column', payoutHdr.indexOf('Worth after') < 0, true);
+  eq('payout merged table has Actual gross column', payoutHdr.indexOf('Actual gross') >= 0, true);
+  eq('payout merged table has no Worth after column', payoutHdr.indexOf('Worth after') < 0, true);
+  eq('recorded period row turns green', !!$('#interestModal .intTable tr.got'), true);
   var payoutTotalHint = $$('#interestModal .hint').filter(function (h) { return h.textContent.indexOf('Total:') === 0; })[0];
   eq('payout total line says received in total', payoutTotalHint && payoutTotalHint.textContent.indexOf('received in total') >= 0, true);
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
@@ -631,10 +638,12 @@ whenReady(function run() {
   eq('compound schedule table in interest modal', cTbls.length >= 1, true);
   var cTbl = cTbls[cTbls.length - 1];
   var cText = cTbl.textContent;
-  cTbl.querySelectorAll('th').forEach(function (th) { if (th.textContent === 'Worth after') eq('compound schedule has Worth after column', true, true); });
+  var cHdr = Array.prototype.map.call(cTbl.querySelectorAll('th'), function (th) { return th.textContent; });
+  eq('compound merged table has Worth after (est.) column', cHdr.indexOf('Worth after (est.)') >= 0, true);
+  eq('compound merged table has Credited (act.) column', cHdr.indexOf('Credited (act.)') >= 0, true);
   eq('compound schedule marks broken start', cText.indexOf('broken start') >= 0, true);
   eq('compound schedule marks final period', cText.indexOf('final period') >= 0, true);
-  eq('compound schedule totals value at maturity', cText.indexOf('value at maturity') >= 0, true);
+  eq('compound unrecorded period offers a record button', !!cTbl.querySelector('button.record'), true);
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
   // payout FD: estimate fields appear when interest type = payout
   App.buildFdForm(null);
@@ -645,8 +654,8 @@ whenReady(function run() {
   eq('compound FD hides estimate fields again', $('#fEstFull').parentNode.style.display, 'none');
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
 
-  console.log('14b) "Up next" reminder banner + received tick marks');
-  // A payout FD with a future schedule -> the next un-received period should
+  console.log('14b) "Up next" reminder banner + merged record flow');
+  // A payout FD with a future schedule -> the next unrecorded period should
   // appear in the reminder banner at the top of the FD tab.
   App.switchTab('fd');
   App.buildFdForm(null);
@@ -665,26 +674,33 @@ whenReady(function run() {
   eq('reminder banner shown', !!remCard, true);
   eq('reminder lists the FD', remCard.textContent.indexOf('130910DP00004099') >= 0, true);
   eq('reminder has a due item', $$('#sec-fd .remItem').length >= 1, true);
-  // Open the interest modal and tick the first scheduled period as received.
+  // Open the interest modal: unrecorded periods offer a "record" button that
+  // pre-fills the form with the period's date + estimate.
   App.buildInterestForm(remFd);
-  var tickBtn = $('#interestModal .intTable button.tick');
-  eq('tick button in schedule table', !!tickBtn, true);
-  eq('tick starts unmarked', tickBtn.classList.contains('on'), false);
-  tickBtn.click();
-  eq('received date stored on record', remFd.received.length, 1);
-  // Ticking re-renders the modal, so re-query the (new) first tick button.
-  var tickBtnOn = $('#interestModal .intTable button.tick');
-  eq('tick now marked received', tickBtnOn.classList.contains('on'), true);
-  // The banner refreshes: the ticked period is no longer "next" for this FD, so
-  // the first listed date moves to the following period.
-  eq('banner re-rendered after tick', !!$('#sec-fd .reminder'), true);
+  var recBtn = $('#interestModal .intTable button.record');
+  eq('record button in merged table', !!recBtn, true);
+  recBtn.click();
+  var prefillDate = $('#imDate').value;
+  eq('record pre-fills the date', prefillDate.length === 10, true);
+  var prefillInt = Number($('#imInt').value);
+  eq('record pre-fills the estimate', prefillInt > 0, true);
+  // Save the pre-filled payout -> the period is now recorded (row turns green)
+  // and the banner moves to the next unrecorded period.
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add payout') b.click(); });
+  eq('payout stored on record', remFd.entries.length, 1);
+  App.buildInterestForm(remFd);
+  eq('recorded period row turns green', !!$('#interestModal .intTable tr.got'), true);
+  eq('recorded row shows a check', $('#interestModal .intTable tr.got .tickOk') != null, true);
+  eq('banner still shows the next unrecorded period', $$('#sec-fd .remItem').length >= 1, true);
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
-  // Ticking again (undo) clears the received mark.
+  // Deleting the recorded payout un-matches the period (row no longer green).
   App.buildInterestForm(remFd);
-  var tickBtn2 = $('#interestModal .intTable button.tick.on');
-  eq('undo tick present', !!tickBtn2, true);
-  tickBtn2.click();
-  eq('received cleared after undo', remFd.received.length, 0);
+  var delBtn = $('#interestModal .intTable tr.got button.danger');
+  eq('delete button on recorded row', !!delBtn, true);
+  delBtn.click();
+  // confirmDel opens a "Delete?" modal; confirm it.
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Delete') b.click(); });
+  eq('payout removed', remFd.entries.length, 0);
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
 
   console.log('15) bundle load archives matured FDs on import');
