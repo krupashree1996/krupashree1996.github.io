@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 26;
+  var APP_VERSION = 27;
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -1477,7 +1477,7 @@
   /* One merged table for an SGB: the estimated coupon + redemption schedule with
    * the recorded coupons filled in beside each period (matched within ~10 days).
    * Redemption (face) is a reference row — no actual to record. */
-  function appendCommoditySchedule(c, box, onRecord) {
+  function appendCommoditySchedule(c, box, onRecord, onEdit) {
     var sched = Calc.commodityPayoutSchedule(c);
     if (!sched.length) return;
     var rate = c.couponRate != null ? c.couponRate : 2.5;
@@ -1510,6 +1510,23 @@
       var act = el('td', 'rowAct');
       if (m) {
         act.appendChild(el('span', 'tickOk', '\u2713'));
+        if (onEdit) {
+          var ed = el('button', 'mini', '\u270E\uFE0F');
+          ed.type = 'button';
+          ed.title = 'Edit this coupon';
+          ed.onclick = function () { onEdit(m); };
+          var rm = el('button', 'mini danger', '\u00d7');
+          rm.type = 'button';
+          rm.title = 'Delete this coupon';
+          rm.onclick = function () {
+            confirmDel('Delete the coupon on ' + Calc.fmtDate(m.date) + '?', function () {
+              c.coupons = c.coupons.filter(function (e) { return !(e.date === m.date && e.amount === m.amount); });
+              persist(); renderAll();
+            });
+          };
+          act.appendChild(ed);
+          act.appendChild(rm);
+        }
       } else if (row.kind !== 'redemption' && onRecord) {
         var rec = el('button', 'mini record', 'record');
         rec.type = 'button';
@@ -1541,28 +1558,42 @@
     f.form.appendChild(el('p', 'hint', 'SGB pays a 2.5% p.a. coupon on face value, semi-annually. Record each receipt; it feeds the return and XIRR.'));
     var cSchedBox = el('div', 'comSched');
     f.form.appendChild(cSchedBox);
+    var editIndex = -1;
     function startRecord(row) {
+      editIndex = -1;
       document.getElementById('cpDate').value = Calc.isoToDDMMYYYY(row.date);
       document.getElementById('cpAmt').value = row.amount != null ? row.amount : '';
+      saveBtn.textContent = 'Add coupon';
       f.err.textContent = '';
       document.getElementById('cpAmt').focus();
     }
-    appendCommoditySchedule(c, cSchedBox, startRecord);
+    function startEdit(coupon) {
+      editIndex = c.coupons.indexOf(coupon);
+      document.getElementById('cpDate').value = Calc.isoToDDMMYYYY(coupon.date || '');
+      document.getElementById('cpAmt').value = coupon.amount;
+      saveBtn.textContent = 'Save changes';
+      f.err.textContent = '';
+    }
+    appendCommoditySchedule(c, cSchedBox, startRecord, startEdit);
     f.form.appendChild(field('Date', dateInput('cpDate', '')));
-    f.form.appendChild(field('Amount (₹)', numInput('cpAmt', '', 'e.g. 3000')));
-    var save = el('button', 'primary', 'Add coupon');
-    save.onclick = function () {
+    f.form.appendChild(field('Amount (\u20b9)', numInput('cpAmt', '', 'e.g. 3000')));
+    var saveBtn = el('button', 'primary', 'Add coupon');
+    saveBtn.onclick = function () {
       var d = readDate('cpDate');
       var a = num('cpAmt');
       if (!d || !(a > 0)) { f.err.textContent = 'Enter a date (DD/MM/YYYY) and an amount.'; return; }
-      c.coupons.push({ date: d, amount: a });
+      if (editIndex >= 0) {
+        c.coupons[editIndex] = { date: d, amount: a };
+      } else {
+        c.coupons.push({ date: d, amount: a });
+      }
       c.coupons.sort(function (x, y) { return x.date < y.date ? -1 : x.date > y.date ? 1 : 0; });
       persist(); closeModal(); renderAll();
-      toast('Coupon recorded.', 'ok');
+      toast(editIndex >= 0 ? 'Coupon updated.' : 'Coupon recorded.', 'ok');
     };
     var cancel = el('button', 'ghost', 'Cancel');
     cancel.onclick = closeModal;
-    f.actions.appendChild(save); f.actions.appendChild(cancel);
+    f.actions.appendChild(saveBtn); f.actions.appendChild(cancel);
     modal(f.box, true);
   }
 

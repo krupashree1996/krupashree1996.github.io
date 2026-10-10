@@ -530,6 +530,30 @@ whenReady(function run() {
   sgbRecBtn.click();
   eq('sgb record pre-fills date', $('#cpDate').value.length === 10, true);
   eq('sgb record pre-fills estimate', Number($('#cpAmt').value) > 0, true);
+  setValue('#cpAmt', '1500');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add coupon') b.click(); });
+  eq('sgb coupon recorded', sgb0.coupons.length, 1);
+  // reopen the modal — recorded coupon rows offer edit + delete
+  var sgbRow2 = Array.prototype.slice.call(document.querySelectorAll('#sec-commodities tr')).filter(function (r) { return r.textContent.indexOf('SGB 2024 (TEST)') >= 0; })[0];
+  var cpBtn2b = Array.prototype.slice.call(sgbRow2.querySelectorAll('button')).filter(function (b) { return b.textContent === 'coupon'; })[0];
+  cpBtn2b.click();
+  var sgbEditBtn = $('#modalBox .intTable tr.got button[title="Edit this coupon"]');
+  eq('sgb edit button present', !!sgbEditBtn, true);
+  sgbEditBtn.click();
+  eq('sgb edit prefills amount', $('#cpAmt').value, '1500');
+  eq('sgb save button switched', !!$$('#modalBox .actions button').filter(function (b) { return b.textContent === 'Save changes'; })[0], true);
+  setValue('#cpAmt', '619.9');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Save changes') b.click(); });
+  eq('sgb coupon amount updated', sgb0.coupons.some(function (e) { return e.amount === 619.9; }), true);
+  // delete the coupon (reopen the modal after the save closed it)
+  var sgbRow3 = Array.prototype.slice.call(document.querySelectorAll('#sec-commodities tr')).filter(function (r) { return r.textContent.indexOf('SGB 2024 (TEST)') >= 0; })[0];
+  var cpBtn3 = Array.prototype.slice.call(sgbRow3.querySelectorAll('button')).filter(function (b) { return b.textContent === 'coupon'; })[0];
+  cpBtn3.click();
+  var sgbDelBtn = $('#modalBox .intTable tr.got button[title="Delete this coupon"]');
+  eq('sgb delete button present', !!sgbDelBtn, true);
+  sgbDelBtn.click();
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Delete') b.click(); });
+  eq('sgb coupon deleted', sgb0.coupons.length, 0);
   // close the modal
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
 
