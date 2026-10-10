@@ -26,15 +26,19 @@ var Calc = (function () {
     return (+p[2]) + ' ' + mo + ' ' + p[0];
   }
   function groupIn(n) {
-    var s = String(Math.round(n));
+    var fixed = Math.round(n * 100) / 100;
+    var s = String(fixed);
     var neg = s.charAt(0) === '-';
     if (neg) s = s.slice(1);
-    if (s.length <= 3) return (neg ? '-' : '') + s;
-    var out = s.slice(-3);
-    var rest = s.slice(0, -3);
+    var dot = s.indexOf('.');
+    var intPart = dot >= 0 ? s.slice(0, dot) : s;
+    var decPart = dot >= 0 ? s.slice(dot) : '';
+    if (intPart.length <= 3) return (neg ? '-' : '') + intPart + decPart;
+    var out = intPart.slice(-3);
+    var rest = intPart.slice(0, -3);
     while (rest.length > 2) { out = rest.slice(-2) + ',' + out; rest = rest.slice(0, -2); }
     if (rest.length) out = rest + ',' + out;
-    return (neg ? '-' : '') + out;
+    return (neg ? '-' : '') + out + decPart;
   }
   function fmtNum(n) { if (n == null || isNaN(n)) return '\u2014'; return groupIn(n); }
   function inr(n) {
