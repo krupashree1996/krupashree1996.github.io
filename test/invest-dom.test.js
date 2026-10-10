@@ -645,6 +645,48 @@ whenReady(function run() {
   eq('compound FD hides estimate fields again', $('#fEstFull').parentNode.style.display, 'none');
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
 
+  console.log('14b) "Up next" reminder banner + received tick marks');
+  // A payout FD with a future schedule -> the next un-received period should
+  // appear in the reminder banner at the top of the FD tab.
+  App.switchTab('fd');
+  App.buildFdForm(null);
+  setValue('#fType', 'fd');
+  setValue('#fImode', 'payout');
+  setValue('#fAcc', '130910DP00004099');
+  setValue('#fAmt', '400000');
+  setValue('#fRate', '8');
+  setValue('#fIssue', '01/01/2026');
+  setValue('#fMaturity', '01/01/2028');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
+  var remFd = App.DATA.fds.filter(function (f) { return f.account === '130910DP00004099'; })[0];
+  eq('payout FD added', !!remFd, true);
+  App.renderAll();
+  var remCard = $('#sec-fd .reminder');
+  eq('reminder banner shown', !!remCard, true);
+  eq('reminder lists the FD', remCard.textContent.indexOf('130910DP00004099') >= 0, true);
+  eq('reminder has a due item', $$('#sec-fd .remItem').length >= 1, true);
+  // Open the interest modal and tick the first scheduled period as received.
+  App.buildInterestForm(remFd);
+  var tickBtn = $('#interestModal .intTable button.tick');
+  eq('tick button in schedule table', !!tickBtn, true);
+  eq('tick starts unmarked', tickBtn.classList.contains('on'), false);
+  tickBtn.click();
+  eq('received date stored on record', remFd.received.length, 1);
+  // Ticking re-renders the modal, so re-query the (new) first tick button.
+  var tickBtnOn = $('#interestModal .intTable button.tick');
+  eq('tick now marked received', tickBtnOn.classList.contains('on'), true);
+  // The banner refreshes: the ticked period is no longer "next" for this FD, so
+  // the first listed date moves to the following period.
+  eq('banner re-rendered after tick', !!$('#sec-fd .reminder'), true);
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
+  // Ticking again (undo) clears the received mark.
+  App.buildInterestForm(remFd);
+  var tickBtn2 = $('#interestModal .intTable button.tick.on');
+  eq('undo tick present', !!tickBtn2, true);
+  tickBtn2.click();
+  eq('received cleared after undo', remFd.received.length, 0);
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
+
   console.log('15) bundle load archives matured FDs on import');
   // loadBundle replaces all data, so this runs last.
   // jsdom's FileReader is async and its File has no readable content API, so

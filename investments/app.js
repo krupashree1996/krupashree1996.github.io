@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 23;
+  var APP_VERSION = 24;
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -39,6 +39,91 @@
   ];
   function sgbSeriesOpts() {
     return [{ v: '', l: '— custom / not a listed series —' }].concat(SGB_SERIES.map(function (s) { return { v: s.l, l: s.l }; }));
+  }
+
+  /* ---- received tick marks + "up next" reminders ----
+   * Each interest-bearing record (FD/SCSS/FRB/SGB) has an estimated schedule of
+   * payment dates. `rec.received` is a list of dates already ticked off (received),
+   * so the app can show a ✓ and stop nagging about a period you've recorded. */
+  function recReceived(rec) {
+    if (!rec || !Array.isArray(rec.received)) return [];
+    return rec.received.filter(function (d) { return String(d); });
+  }
+  function isReceived(rec, date) { return recReceived(rec).indexOf(String(date)) >= 0; }
+  function toggleReceived(rec, date) {
+    var list = recReceived(rec);
+    var i = list.indexOf(String(date));
+    if (i >= 0) list.splice(i, 1); else list.push(String(date));
+    rec.received = list.sort();
+    persist();
+  }
+  /* A ✓/○ toggle for one scheduled payment. onTick re-renders so the banner
+   * and the "next" cells refresh immediately. */
+  function tickButton(rec, date, onTick) {
+    var got = isReceived(rec, date);
+    var b = el('button', 'tick' + (got ? ' on' : ''), got ? '✓' : '○');
+    b.type = 'button';
+    b.title = got ? 'Marked received — click to undo' : 'Mark this period as received';
+    b.onclick = function () { toggleReceived(rec, date); if (onTick) onTick(); };
+    return b;
+  }
+  /* All pending (unreceived, not yet due) entries across FDs + SGBs,
+   * nearest first — feeds the "up next" reminder banner. */
+  function upcomingEntries(today) {
+    today = today || Calc.todayISO();
+    var out = [];
+    function pushFd(fd) {
+      if (!fd || fd.maturityDate < today) return;
+      var sched = Calc.fdPayoutSchedule(fd);
+      for (var i = 0; i < sched.length; i++) {
+        var d = sched[i].date;
+        if (d >= today && !isReceived(fd, d)) {
+          out.push({ label: fd.account || 'FD', kind: Calc.fdTypeLabel(fd.type), date: d, amount: sched[i].amount, rec: fd });
+          break;
+        }
+      }
+    }
+    function pushCom(c) {
+      if (!c || c.kind !== 'sgb' || c.soldDate) return;
+      var sched = Calc.commodityPayoutSchedule(c);
+      for (var i = 0; i < sched.length; i++) {
+        if (sched[i].kind === 'redemption') continue; // face return of principal, not interest
+        var d = sched[i].date;
+        if (d >= today && !isReceived(c, d)) {
+          out.push({ label: c.name || 'SGB', kind: 'SGB', date: d, amount: sched[i].amount, rec: c });
+          break;
+        }
+      }
+    }
+    filterFds(DATA.fds).forEach(pushFd);
+    filterFds(DATA.archived || []).forEach(pushFd);
+    filterCommodities().forEach(pushCom);
+    out.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    return out;
+  }
+  function renderReminders(sec) {
+    var list = upcomingEntries();
+    if (!list.length) return;
+    var card = el('div', 'card reminder');
+    var head = el('div', 'cardHead');
+    head.appendChild(el('h2', '', 'Up next — record the interest you get'));
+    head.appendChild(el('span', 'chip', list.length + ' due'));
+    card.appendChild(head);
+    var ul = el('ul', 'remList');
+    var today = Calc.todayISO();
+    list.forEach(function (e) {
+      var days = Math.round((Calc.parseISO(e.date) - Calc.parseISO(today)) / 86400000);
+      var when = days < 0 ? 'overdue by ' + Math.abs(days) + 'd' : (days === 0 ? 'due today' : 'in ' + days + 'd');
+      var liEl = el('li', 'remItem' + (days < 0 ? ' overdue' : ''));
+      liEl.appendChild(el('span', 'remDate', Calc.fmtDate(e.date)));
+      liEl.appendChild(el('span', 'remWho', e.label + (e.kind && e.kind !== 'FD' ? ' · ' + e.kind : '')));
+      liEl.appendChild(el('span', 'remAmt', Calc.inr(e.amount)));
+      liEl.appendChild(el('span', 'remWhen', when));
+      ul.appendChild(liEl);
+    });
+    card.appendChild(ul);
+    card.appendChild(el('p', 'hint', 'Estimated dates from each record’s schedule. Tick a period as received in the interest/coupon schedule to clear it.'));
+    sec.appendChild(card);
   }
 
   function el(tag, cls, text) {
@@ -677,7 +762,8 @@
       saveBtn.textContent = 'Save changes';
       f.err.textContent = '';
     }
-    renderInterestList(fd, box, false, startEdit);
+    function rebuildList() { renderInterestList(fd, box, false, startEdit, rebuildList); renderAll(); }
+    renderInterestList(fd, box, false, startEdit, rebuildList);
     var addForm = el('div', 'intAdd');
     addForm.appendChild(field('Date', dateInput('imDate', '')));
     addForm.appendChild(field('Gross interest (₹)', numInput('imInt', '', 'e.g. 7589')));
@@ -716,7 +802,7 @@
   }
   /* Estimated schedule for SCSS (quarterly, paid out) / FRB (01-Jan/01-Jul,
    * paid out) / FD (quarterly: compound = credited in, payout = paid out). */
-  function appendPayoutSchedule(fd, box) {
+  function appendPayoutSchedule(fd, box, rebuild) {
     var sched = Calc.fdPayoutSchedule(fd);
     if (!sched.length) return;
     var type = Calc.normFdType(fd);
@@ -726,7 +812,7 @@
     var est = fd.payoutEstimate || {};
     var stbl = el('table', 'intTable');
     var sth = el('tr');
-    (compound ? ['Period end', 'Days', 'Kind', 'Credited in', 'Worth after'] : ['Period end', 'Days', 'Kind', 'Est. gross', 'Est. TDS', 'Est. net']).forEach(function (h) { sth.appendChild(el('th', '', h)); });
+    (compound ? ['Period end', 'Days', 'Kind', 'Credited in', 'Worth after'] : ['Period end', 'Days', 'Kind', 'Est. gross', 'Est. TDS', 'Est. net']).concat(['Received']).forEach(function (h) { sth.appendChild(el('th', '', h)); });
     stbl.appendChild(sth);
     sched.forEach(function (row) {
       var tr = el('tr');
@@ -754,6 +840,11 @@
         tr.appendChild(el('td', 'num', tds ? Calc.inr(tds) : '\u2014'));
         tr.appendChild(el('td', 'num', Calc.inr(row.amount - tds)));
       }
+      var got = isReceived(fd, row.date);
+      var tickTd = el('td', 'tickCell');
+      tickTd.appendChild(tickButton(fd, row.date, rebuild));
+      tr.appendChild(tickTd);
+      if (got) tr.className = 'got';
       stbl.appendChild(tr);
     });
     var st = el('tr');
@@ -764,6 +855,7 @@
     st.appendChild(el('td', '', compound ? 'value at maturity' : 'estimated total'));
     st.appendChild(el('td', 'num strong', Calc.inr(total)));
     for (var i = 0; i < (compound ? 1 : 2); i++) st.appendChild(el('td', 'num'));
+    st.appendChild(el('td', ''));
     stbl.appendChild(st);
     var sw = el('div', 'archWrap');
     sw.appendChild(stbl);
@@ -778,12 +870,12 @@
     box.appendChild(el('p', 'hint', hint));
   }
 
-  function renderInterestList(fd, box, readOnly, onEdit) {
+  function renderInterestList(fd, box, readOnly, onEdit, rebuild) {
     box.textContent = '';
     var rows = Calc.fdEntries(fd);
     if (!rows.length) {
       box.appendChild(el('p', 'muted', readOnly ? 'No payouts were recorded for this FD.' : 'No payouts recorded yet.'));
-      appendPayoutSchedule(fd, box);
+      appendPayoutSchedule(fd, box, rebuild);
       return;
     }
     var tbl = el('table', 'intTable');
@@ -848,12 +940,13 @@
       }
       box.appendChild(el('p', 'hint', 'By financial year (recorded payouts, 1 Apr \u2013 31 Mar) \u2014 ' + fyBits.join('  \u00b7  ')));
     }
-    appendPayoutSchedule(fd, box);
+    appendPayoutSchedule(fd, box, rebuild);
   }
 
   function renderFd() {
     var sec = document.getElementById('sec-fd');
     sec.innerHTML = '';
+    renderReminders(sec);
     var card = el('div', 'card');
     var head = el('div', 'cardHead');
     head.appendChild(el('h2', '', 'Fixed deposits'));
@@ -1420,14 +1513,14 @@
   }
   /* Estimated coupon + redemption schedule table for an SGB (true semi-annual
    * on the purchase anniversary; face-value redemption at maturity). */
-  function appendCommoditySchedule(c, box) {
+  function appendCommoditySchedule(c, box, rebuild) {
     var sched = Calc.commodityPayoutSchedule(c);
     if (!sched.length) return;
     var rate = c.couponRate != null ? c.couponRate : 2.5;
     var full = Math.round((c.invested * rate / 100) / 2);
     var stbl = el('table', 'intTable');
     var sth = el('tr');
-    ['Date', 'Days', 'Kind', 'Est. amount'].forEach(function (h) { sth.appendChild(el('th', '', h)); });
+    ['Date', 'Days', 'Kind', 'Est. amount', 'Received'].forEach(function (h) { sth.appendChild(el('th', '', h)); });
     stbl.appendChild(sth);
     sched.forEach(function (row) {
       var tr = el('tr');
@@ -1440,6 +1533,11 @@
       else kindTd.title = 'Redemption at face value: ' + c.units + ' units \u00d7 \u20b91,000.';
       tr.appendChild(kindTd);
       tr.appendChild(el('td', 'num', Calc.inr(row.amount)));
+      var got = isReceived(c, row.date);
+      var tickTd = el('td', 'tickCell');
+      tickTd.appendChild(tickButton(c, row.date, rebuild));
+      tr.appendChild(tickTd);
+      if (got) tr.className = 'got';
       stbl.appendChild(tr);
     });
     var st = el('tr');
@@ -1448,6 +1546,7 @@
     st.appendChild(el('td', ''));
     st.appendChild(el('td', '', 'estimated total'));
     st.appendChild(el('td', 'num strong', Calc.inr(sg)));
+    st.appendChild(el('td', ''));
     stbl.appendChild(st);
     var sw = el('div', 'archWrap');
     sw.appendChild(stbl);
@@ -1457,8 +1556,11 @@
   function commodityCoupon(c) {
     c.coupons = c.coupons || [];
     var f = formShell('Coupon — ' + (c.name || c.id));
-    f.form.appendChild(el('p', 'hint', 'SGB pays a 2.5% p.a. coupon on face value, semi-annually. Record each receipt; it feeds the return and XIRR.'));
-    appendCommoditySchedule(c, f.form);
+    f.form.appendChild(el('p', 'hint', 'SGB pays a 2.5% p.a. coupon on face value, semi-annually. Record each receipt; it feeds the return and XIRR. Tick ✓ to mark a period received.'));
+    var cSchedBox = el('div', 'comSched');
+    f.form.appendChild(cSchedBox);
+    function rebuildC() { cSchedBox.innerHTML = ''; appendCommoditySchedule(c, cSchedBox, rebuildC); renderAll(); }
+    appendCommoditySchedule(c, cSchedBox, rebuildC);
     f.form.appendChild(field('Date', dateInput('cpDate', '')));
     f.form.appendChild(field('Amount (₹)', numInput('cpAmt', '', 'e.g. 3000')));
     var save = el('button', 'primary', 'Add coupon');
