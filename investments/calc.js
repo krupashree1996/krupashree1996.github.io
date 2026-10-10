@@ -350,6 +350,48 @@ var Calc = (function () {
     });
     return out;
   }
+  /* Income from other sources, per FY, split by source. FD/SCSS/FRB contribute
+   * recorded payout interest + TDS; SGB contributes coupon income (no TDS).
+   * MF dividends / capital gains will slot in here later as new sources.
+   * Each FY row: { label, fd:{interest,tax,count}, sgb:{interest,count},
+   *               total, tds }. */
+  function incomeFySummary(fds, commodities, today) {
+    today = today || todayISO();
+    var cy = fyYearOf(today, today), py = cy - 1;
+    function blank(startYear) {
+      return { year: startYear, label: fyLabel(startYear),
+        fd: { interest: 0, tax: 0, count: 0 },
+        sgb: { interest: 0, count: 0 },
+        total: 0, tds: 0 };
+    }
+    var out = { cur: blank(cy), prev: blank(py) };
+    (fds || []).forEach(function (fd) {
+      (fd.entries || []).forEach(function (e) {
+        if (!(e.int > 0) || !e.date) return;
+        var fy = fyOfDate(e.date);
+        var t = fy === cy ? out.cur : (fy === py ? out.prev : null);
+        if (!t) return;
+        t.fd.interest += e.int || 0;
+        t.fd.tax += e.tax || 0;
+        t.fd.count++;
+      });
+    });
+    (commodities || []).forEach(function (c) {
+      (c.coupons || []).forEach(function (e) {
+        if (!e || !(e.amount > 0) || !e.date) return;
+        var fy = fyOfDate(e.date);
+        var t = fy === cy ? out.cur : (fy === py ? out.prev : null);
+        if (!t) return;
+        t.sgb.interest += e.amount;
+        t.sgb.count++;
+      });
+    });
+    [out.cur, out.prev].forEach(function (t) {
+      t.total = t.fd.interest + t.sgb.interest;
+      t.tds = t.fd.tax;
+    });
+    return out;
+  }
   function fdSummary(list, today) {
     var s = { count: 0, invested: 0, expected: 0, net: 0, tax: 0, matured: 0, active: 0, maturedValue: 0 };
     (list || []).forEach(function (fd) {
@@ -550,42 +592,59 @@ var Calc = (function () {
     }
     return out;
   }
-  /* Estimated coupon + redemption schedule for an SGB holding (kind 'sgb').
-   * Coupons are semi-annual on the purchase anniversary (real SGB coupon dates
-   * differ by a few days per series — this is an estimate). Coupon amount is on
-   * the cost basis (invested), matching how most statements compute it; the
-   * final redemption is at face value (₹1,000 per unit).
-   * Items: { date, days, kind: 'coupon'|'end'|'redemption', amount }.
-   * Returns [] when sold, or when dates/amount are incomplete. */
-  function commodityPayoutSchedule(c) {
-    if (!c || c.kind !== 'sgb' || c.soldDate) return [];
-    if (!c.purchaseDate || !(c.invested > 0)) return [];
-    var redeem = c.redeemDate;
-    if (!redeem || redeem <= c.purchaseDate) return [];
-    var rate = c.couponRate != null ? c.couponRate : 2.5;
-    var perDay = c.invested * rate / 100 / 365;
-    var full = Math.round((c.invested * rate / 100) / 2);
-    var p = String(c.purchaseDate).split('-');
-    var iy = +p[0], im = +p[1], iday = +p[2];
-    var out = [];
-    for (var k = 1; k <= 200; k++) {
-      var mo = im + k * 6 - 1;
-      var y = iy + Math.floor(mo / 12), mn = (mo % 12) + 1;
-      var d = Math.min(iday, new Date(y, mn, 0).getDate());
-      var iso = y + '-' + pad(mn) + '-' + pad(d);
-      if (iso > redeem) break;            // a coupon landing exactly on maturity is the final coupon
-      var prev = out.length ? out[out.length - 1].date : c.purchaseDate;
-      out.push({
-        date: iso, days: daysBetweenISO(prev, iso), kind: 'coupon',
-        amount: full
-      });
-    }
-    var lastDate = out.length ? out[out.length - 1].date : c.purchaseDate;
-    var endDays = daysBetweenISO(lastDate, redeem);
-    if (endDays > 0) out.push({ date: redeem, days: endDays, kind: 'end', amount: Math.round(endDays * perDay) });
-    if (c.units > 0) out.push({ date: redeem, days: 0, kind: 'redemption', amount: Math.round(c.units * 1000) });
-    return out;
-  }
+   /* Estimated coupon + redemption schedule for an SGB holding (kind 'sgb').
+    * Coupon amount is on FACE value (units × ₹1,000) at the coupon rate — that's
+    * what SGBs actually pay, regardless of what you paid for them. Primary-market
+    * SGBs pay on the purchase anniversary; secondary-market (bought on the
+    * exchange, c.secondary) pay on the SERIES' standard semi-annual dates, with a
+    * pro-rata broken-start coupon for the partial period from purchase to the
+    * first standard date. Redemption is at face value (₹1,000 per unit).
+    * Items: { date, days, kind: 'coupon'|'end'|'redemption', amount }.
+    * Returns [] when sold, or when dates/amount are incomplete. */
+   function commodityPayoutSchedule(c) {
+     if (!c || c.kind !== 'sgb' || c.soldDate) return [];
+     if (!c.purchaseDate || !(c.invested > 0)) return [];
+     var redeem = c.redeemDate;
+     if (!redeem || redeem <= c.purchaseDate) return [];
+     var rate = c.couponRate != null ? c.couponRate : 2.5;
+     var face = c.units > 0 ? c.units * 1000 : c.invested;
+     var perDay = face * rate / 100 / 365;
+     var full = Math.round((face * rate / 100) / 2);
+     var p = String(c.purchaseDate).split('-');
+     var iy = +p[0], im = +p[1], iday = +p[2];
+     var out = [];
+     if (c.secondary && c.seriesIssue) {
+       // Secondary market: coupons land on the series' standard semi-annual dates
+       // (the issue-date anniversary), not the purchase anniversary. The first
+       // coupon you receive is a FULL coupon (the accrued interest is baked into
+       // the price you pay), so we list every standard date after purchase.
+       var sp = String(c.seriesIssue).split('-');
+       var siy = +sp[0], sim = +sp[1], siday = +sp[2];
+       for (var b = 0; b <= 400; b++) {
+         var ay = siy + Math.floor((sim - 1 + b * 6) / 12);
+         var amn = ((sim - 1 + b * 6) % 12) + 1;
+         var ad = Math.min(siday, new Date(ay, amn, 0).getDate());
+         var aiso = ay + '-' + pad(amn) + '-' + pad(ad);
+         if (aiso <= c.purchaseDate) continue;   // before/at purchase: not yours
+         if (aiso > redeem) break;
+         out.push({ date: aiso, days: 0, kind: 'coupon', amount: full });
+       }
+     } else {
+       for (var k = 1; k <= 200; k++) {
+         var mo = im + k * 6 - 1;
+         var y = iy + Math.floor(mo / 12), mn = (mo % 12) + 1;
+         var d = Math.min(iday, new Date(y, mn, 0).getDate());
+         var iso = y + '-' + pad(mn) + '-' + pad(d);
+         if (iso > redeem) break;            // a coupon landing exactly on maturity is the final coupon
+         out.push({ date: iso, days: 0, kind: 'coupon', amount: full });
+       }
+     }
+     var lastDate = out.length ? out[out.length - 1].date : c.purchaseDate;
+     var endDays = daysBetweenISO(lastDate, redeem);
+     if (endDays > 0) out.push({ date: redeem, days: endDays, kind: 'end', amount: Math.round(endDays * perDay) });
+     if (c.units > 0) out.push({ date: redeem, days: 0, kind: 'redemption', amount: Math.round(c.units * 1000) });
+     return out;
+   }
    /* Merge an estimated payout schedule with the recorded entries so the UI can
     * show ONE table: each estimated period row, with the bank's actual filled in
     * beside it. A recorded entry "matches" a period when its date is within
@@ -653,7 +712,7 @@ var Calc = (function () {
     normInterestMode: normInterestMode, entryNet: entryNet, fdEntries: fdEntries, fdEntrySummary: fdEntrySummary,
     fdStatus: fdStatus, fdAutoRemove: fdAutoRemove, fdStatusRank: fdStatusRank,
     xirr: xirr, fdXirr: fdXirr, sortFds: sortFds, fdSummary: fdSummary,
-    fdCloseNowValue: fdCloseNowValue, fyOfDate: fyOfDate, fyYearOf: fyYearOf, fyLabel: fyLabel, fdFySummary: fdFySummary,
+    fdCloseNowValue: fdCloseNowValue, fyOfDate: fyOfDate, fyYearOf: fyYearOf, fyLabel: fyLabel, fdFySummary: fdFySummary, incomeFySummary: incomeFySummary,
     normFdType: normFdType, fdTypeLabel: fdTypeLabel, fdPayoutSchedule: fdPayoutSchedule,
     mergeSchedule: mergeSchedule, nextUnrecorded: nextUnrecorded,
     validFd: validFd, fdDateCheck: fdDateCheck, fdFileMaturity: fdFileMaturity,

@@ -577,6 +577,36 @@ whenReady(function run() {
   var sgb2Row = Array.prototype.slice.call(document.querySelectorAll('#sec-commodities tr')).filter(function (r) { return r.textContent.indexOf('SGB 2024-II') >= 0; })[0];
   eq('series shown in the row', !!sgb2Row, true);
 
+  console.log('12d) SGB secondary-market checkbox + series-anchored coupons');
+  // Reopen the form; the secondary-market checkbox is present.
+  $$('#sec-commodities button').forEach(function (b) { if (b.textContent === '+ Add holding') b.click(); });
+  eq('secondary checkbox present', !!$('#cSecondary'), true);
+  eq('secondary unchecked by default', $('#cSecondary').checked, false);
+  setValue('#cSeries', 'SGB 2024-II'); // issue 2023-09-20
+  // Buying on the exchange: check secondary, set a purchase date mid-series.
+  $('#cSecondary').checked = true;
+  $('#cSecondary').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  setValue('#cName', 'SGB 2024-II (2nd mkt)');
+  setValue('#cCost', '52000');
+  setValue('#cUnits', '50');
+  setValue('#cPurchase', '10/05/2024');
+  setValue('#cRedeem', '20/09/2031');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add holding') b.click(); });
+  var sgb3 = App.DATA.commodities.filter(function (c) { return c.name === 'SGB 2024-II (2nd mkt)'; })[0];
+  eq('secondary flag stored', sgb3.secondary, true);
+  eq('series issue date stored', sgb3.seriesIssue, '2023-09-20');
+  // The schedule anchors to the series' standard dates, not the purchase anniv.
+  var sched3 = dom.window.Calc.commodityPayoutSchedule(sgb3);
+  eq('secondary first coupon on series date', sched3[0].date, '2024-09-20');
+  eq('secondary second coupon 6 months later', sched3[1].date, '2025-03-20');
+  // coupon on face value (50 x 1000 x 2.5% / 2)
+  eq('secondary coupon on face value', sched3[0].amount, 625);
+  // The checkbox round-trips when editing the record.
+  var sgb3Row = Array.prototype.slice.call(document.querySelectorAll('#sec-commodities tr')).filter(function (r) { return r.textContent.indexOf('SGB 2024-II (2nd mkt)') >= 0; })[0];
+  Array.prototype.slice.call(sgb3Row.querySelectorAll('button')).filter(function (b) { return b.textContent === 'edit'; })[0].click();
+  eq('secondary checkbox checked on edit', $('#cSecondary').checked, true);
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
+
   console.log('13) SCSS payout-estimate fields + schedule display');
   App.switchTab('fd');
   App.buildFdForm(null);
@@ -748,6 +778,61 @@ whenReady(function run() {
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Delete') b.click(); });
   eq('payout removed', remFd.entries.length, 0);
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
+
+  console.log('14c) Income tab — consolidated FY income from FD + SGB');
+  // Add a payout FD with a recorded payout in the current FY and an SGB with a
+  // coupon in the same FY, then check the Income tab totals.
+  App.switchTab('fd');
+  App.buildFdForm(null);
+  setValue('#fType', 'fd');
+  setValue('#fImode', 'payout');
+  setValue('#fAcc', '130910DP00004012');
+  setValue('#fAmt', '100000');
+  setValue('#fRate', '8');
+  setValue('#fIssue', '01/05/2026');
+  setValue('#fMaturity', '01/05/2027');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
+  var incFd = App.DATA.fds.filter(function (f) { return f.account === '130910DP00004012'; })[0];
+  eq('income test FD added', !!incFd, true);
+  incFd.entries.push({ date: '2026-05-31', int: 1000, tax: 100 });
+  // SGB with a coupon in the current FY
+  App.switchTab('commodities');
+  $$('#sec-commodities button').forEach(function (b) { if (b.textContent === '+ Add holding') b.click(); });
+  setValue('#cName', 'SGB income (TEST)');
+  setValue('#cKind', 'sgb');
+  setValue('#cCost', '10000');
+  setValue('#cUnits', '10');
+  setValue('#cRate', '2.5');
+  setValue('#cPurchase', '01/06/2026');
+  setValue('#cRedeem', '01/06/2034');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add holding') b.click(); });
+  var incSgb = App.DATA.commodities.filter(function (c) { return c.name === 'SGB income (TEST)'; })[0];
+  eq('income test SGB added', !!incSgb, true);
+  incSgb.coupons = [{ date: '2026-12-01', amount: 500 }];
+  // View as "All PANs" so the tab aggregates every FD + SGB (matches the exp calc below).
+  var panSel = $('#panSel');
+  panSel.value = '';
+  panSel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  App.switchTab('income');
+  eq('income tab shown', $('#sec-income').hidden, false);
+  var incTbl = $('#sec-income table.intTable');
+  eq('income table rendered', !!incTbl, true);
+  var incRows = Array.prototype.slice.call(incTbl.querySelectorAll('tr')).slice(1);
+  eq('income has two FY rows', incRows.length, 2);
+  // Expected current-FY totals, computed from the same data the tab renders.
+  var WCalc = dom.window.Calc;
+  var exp = WCalc.incomeFySummary(App.DATA.fds.concat(App.DATA.archived || []), App.DATA.commodities, WCalc.todayISO());
+  var curCells = Array.prototype.slice.call(incRows[0].querySelectorAll('td')).map(function (t) { return t.textContent; });
+  eq('current FY label', curCells[0], exp.cur.label);
+  eq('FD interest matches data', curCells[1], exp.cur.fd.interest ? WCalc.inr(exp.cur.fd.interest) : '\u2014');
+  eq('SGB coupon matches data', curCells[2], exp.cur.sgb.interest ? WCalc.inr(exp.cur.sgb.interest) : '\u2014');
+  eq('total income matches data', curCells[3], WCalc.inr(exp.cur.total));
+  eq('TDS matches data (FD only)', curCells[4], exp.cur.tds ? WCalc.inr(exp.cur.tds) : '\u2014');
+  // The SGB coupon we just added is counted in the SGB column.
+  eq('our SGB coupon counted', exp.cur.sgb.interest >= 500, true);
+  // TDS is FD-only: SGB coupons never add to it.
+  eq('TDS excludes SGB', exp.cur.tds === exp.cur.fd.tax, true);
+  App.switchTab('fd');
 
   console.log('15) bundle load archives matured FDs on import');
   // loadBundle replaces all data, so this runs last.

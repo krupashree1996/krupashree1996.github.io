@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 28;
+  var APP_VERSION = 29;
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -1404,6 +1404,15 @@
     form.appendChild(field('Purchase date *', dateInput('cPurchase', c.purchaseDate)));
     form.appendChild(field('SGB redemption date (maturity)', dateInput('cRedeem', c.redeemDate), true));
     form.appendChild(field('Coupon rate (% p.a.)', numInput('cRate', c.couponRate, 'SGB default 2.5')));
+    // Secondary-market (exchange) SGBs pay on the SERIES' standard coupon dates,
+    // not the purchase anniversary — so we anchor to the series issue date.
+    var secWrap = el('label', 'chk wide');
+    var secChk = document.createElement('input');
+    secChk.type = 'checkbox'; secChk.id = 'cSecondary';
+    secChk.checked = !!c.secondary;
+    secWrap.appendChild(secChk);
+    secWrap.appendChild(document.createTextNode(' Bought on secondary market (exchange) — coupons follow the series\u2019 standard dates'));
+    form.appendChild(secWrap);
     var kindSel = form.querySelector('#cKind');
     var seriesSel = form.querySelector('#cSeries');
     var sgbRedeem = form.querySelector('#cRedeem'), sgbRate = form.querySelector('#cRate');
@@ -1428,6 +1437,9 @@
       document.getElementById('cPurchase').value = p[2] + '/' + p[1] + '/' + p[0];
       var rd = document.getElementById('cRedeem');
       if (rd && !rd.value.trim()) rd.value = p[2] + '/' + p[1] + '/' + (p[0] - 0 + 8);
+      // Remember the series issue date so secondary-market SGBs can anchor their
+      // coupon schedule to the series' standard dates.
+      c.seriesIssue = s.d;
     }
     seriesSel.addEventListener('change', applySeries);
     form.appendChild(field('Redemption / sold value (₹)', numInput('cSold', c.soldValue, 'blank = still holding')));
@@ -1450,6 +1462,8 @@
         purchaseDate: readDate('cPurchase'),
         redeemDate: readDate('cRedeem'),
         couponRate: num('cRate'),
+        secondary: secChk.checked,
+        seriesIssue: c.seriesIssue || null,
         soldValue: num('cSold'),
         soldDate: readDate('cSoldOn'),
         notes: val('cNotes')
@@ -1481,7 +1495,8 @@
     var sched = Calc.commodityPayoutSchedule(c);
     if (!sched.length) return;
     var rate = c.couponRate != null ? c.couponRate : 2.5;
-    var full = Math.round((c.invested * rate / 100) / 2);
+    var face = c.units > 0 ? c.units * 1000 : c.invested;
+    var full = Math.round((face * rate / 100) / 2);
     var rows = Calc.mergeSchedule(sched, c.coupons || [], 10);
     var stbl = el('table', 'intTable merged');
     var sth = el('tr');
@@ -1493,8 +1508,8 @@
       tr.appendChild(el('td', '', Calc.fmtDate(row.date)));
       var kindTxt = row.kind === 'extra' ? 'extra coupon' : row.kind === 'coupon' ? 'coupon' : row.kind === 'end' ? 'broken end' : 'redemption (face)';
       var kindTd = el('td', '', kindTxt);
-      if (row.kind === 'coupon') kindTd.title = 'Semi-annual coupon: invested \u00d7 ' + rate + '% \u00f7 2. Actual SGB coupon dates vary by a few days per series.';
-      else if (row.kind === 'end') kindTd.title = 'Broken end: day-based pro-rata (invested \u00d7 rate \u00d7 days \u00f7 365).';
+      if (row.kind === 'coupon') kindTd.title = 'Semi-annual coupon: face value \u00d7 ' + rate + '% \u00f7 2. ' + (c.secondary ? 'Dates follow the series\u2019 standard coupon schedule.' : 'Dates follow the purchase anniversary.');
+      else if (row.kind === 'end') kindTd.title = 'Broken end: day-based pro-rata (face value \u00d7 rate \u00d7 days \u00f7 365).';
       else if (row.kind === 'redemption') kindTd.title = 'Redemption at face value: ' + c.units + ' units \u00d7 \u20b91,000.';
       else kindTd.title = 'Recorded coupon that did not match an expected period.';
       tr.appendChild(kindTd);
@@ -1550,7 +1565,8 @@
     var sw = el('div', 'archWrap');
     sw.appendChild(stbl);
     box.appendChild(sw);
-    box.appendChild(el('p', 'hint', 'Estimated schedule: coupon = invested \u00d7 ' + rate + '% \u00f7 2 = ' + Calc.inr(full) + ' every ~6 months on the purchase date, plus face-value redemption (' + Calc.inr(Math.round((c.units || 0) * 1000)) + ') at maturity. Tap a period\u2019s record button to pre-fill the form. This is an estimate, not a bank promise.'));
+    var anchorTxt = c.secondary ? 'on the series\u2019 standard coupon dates' : 'on the purchase anniversary';
+    box.appendChild(el('p', 'hint', 'Estimated schedule: coupon = face value (' + Calc.inr(face) + ') \u00d7 ' + rate + '% \u00f7 2 = ' + Calc.inr(full) + ' every ~6 months ' + anchorTxt + ', plus face-value redemption (' + Calc.inr(Math.round((c.units || 0) * 1000)) + ') at maturity. Tap a period\u2019s record button to pre-fill the form. This is an estimate, not a bank promise.'));
   }
   function commodityCoupon(c) {
     c.coupons = c.coupons || [];
@@ -1598,6 +1614,46 @@
   }
 
   /* ---- Notes tab ---- */
+  /* ---- Income tab (income from other sources) ----
+   * Consolidated per-FY view: FD/SCSS/FRB interest (+ TDS) and SGB coupons
+   * (no TDS). MF dividends and capital gains join as new sources later. */
+  function renderIncome() {
+    var sec = document.getElementById('sec-income');
+    sec.innerHTML = '';
+    var card = el('div', 'card');
+    var head = el('div', 'cardHead');
+    head.appendChild(el('h2', '', 'Income'));
+    head.appendChild(el('span', 'chip', 'view: ' + viewTitle()));
+    card.appendChild(head);
+    var inc = Calc.incomeFySummary(
+      filterFds(DATA.fds).concat(filterFds(DATA.archived || [])),
+      filterCommodities(),
+      Calc.todayISO()
+    );
+    var tbl = el('table', 'intTable');
+    var th = el('tr');
+    ['FY', 'FD / SCSS / FRB', 'SGB coupons', 'Total income', 'TDS'].forEach(function (h) { th.appendChild(el('th', '', h)); });
+    tbl.appendChild(th);
+    [inc.cur, inc.prev].forEach(function (t) {
+      var tr = el('tr');
+      tr.appendChild(el('td', '', t.label));
+      var fdTd = el('td', 'num', t.fd.interest ? Calc.inr(t.fd.interest) : '\u2014');
+      if (t.fd.count) fdTd.title = t.fd.count + ' recorded payout' + (t.fd.count > 1 ? 's' : '');
+      tr.appendChild(fdTd);
+      var sgbTd = el('td', 'num', t.sgb.interest ? Calc.inr(t.sgb.interest) : '\u2014');
+      if (t.sgb.count) sgbTd.title = t.sgb.count + ' coupon' + (t.sgb.count > 1 ? 's' : '');
+      tr.appendChild(sgbTd);
+      tr.appendChild(el('td', 'num strong', t.total ? Calc.inr(t.total) : '\u2014'));
+      var tdsTd = el('td', 'num', t.tds ? Calc.inr(t.tds) : '\u2014');
+      if (!t.tds) tdsTd.title = 'TDS is deducted on FD/SCSS/FRB only; SGB coupons are paid without TDS.';
+      tr.appendChild(tdsTd);
+      tbl.appendChild(tr);
+    });
+    card.appendChild(tbl);
+    card.appendChild(el('p', 'hint', 'From recorded payouts only. FD/SCSS/FRB interest is taxable at your slab rate, with TDS (10%) claimable as advance tax paid. SGB coupons are also taxable at your slab rate but are paid without TDS \u2014 report them in your ITR. SGB redemption at maturity is tax-exempt. Mutual fund dividends will appear here later; capital gains get their own table.'));
+    sec.appendChild(card);
+  }
+
   function renderNotes() {
     var sec = document.getElementById('sec-notes');
     sec.innerHTML = '';
@@ -1790,6 +1846,7 @@
     });
     document.getElementById('sec-fd').hidden = t !== 'fd';
     document.getElementById('sec-commodities').hidden = t !== 'commodities';
+    document.getElementById('sec-income').hidden = t !== 'income';
     document.getElementById('sec-notes').hidden = t !== 'notes';
   }
   function renderAll() {
@@ -1798,6 +1855,7 @@
     renderChips();
     renderFd();
     renderCommodities();
+    renderIncome();
     renderNotes();
   }
 

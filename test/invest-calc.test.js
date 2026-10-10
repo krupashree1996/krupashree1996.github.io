@@ -344,6 +344,38 @@ console.log('fdFySummary — recorded payout totals per Indian FY');
   eq('matured FD counted in cur FY count', both.cur.count, 2);
 })();
 
+console.log('incomeFySummary — consolidated income from other sources (FD + SGB)');
+(function () {
+  var fdA = {
+    entries: [
+      { date: '2026-03-29', int: 8305, tax: 830 },  // FY 2025-26
+      { date: '2026-06-28', int: 8232, tax: 823 }   // FY 2026-27
+    ]
+  };
+  var sgbA = { coupons: [
+    { date: '2026-02-21', amount: 1250 },  // FY 2025-26
+    { date: '2026-08-21', amount: 1250 }   // FY 2026-27
+  ] };
+  var inc = Calc.incomeFySummary([fdA], [sgbA], '2026-09-29'); // current FY = 2026-27
+  eq('cur label', inc.cur.label, 'FY 26–27');
+  eq('cur FD interest', inc.cur.fd.interest, 8232);
+  eq('cur FD tax', inc.cur.fd.tax, 823);
+  eq('cur SGB interest', inc.cur.sgb.interest, 1250);
+  eq('cur SGB count', inc.cur.sgb.count, 1);
+  eq('cur total income', inc.cur.total, 8232 + 1250);
+  eq('cur TDS is FD-only', inc.cur.tds, 823);
+  eq('prev FD interest', inc.prev.fd.interest, 8305);
+  eq('prev SGB interest', inc.prev.sgb.interest, 1250);
+  eq('prev total income', inc.prev.total, 8305 + 1250);
+  eq('prev TDS is FD-only', inc.prev.tds, 830);
+  // SGB coupons never contribute to TDS.
+  eq('SGB adds no TDS', inc.cur.tds === inc.cur.fd.tax, true);
+  // No data -> zeroed rows.
+  var empty = Calc.incomeFySummary([], [], '2026-09-29');
+  eq('empty cur total', empty.cur.total, 0);
+  eq('empty prev total', empty.prev.total, 0);
+})();
+
 console.log('normFdType / fdTypeLabel / fdExpectedTotal by type');
 eq('default -> fd', Calc.normFdType({}), 'fd');
 eq('scss normalized', Calc.normFdType({ type: 'scss' }), 'scss');
@@ -467,7 +499,8 @@ console.log('commodityPayoutSchedule — SGB coupons + face redemption');
   eq('first coupon 21 Aug 2024', p[0].date, '2024-08-21');
   eq('second-to-last coupon 21 Aug 2031', p[14].date, '2031-08-21');
   eq('final coupon lands on maturity', p[15].date, '2032-02-21');
-  eq('coupon = invested * 2.5% / 2', p[0].amount, 626);
+  // coupon is on FACE value (50 units x 1000 = 50000), not the cost basis
+  eq('coupon = face * 2.5% / 2', p[0].amount, 625);
   var red = p.filter(function (r) { return r.kind === 'redemption'; });
   eq('one redemption', red.length, 1);
   eq('redemption at face (units x 1000)', red[0].amount, 50000);
@@ -475,7 +508,23 @@ console.log('commodityPayoutSchedule — SGB coupons + face redemption');
   eq('no broken end when anniv aligns', p.filter(function (r) { return r.kind === 'end'; }).length, 0);
   // custom coupon rate
   var p2 = Calc.commodityPayoutSchedule(Object.assign({}, sgb, { couponRate: 2.4 }));
-  eq('coupon at 2.4% = 601', p2[0].amount, 601);
+  eq('coupon at 2.4% = 600', p2[0].amount, 600);
+  // secondary-market SGB: coupons follow the SERIES' standard dates (issue anniv),
+  // with a pro-rata broken-start from purchase to the first standard date.
+  // Series issued 2023-09-20 (SGB 2024-II) -> coupons ~20 Mar / ~20 Sep.
+  var sec = { kind: 'sgb', name: 'SGB 2024-II (2nd mkt)', invested: 52000, units: 50,
+    purchaseDate: '2024-05-10', redeemDate: '2031-09-20', secondary: true, seriesIssue: '2023-09-20' };
+  var ps = Calc.commodityPayoutSchedule(sec);
+  // first standard date after purchase = 20 Sep 2024 (a FULL coupon — no pro-rata start)
+  eq('secondary first coupon on series date', ps[0].date, '2024-09-20');
+  // no broken-start row for secondary (first coupon is full)
+  eq('secondary has no broken-start', ps.filter(function (r) { return r.kind === 'end'; }).length, 0);
+  // next coupon a standard 6 months later
+  eq('secondary second coupon 20 Mar 2025', ps[1].date, '2025-03-20');
+  // coupon still on face value
+  eq('secondary coupon on face', ps[0].amount, 625);
+  // redemption still at face on maturity
+  eq('secondary redemption at face', ps.filter(function (r) { return r.kind === 'redemption'; })[0].amount, 50000);
   // maturity NOT on the anniversary -> a broken-end coupon before redemption
   var sgb2 = Object.assign({}, sgb, { redeemDate: '2028-12-07' });
   var p3 = Calc.commodityPayoutSchedule(sgb2);
