@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 21;
+  var APP_VERSION = 22;
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -535,6 +535,8 @@
     var eSum = Calc.fdEntrySummary(fd);
     cells.appendChild(fdCell('Invested', Calc.inr(fd.amount)));
     cells.appendChild(fdCell('Rate', fd.rate != null ? fd.rate + '%' : '—'));
+    cells.appendChild(fdCell('Days', Calc.fdDays(fd) != null ? String(Calc.fdDays(fd)) : '—',
+      fd.days ? 'tenure as recorded' : 'maturity − issue'));
     if (eSum.count) {
       var fyRow = Calc.fdFySummary([fd]);
       cells.appendChild(fdCell('Interest (paid)', Calc.inr(eSum.net),
@@ -872,7 +874,7 @@
     card.appendChild(head);
     var tbl = el('table', 'intTable archTable');
     var thead = el('tr');
-    ['Account', 'Invested', 'Rate', 'Issue → Maturity', 'Interest (net)', 'TDS', 'Maturity value', 'XIRR', ''].forEach(function (h) { thead.appendChild(el('th', '', h)); });
+      ['Account', 'Invested', 'Rate', 'Issue → Maturity', 'Days', 'Interest (net)', 'TDS', 'Maturity value', 'XIRR', ''].forEach(function (h) { thead.appendChild(el('th', '', h)); });
     tbl.appendChild(thead);
     list.slice().sort(function (a, b) { return (b.maturityDate || '').localeCompare(a.maturityDate || ''); }).forEach(function (a) {
       var sum = Calc.fdEntrySummary(a);
@@ -880,7 +882,8 @@
       tr.appendChild(el('td', '', a.account || '—'));
       tr.appendChild(el('td', '', Calc.inr(a.amount)));
       tr.appendChild(el('td', '', a.rate != null ? a.rate + '%' : '—'));
-      tr.appendChild(el('td', '', Calc.fmtDate(a.issueDate) + ' → ' + Calc.fmtDate(a.maturityDate)));
+       tr.appendChild(el('td', '', Calc.fmtDate(a.issueDate) + ' → ' + Calc.fmtDate(a.maturityDate)));
+       tr.appendChild(el('td', 'num', Calc.fdDays(a) != null ? String(Calc.fdDays(a)) : '—'));
        var fyA = sum.count ? Calc.fdFySummary([a]) : null;
        var fyTip = fyA
          ? '\n' + fyA.cur.label + ': ' + Calc.inr(fyA.cur.interest) + ' int · TDS ' + Calc.inr(fyA.cur.tax) +
@@ -932,7 +935,7 @@
       drow.hidden = true;
       drow.setAttribute('data-for', a.account + '|' + a.maturityDate + '|' + a.archivedAt);
       var cell = el('td', 'archDetailCell');
-      cell.setAttribute('colspan', '9');
+      cell.setAttribute('colspan', '10');
       cell.appendChild(archivedDetail(a));
       drow.appendChild(cell);
       tbl.appendChild(drow);

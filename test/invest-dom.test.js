@@ -87,6 +87,7 @@ whenReady(function run() {
   eq('row rendered', $$('#sec-fd .fdRow').length, 1);
   eq('invested shown', !!$('#sec-fd .fdRow .fdCell b'), true);
   eq('active badge shown', $$('#sec-fd .badge.b-active').length, 1);
+  eq('days cell shows tenure', ($$('#sec-fd .fdRow .fdCell')[2].textContent), 'Days444');
 
   console.log('3b) duplicate FD copies every field except the account number');
   App.DATA.fds[0].entries = [{ date: '2026-06-28', int: 8108, tax: 811 }];
