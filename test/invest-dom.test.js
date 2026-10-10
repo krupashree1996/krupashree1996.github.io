@@ -413,6 +413,21 @@ whenReady(function run() {
   App.DATA.fds.pop(); App.DATA.fds.pop();
   App.DATA.pans.pop();
 
+  console.log('10b) profile save cleans stale panId on archived records too');
+  App.DATA.pans.push({ id: 'panX', pan: 'XYZ999999Z', name: 'REMOVE ME' });
+  App.DATA.archived.push({ id: 'archStale', account: '130910DP00004030', panId: 'panX', pan: '', holder: 'REMOVE ME', amount: 100, rate: 5, issueDate: '2020-01-01', maturityDate: '2021-01-01', archivedAt: '2021-01-01' });
+  App.profileModal();
+  // remove only the panX row (pan1 must survive), then save
+  var panXRow = $$('#panRows .crow').filter(function (r) { return r.querySelector('input').value === 'XYZ999999Z'; })[0];
+  panXRow.querySelector('button').click();
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Save') b.click(); });
+  eq('panX removed, pan1 kept', App.DATA.pans.length, 1);
+  eq('pan1 still there', App.DATA.pans[0].id, 'pan1');
+  var stale = App.DATA.archived.filter(function (a) { return a.id === 'archStale'; })[0];
+  eq('archived stale panId cleared', stale.panId, '');
+  eq('archived holder text kept as fallback', stale.holder, 'REMOVE ME');
+  App.DATA.archived.pop();
+
   console.log('11) FD type field + SCSS/RBI auto-payout & TDS 0');
   App.buildFdForm(null);
   eq('type select present', !!$('#fType'), true);
@@ -430,11 +445,11 @@ whenReady(function run() {
   eq('scss forced to payout mode', scss.interestMode, 'payout');
   eq('scss TDS defaulted to 0', scss.tdsRate, 0);
   eq('scss row shows SCSS badge', $$('#sec-fd .fdRow').some(function (r) { return r.querySelector('.b-type') && r.querySelector('.b-type').textContent === 'SCSS'; }), true);
-  // The "Expected total" cell for the SCSS row must be the principal (₹10,00,000),
+  // The "Maturity value" cell for the SCSS row must be the principal (₹10,00,000),
   // NOT P + simple interest (which would be ~₹14,34,xxx).
   var scssRow = $$('#sec-fd .fdRow').filter(function (r) { return r.getAttribute('data-account') === 'SCSS99990001'; })[0];
-  var expCell = Array.prototype.slice.call(scssRow.querySelectorAll('.fdCell')).filter(function (c) { return c.querySelector('small') && c.querySelector('small').textContent === 'Expected total'; })[0];
-  eq('scss expected total = principal only', expCell.querySelector('b').textContent, '₹10,00,000');
+  var expCell = Array.prototype.slice.call(scssRow.querySelectorAll('.fdCell')).filter(function (c) { return c.querySelector('small') && c.querySelector('small').textContent === 'Maturity value'; })[0];
+  eq('scss maturity value = principal only', expCell.querySelector('b').textContent, '₹10,00,000');
 
   console.log('12) commodities tab — add SGB holding + coupon');
   App.switchTab('commodities');
@@ -507,6 +522,26 @@ whenReady(function run() {
   // close the modal
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
 
+  console.log('12c) SGB series dropdown pre-fills name + dates');
+  $$('#sec-commodities button').forEach(function (b) { if (b.textContent === '+ Add holding') b.click(); });
+  eq('series dropdown present', !!$('#cSeries'), true);
+  var seriesOpts = $$('#cSeries option').map(function (o) { return o.value; });
+  eq('series dropdown has a 2024 tranche', seriesOpts.indexOf('SGB 2024-II') >= 0, true);
+  eq('series dropdown has a custom option', seriesOpts.indexOf('') >= 0, true);
+  // Selecting a listed series pre-fills the (empty) name, purchase date and
+  // the 8-year redemption date.
+  setValue('#cSeries', 'SGB 2024-II');
+  eq('series pre-fills name', $('#cName').value, 'SGB 2024-II');
+  eq('series pre-fills purchase date', $('#cPurchase').value, '20/09/2023');
+  eq('series pre-fills redemption date', $('#cRedeem').value, '20/09/2031');
+  setValue('#cCost', '50104');
+  setValue('#cUnits', '50');
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add holding') b.click(); });
+  var sgb2 = App.DATA.commodities.filter(function (c) { return c.series === 'SGB 2024-II'; })[0];
+  eq('series stored on record', !!sgb2, true);
+  var sgb2Row = Array.prototype.slice.call(document.querySelectorAll('#sec-commodities tr')).filter(function (r) { return r.textContent.indexOf('SGB 2024-II') >= 0; })[0];
+  eq('series shown in the row', !!sgb2Row, true);
+
   console.log('13) SCSS payout-estimate fields + schedule display');
   App.switchTab('fd');
   App.buildFdForm(null);
@@ -546,6 +581,15 @@ whenReady(function run() {
   eq('schedule shows estimated total', schedText.indexOf('estimated total') >= 0, true);
   eq('schedule row count (21 periods)', schedTbl.querySelectorAll('tr').length - 1, 22); // 21 + total row
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
+  // payout-mode ledger column is labelled honestly (cash received, not "worth")
+  sc2.entries = [{ date: '2026-03-31', int: 9211, tax: 0 }];
+  App.buildInterestForm(sc2);
+  var payoutHdr = $$('#interestModal .intTable th').map(function (t) { return t.textContent; });
+  eq('payout ledger column is Received (cum.)', payoutHdr.indexOf('Received (cum.)') >= 0, true);
+  eq('payout ledger has no Worth after column', payoutHdr.indexOf('Worth after') < 0, true);
+  var payoutTotalHint = $$('#interestModal .hint').filter(function (h) { return h.textContent.indexOf('Total:') === 0; })[0];
+  eq('payout total line says received in total', payoutTotalHint && payoutTotalHint.textContent.indexOf('received in total') >= 0, true);
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
   // FD keeps hiding the estimate fields
   App.buildFdForm(null);
   eq('estimate fields hidden again for FD', $('#fEstFull').parentNode.style.display, 'none');
@@ -569,6 +613,18 @@ whenReady(function run() {
   eq('Est. at maturity cell on compound row', !!cfdCell, true);
   eq('compound tooltip mentions credited in', cfdCell.title.indexOf('credited in') >= 0, true);
   eq('compound tooltip has maturity value line', cfdCell.title.indexOf('Estimated value at maturity') >= 0, true);
+  // When the slip's bank-stated maturity value is on the record, the cell shows
+  // the bank figure (label 'Maturity value') and the estimate stays in the tooltip.
+  cfd.maturityValue = 610000;
+  App.renderAll();
+  var cfdRow2 = $$('#sec-fd .fdRow').filter(function (r) { return r.getAttribute('data-account') === '999999DP99999901'; })[0];
+  var bankCell = Array.prototype.slice.call(cfdRow2.querySelectorAll('.fdCell')).filter(function (c) { return c.querySelector('small') && c.querySelector('small').textContent === 'Maturity value'; })[0];
+  eq('bank maturity value cell shown', !!bankCell, true);
+  eq('bank value in cell', bankCell.querySelector('b').textContent, '₹6,10,000');
+  eq('estimate kept in tooltip', bankCell.title.indexOf('Estimated value at maturity') >= 0, true);
+  eq('tooltip shows bank minus estimate', bankCell.title.indexOf('Bank value − estimate =') >= 0, true);
+  cfd.maturityValue = 0;
+  App.renderAll();
   // interest modal shows the running-value schedule
   App.buildInterestForm(cfd);
   var cTbls = $$('#interestModal table.intTable');
@@ -589,6 +645,29 @@ whenReady(function run() {
   eq('compound FD hides estimate fields again', $('#fEstFull').parentNode.style.display, 'none');
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
 
+  console.log('15) bundle load archives matured FDs on import');
+  // loadBundle replaces all data, so this runs last.
+  // jsdom's FileReader is async and its File has no readable content API, so
+  // stub readAsText to deliver the known bundle string synchronously — this
+  // still exercises loadBundle's parse + archive path.
+  var bundleJson = JSON.stringify({
+    version: 1, pans: [], profile: {}, meta: {}, notes: '', archived: [],
+    // Matured within the last 1.5 FYs so archiveMatured keeps it (not pruned).
+    fds: [{ id: 'bundleFd', account: '130910DP00004040', panId: '', amount: 1000, rate: 5,
+      issueDate: '2025-03-31', maturityDate: '2026-03-31', days: 365, interestMode: 'compound', entries: [] }]
+  });
+  dom.window.FileReader.prototype.readAsText = function (file) {
+    var self = this;
+    Object.defineProperty(self, 'result', { value: bundleJson, configurable: true, writable: true });
+    if (self.onload) self.onload();
+  };
+  var bundleFile = new dom.window.File([bundleJson], 'b.json', { type: 'application/json' });
+  App.loadBundle(bundleFile);
+  // loadBundle is synchronous with the stubbed FileReader, so assert directly.
+  eq('bundle load completed', !!App.DATA, true);
+  eq('matured FD moved out of active list', App.DATA.fds.some(function (f) { return f.id === 'bundleFd'; }), false);
+  eq('matured FD archived on load', App.DATA.archived.some(function (a) { return a.id === 'bundleFd'; }), true);
+  eq('toast mentions the archive', $('#toasts').textContent.indexOf('archived 1 matured FD') >= 0, true);
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exit(1);
 });

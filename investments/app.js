@@ -9,7 +9,37 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 22;
+  var APP_VERSION = 23;
+
+  /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
+   * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
+   * issue date (used to pre-fill purchase date; redemption = issue + 8y).
+   * Source: RBI SGB tranche data (via Wikipedia "Sovereign Gold Bond"). */
+  var SGB_SERIES = [
+    { l: 'SGB 2020-I', d: '2019-06-11' }, { l: 'SGB 2020-II', d: '2019-07-16' },
+    { l: 'SGB 2020-III', d: '2019-08-14' }, { l: 'SGB 2020-IV', d: '2019-09-17' },
+    { l: 'SGB 2020-V', d: '2019-10-15' }, { l: 'SGB 2020-VI', d: '2019-10-30' },
+    { l: 'SGB 2020-VII', d: '2019-12-10' }, { l: 'SGB 2020-VIII', d: '2020-01-21' },
+    { l: 'SGB 2020-IX', d: '2020-02-11' }, { l: 'SGB 2020-X', d: '2020-03-11' },
+    { l: 'SGB 2021-I', d: '2020-04-28' }, { l: 'SGB 2021-II', d: '2020-05-19' },
+    { l: 'SGB 2021-III', d: '2020-06-16' }, { l: 'SGB 2021-IV', d: '2020-07-14' },
+    { l: 'SGB 2021-V', d: '2020-08-11' }, { l: 'SGB 2021-VI', d: '2020-09-08' },
+    { l: 'SGB 2021-VII', d: '2020-10-20' }, { l: 'SGB 2021-VIII', d: '2020-11-18' },
+    { l: 'SGB 2021-IX', d: '2021-01-05' }, { l: 'SGB 2021-X', d: '2021-01-19' },
+    { l: 'SGB 2021-XI', d: '2021-02-09' }, { l: 'SGB 2021-XII', d: '2021-03-09' },
+    { l: 'SGB 2022-I', d: '2021-05-25' }, { l: 'SGB 2022-II', d: '2021-06-01' },
+    { l: 'SGB 2022-III', d: '2021-06-08' }, { l: 'SGB 2022-IV', d: '2021-07-20' },
+    { l: 'SGB 2022-V', d: '2021-08-17' }, { l: 'SGB 2022-VI', d: '2021-09-07' },
+    { l: 'SGB 2022-VII', d: '2021-11-02' }, { l: 'SGB 2022-VIII', d: '2021-12-07' },
+    { l: 'SGB 2022-IX', d: '2022-01-18' }, { l: 'SGB 2022-X', d: '2022-03-08' },
+    { l: 'SGB 2023-I', d: '2022-06-28' }, { l: 'SGB 2023-II', d: '2022-08-30' },
+    { l: 'SGB 2023-III', d: '2022-12-27' }, { l: 'SGB 2023-IV', d: '2023-03-14' },
+    { l: 'SGB 2024-I', d: '2023-06-27' }, { l: 'SGB 2024-II', d: '2023-09-20' },
+    { l: 'SGB 2024-III', d: '2023-12-28' }, { l: 'SGB 2024-IV', d: '2024-02-21' }
+  ];
+  function sgbSeriesOpts() {
+    return [{ v: '', l: '— custom / not a listed series —' }].concat(SGB_SERIES.map(function (s) { return { v: s.l, l: s.l }; }));
+  }
 
   function el(tag, cls, text) {
     var e = document.createElement(tag || 'div');
@@ -533,6 +563,8 @@
     var exp = Calc.fdExpectedTotal(fd);
     var usedMv = fd.maturityValue > 0;
     var eSum = Calc.fdEntrySummary(fd);
+    var sched = Calc.fdPayoutSchedule(fd);
+    var compound = Calc.normFdType(fd) === 'fd' && Calc.normInterestMode(fd) === 'compound';
     cells.appendChild(fdCell('Invested', Calc.inr(fd.amount)));
     cells.appendChild(fdCell('Rate', fd.rate != null ? fd.rate + '%' : '—'));
     cells.appendChild(fdCell('Days', Calc.fdDays(fd) != null ? String(Calc.fdDays(fd)) : '—',
@@ -543,17 +575,14 @@
         eSum.count + ' payout' + (eSum.count > 1 ? 's' : '') + ' · TDS ' + Calc.inr(eSum.tax) +
         '\n' + fyRow.cur.label + ': ' + Calc.inr(fyRow.cur.interest) + ' int · TDS ' + Calc.inr(fyRow.cur.tax) +
         '\n' + fyRow.prev.label + ': ' + Calc.inr(fyRow.prev.interest) + ' int · TDS ' + Calc.inr(fyRow.prev.tax)));
-      var payout = Calc.normInterestMode(fd) === 'payout';
-      cells.appendChild(fdCell('Worth now', Calc.inr(payout ? (fd.amount || 0) : eSum.after),
-        payout ? 'principal (interest paid out)' : 'invested + interest paid out'));
-    } else {
+    } else if (!(compound && sched.length)) {
+      // A compound FD with a schedule shows its maturity figure in the
+      // schedule cell below, so the simple-interest pair is redundant.
       cells.appendChild(fdCell('Interest', Calc.inr(Calc.fdInterest(fd)), !usedMv ? 'simple interest (est.)' : 'from PNB value'));
-      var expTip = usedMv ? 'bank-stated maturity value' : (Calc.normFdType(fd) !== 'fd' ? 'principal returned at maturity (interest paid out)' : 'computed (P + simple interest)');
-      cells.appendChild(fdCell('Expected total', Calc.inr(exp), expTip));
+      var expTip = usedMv ? 'bank-stated value from the PNB slip' : (Calc.normFdType(fd) !== 'fd' ? 'principal returned at maturity (interest paid out)' : 'computed (P + simple interest)');
+      cells.appendChild(fdCell('Maturity value', Calc.inr(exp), expTip));
     }
-    var sched = Calc.fdPayoutSchedule(fd);
     if (sched.length) {
-      var compound = Calc.normFdType(fd) === 'fd' && Calc.normInterestMode(fd) === 'compound';
       var q = Calc.normFdType(fd) === 'rbi' ? 2 : 4;
       var sg = 0; sched.forEach(function (r) { sg += r.amount; });
       var next = sched.filter(function (r) { return r.date >= Calc.todayISO(); })[0];
@@ -563,12 +592,18 @@
         return Calc.fmtDate(r.date) + ' · ' + k + ' · ' + amt;
       });
       var totalLine = compound ? 'Estimated value at maturity: ' + Calc.inr(sched[sched.length - 1].after) : 'Estimated total gross: ' + Calc.inr(sg);
-      var cellLabel = compound ? 'Est. at maturity' : 'Est. payout';
+      // PNB slips print the exact maturity value — when it's on the record, show
+      // the bank's figure in the cell and keep the app's estimate in the tooltip.
+      var bankMv = compound && fd.maturityValue > 0;
+      var cellLabel = bankMv ? 'Maturity value' : (compound ? 'Est. at maturity' : 'Est. payout');
       var cellTip = compound
-        ? 'Estimated schedule: interest credited in every ' + q + '-month period (compounded on the running value)\n'
+        ? (bankMv ? 'Bank-stated value from the PNB slip. ' : 'Estimated schedule: ') + 'interest credited in every ' + q + '-month period (compounded on the running value)\n'
         : 'Estimated payout schedule (true periods — full = principal \u00d7 rate \u00f7 ' + q + '; broken ends as set in this record)\n';
-      cells.appendChild(fdCell(cellLabel, next ? (Calc.inr(next.amount) + (compound ? ' in by ' : ' by ') + Calc.fmtDate(next.date)) : 'done',
-        cellTip + lines.join('\n') + '\n\n' + totalLine));
+      var cellVal = bankMv
+        ? Calc.inr(fd.maturityValue)
+        : (next ? (Calc.inr(next.amount) + (compound ? ' in by ' : ' by ') + Calc.fmtDate(next.date)) : 'done');
+      cells.appendChild(fdCell(cellLabel, cellVal,
+        cellTip + lines.join('\n') + '\n\n' + totalLine + (bankMv ? '\n\nBank value \u2212 estimate = ' + Calc.inr(fd.maturityValue - sched[sched.length - 1].after) : '')));
     }
     cells.appendChild(fdCell('Maturity', Calc.fmtDate(fd.maturityDate), fd.maturityDate ? ('issued ' + Calc.fmtDate(fd.issueDate)) : ''));
 
@@ -753,7 +788,11 @@
     }
     var tbl = el('table', 'intTable');
     var thead = el('tr');
-    ['Date', 'Days', 'Gross', 'TDS', 'Net', 'Worth after', 'Calc (est.)'].concat(readOnly ? [] : ['']).forEach(function (h) { thead.appendChild(el('th', '', h)); });
+    // Compound: 'Worth after' = running balance (principal + credited net).
+    // Payout: the FD is always worth the principal (interest was paid out), so
+    // the column is the cumulative cash received instead — same figure, honest label.
+    var worthLabel = Calc.normInterestMode(fd) === 'compound' ? 'Worth after' : 'Received (cum.)';
+    ['Date', 'Days', 'Gross', 'TDS', 'Net', worthLabel, 'Calc (est.)'].concat(readOnly ? [] : ['']).forEach(function (h) { thead.appendChild(el('th', '', h)); });
     tbl.appendChild(thead);
     rows.forEach(function (r) {
       var tr = el('tr');
@@ -793,7 +832,10 @@
     });
     box.appendChild(tbl);
     var s = Calc.fdEntrySummary(fd);
-    box.appendChild(el('p', 'hint', 'Total: ' + s.count + ' payout' + (s.count > 1 ? 's' : '') + ' \u00b7 gross ' + Calc.inr(s.gross) + ' \u00b7 TDS ' + Calc.inr(s.tax) + ' \u00b7 net interest ' + Calc.inr(s.net) + ' \u00b7 worth now ' + Calc.inr(s.after)));
+    var afterTxt = Calc.normInterestMode(fd) === 'compound'
+      ? 'worth now ' + Calc.inr(s.after)
+      : 'received in total ' + Calc.inr(s.after) + ' (FD still worth the principal)';
+    box.appendChild(el('p', 'hint', 'Total: ' + s.count + ' payout' + (s.count > 1 ? 's' : '') + ' \u00b7 gross ' + Calc.inr(s.gross) + ' \u00b7 TDS ' + Calc.inr(s.tax) + ' \u00b7 net interest ' + Calc.inr(s.net) + ' \u00b7 ' + afterTxt));
     if (s.count) {
       var fy = Calc.fdFySummary([fd]);
       var fyBits = [
@@ -838,7 +880,7 @@
       var kv = el('div', 'kv inline');
       kv.appendChild(kvin('Invested', Calc.inr(s.invested)));
       kv.appendChild(kvin('Close now', closeNowCount ? Calc.inr(closeNow) : '—', 'pos'));
-      kv.appendChild(kvin('Expected total', Calc.inr(s.expected)));
+      kv.appendChild(kvin('Maturity value', Calc.inr(s.expected)));
       kv.appendChild(kvin(fy.cur.label + ' interest', fy.cur.count ? Calc.inr(fy.cur.interest) : '₹0', fy.cur.count ? 'pos' : 'muted'));
       kv.appendChild(kvin(fy.cur.label + ' TDS', fy.cur.count ? Calc.inr(fy.cur.tax) : '₹0', fy.cur.count ? '' : 'muted'));
       kv.appendChild(kvin(fy.prev.label + ' interest', fy.prev.count ? Calc.inr(fy.prev.interest) : '₹0', fy.prev.count ? 'pos' : 'muted'));
@@ -1232,6 +1274,7 @@
     if (c.panId || c.pan) label += ' · ' + (Calc.holderLabel(holderOf(c.panId)) || c.pan || 'holder');
     nameCell.appendChild(el('b', '', label));
     var sub = [];
+    if (c.series) sub.push(c.series);
     sub.push(Calc.fmtDate(c.purchaseDate));
     if (c.soldDate) sub.push('→ sold ' + Calc.fmtDate(c.soldDate));
     else sub.push((c.units > 0 ? c.units + ' g · ' : '') + 'valued ' + Calc.fmtDate(c.valuedOn || today));
@@ -1293,6 +1336,7 @@
       { v: 'gold', l: 'Gold (ETF / physical)' },
       { v: 'other', l: 'Other commodity' }
     ], c.kind || 'sgb')));
+    form.appendChild(field('SGB series', selectControl('cSeries', sgbSeriesOpts(), c.series || ''), true));
     var panOpts = panOptions();
     if (panOpts.length) form.appendChild(field('PAN holder', selectControl('cPanId', panOpts, c.panId || '')));
     form.appendChild(field('PAN (if holder not listed)', textInput('cPan', c.pan, 'ABCDE1234F')));
@@ -1305,6 +1349,7 @@
     form.appendChild(field('SGB redemption date (maturity)', dateInput('cRedeem', c.redeemDate), true));
     form.appendChild(field('Coupon rate (% p.a.)', numInput('cRate', c.couponRate, 'SGB default 2.5')));
     var kindSel = form.querySelector('#cKind');
+    var seriesSel = form.querySelector('#cSeries');
     var sgbRedeem = form.querySelector('#cRedeem'), sgbRate = form.querySelector('#cRate');
     if (sgbRedeem) sgbRedeem = sgbRedeem.parentNode.parentNode; // the <label> wrapper
     if (sgbRate) sgbRate = sgbRate.parentNode; // numInput sits directly in the label
@@ -1312,9 +1357,23 @@
       var sgb = kindSel.value === 'sgb';
       if (sgbRedeem) sgbRedeem.style.display = sgb ? '' : 'none';
       if (sgbRate) sgbRate.style.display = sgb ? '' : 'none';
+      if (seriesSel) seriesSel.style.display = sgb ? '' : 'none';
     }
     kindSel.addEventListener('change', syncSgbVisibility);
     syncSgbVisibility();
+    // Picking a listed SGB series pre-fills the name, purchase date and the
+    // 8-year redemption date; the user can still override any of them.
+    function applySeries() {
+      var s = SGB_SERIES.filter(function (x) { return x.l === seriesSel.value; })[0];
+      if (!s) return;
+      var nameEl = document.getElementById('cName');
+      if (nameEl && !nameEl.value.trim()) nameEl.value = s.l;
+      var p = s.d.split('-');
+      document.getElementById('cPurchase').value = p[2] + '/' + p[1] + '/' + p[0];
+      var rd = document.getElementById('cRedeem');
+      if (rd && !rd.value.trim()) rd.value = p[2] + '/' + p[1] + '/' + (p[0] - 0 + 8);
+    }
+    seriesSel.addEventListener('change', applySeries);
     form.appendChild(field('Redemption / sold value (₹)', numInput('cSold', c.soldValue, 'blank = still holding')));
     form.appendChild(field('Redemption / sold date', dateInput('cSoldOn', c.soldDate)));
     form.appendChild(field('Notes', textInput('cNotes', c.notes, ''), true));
@@ -1324,6 +1383,7 @@
         id: c.id || Calc.uid('commodity'),
         name: val('cName').trim(),
         kind: val('cKind'),
+        series: val('cSeries'),
         panId: document.getElementById('cPanId') ? val('cPanId') : (c.panId || ''),
         pan: val('cPan'),
         invested: num('cCost'),
@@ -1496,6 +1556,14 @@
         if (out.panId && !newIds[out.panId]) { out.panId = ''; out.pan = out.pan || out.holder; }
         return out;
       });
+      // Archived records keep their full payout history, so they need the same
+      // stale-holder cleanup — otherwise a removed PAN silently unassigns
+      // matured FDs from the holder filter.
+      DATA.archived = (DATA.archived || []).map(function (fd) {
+        var out = JSON.parse(JSON.stringify(fd));
+        if (out.panId && !newIds[out.panId]) { out.panId = ''; out.pan = out.pan || out.holder; }
+        return out;
+      });
       if (S.curPan && !newIds[S.curPan]) S.curPan = '';
       resyncHolders();
       persist(); closeModal(); renderAll();
@@ -1558,8 +1626,15 @@
         DATA.meta = d.meta || {};
         DATA.notes = d.notes || '';
         resyncHolders();
+        // Same post-load housekeeping as load(): move matured FDs into history
+        // and prune history past 1.5 FYs, so a bundle with matured records
+        // doesn't keep showing them as active until the next page load.
+        var r = archiveMatured();
+        var msgs = ['Bundle loaded.'];
+        if (r.moved) msgs.push('archived ' + r.moved + ' matured FD' + (r.moved > 1 ? 's' : ''));
+        if (r.pruned) msgs.push('removed ' + r.pruned + ' past 1.5 FYs');
         persist(); renderAll();
-        toast('Bundle loaded.', 'ok');
+        toast(msgs.join(' · '), 'ok');
       } catch (e) {
         toast('Could not load bundle: ' + e.message, 'bad');
       }
@@ -1641,5 +1716,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview, autoImport: autoImport, resyncHolders: resyncHolders, commodityForm: commodityForm, renderCommodities: renderCommodities };
+  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview, autoImport: autoImport, resyncHolders: resyncHolders, commodityForm: commodityForm, renderCommodities: renderCommodities, loadBundle: loadBundle, profileModal: profileModal };
 })();
