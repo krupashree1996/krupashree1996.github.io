@@ -612,16 +612,17 @@ var Calc = (function () {
      rows.sort(function (a, b) { return String(a.date) < String(b.date) ? -1 : String(a.date) > String(b.date) ? 1 : 0; });
      return rows;
    }
-   /* The first scheduled period that has no recorded entry within `tol` days —
-    * i.e. the next interest payment still to be recorded (null when none). */
-   function nextUnrecorded(sched, entries, today, tol) {
-     today = today || todayISO();
-     var rows = mergeSchedule(sched, entries, tol);
-     for (var i = 0; i < rows.length; i++) {
-       if (!rows[i].extra && !rows[i].matched && rows[i].date >= today) return rows[i];
-     }
-     return null;
-   }
+    /* The first scheduled period that has no recorded entry within `tol` days —
+     * i.e. the next interest payment still to be recorded (null when none).
+     * Includes overdue periods (date < today) so missed payments still show up
+     * in the reminder banner (flagged red by the UI). */
+    function nextUnrecorded(sched, entries, today, tol) {
+      var rows = mergeSchedule(sched, entries, tol);
+      for (var i = 0; i < rows.length; i++) {
+        if (!rows[i].extra && !rows[i].matched) return rows[i];
+      }
+      return null;
+    }
    function validFd(fd) {
     var e = [];
     if (!(fd.account || '').trim()) e.push('Account number is required.');

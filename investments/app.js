@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 25;
+  var APP_VERSION = 26;
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -77,9 +77,9 @@
     head.appendChild(el('h2', '', 'Up next — record the interest you get'));
     head.appendChild(el('span', 'chip', list.length + ' due'));
     card.appendChild(head);
-    var ul = el('ul', 'remList');
     var today = Calc.todayISO();
-    list.forEach(function (e) {
+    var LIMIT = 3;
+    function itemEl(e) {
       var days = Math.round((Calc.parseISO(e.date) - Calc.parseISO(today)) / 86400000);
       var when = days < 0 ? 'overdue by ' + Math.abs(days) + 'd' : (days === 0 ? 'due today' : 'in ' + days + 'd');
       var liEl = el('li', 'remItem' + (days < 0 ? ' overdue' : ''));
@@ -87,9 +87,20 @@
       liEl.appendChild(el('span', 'remWho', e.label + (e.kind && e.kind !== 'FD' ? ' · ' + e.kind : '')));
       liEl.appendChild(el('span', 'remAmt', Calc.inr(e.amount)));
       liEl.appendChild(el('span', 'remWhen', when));
-      ul.appendChild(liEl);
-    });
+      return liEl;
+    }
+    var ul = el('ul', 'remList');
+    list.slice(0, LIMIT).forEach(function (e) { ul.appendChild(itemEl(e)); });
     card.appendChild(ul);
+    if (list.length > LIMIT) {
+      var more = el('button', 'mini remMore', 'show ' + (list.length - LIMIT) + ' more');
+      more.type = 'button';
+      more.onclick = function () {
+        list.slice(LIMIT).forEach(function (e) { ul.appendChild(itemEl(e)); });
+        more.remove();
+      };
+      card.appendChild(more);
+    }
     card.appendChild(el('p', 'hint', 'Estimated dates from each record’s schedule. Record a payout or coupon in the interest/coupon table to clear its period.'));
     sec.appendChild(card);
   }
@@ -255,9 +266,10 @@
     var wrap = document.getElementById('sumChips');
     wrap.textContent = '';
     var s = Calc.fdSummary(filterFds(DATA.fds));
-    wrap.appendChild(el('span', 'chip', s.count ? s.count + ' FD' + (s.count > 1 ? 's' : '') : 'no FDs'));
-    wrap.appendChild(el('span', 'chip', s.active + ' active · ' + s.matured + ' matured'));
-    wrap.appendChild(el('span', 'chip pnl', 'invested ' + Calc.compact(s.invested)));
+    var chipTxt = s.count
+      ? s.active + ' active FD' + (s.active > 1 ? 's' : '') + (s.matured ? ' · ' + s.matured + ' matured' : '')
+      : 'no FDs';
+    wrap.appendChild(el('span', 'chip', chipTxt));
   }
 
   /* ---- form helpers ---- */
@@ -714,7 +726,6 @@
       { v: 'compound', l: 'Compound (credited into principal)' },
       { v: 'payout', l: 'Payout (paid out, principal fixed)' }
     ], mode)));
-    f.form.appendChild(el('p', 'hint', 'One table: each expected period with the bank\u2019s actual filled in beside it. Tap a period to pre-fill the form; record it and the row turns green. \u201cDiff\u201d = actual \u2212 estimate.'));
     var box = el('div', 'intList');
     f.form.appendChild(box);
 
@@ -1466,7 +1477,7 @@
   /* One merged table for an SGB: the estimated coupon + redemption schedule with
    * the recorded coupons filled in beside each period (matched within ~10 days).
    * Redemption (face) is a reference row — no actual to record. */
-  function appendCommoditySchedule(c, box) {
+  function appendCommoditySchedule(c, box, onRecord) {
     var sched = Calc.commodityPayoutSchedule(c);
     if (!sched.length) return;
     var rate = c.couponRate != null ? c.couponRate : 2.5;
@@ -1474,7 +1485,7 @@
     var rows = Calc.mergeSchedule(sched, c.coupons || [], 10);
     var stbl = el('table', 'intTable merged');
     var sth = el('tr');
-    ['Date', 'Kind', 'Est. amount', 'Received', 'Diff'].forEach(function (h) { sth.appendChild(el('th', '', h)); });
+    ['Date', 'Kind', 'Est. amount', 'Received', 'Diff', ''].forEach(function (h) { sth.appendChild(el('th', '', h)); });
     stbl.appendChild(sth);
     rows.forEach(function (row) {
       var m = row.matched;
@@ -1496,6 +1507,17 @@
         tr.appendChild(el('td', 'num', ''));
         tr.appendChild(diffCell(null));
       }
+      var act = el('td', 'rowAct');
+      if (m) {
+        act.appendChild(el('span', 'tickOk', '\u2713'));
+      } else if (row.kind !== 'redemption' && onRecord) {
+        var rec = el('button', 'mini record', 'record');
+        rec.type = 'button';
+        rec.title = 'Pre-fill the form with this period\u2019s date + estimate';
+        rec.onclick = function () { onRecord(row); };
+        act.appendChild(rec);
+      }
+      tr.appendChild(act);
       if (m) tr.className = 'got';
       stbl.appendChild(tr);
     });
@@ -1506,11 +1528,12 @@
     st.appendChild(el('td', 'num strong', Calc.inr(sg)));
     st.appendChild(el('td', 'num'));
     st.appendChild(el('td', 'num'));
+    st.appendChild(el('td', ''));
     stbl.appendChild(st);
     var sw = el('div', 'archWrap');
     sw.appendChild(stbl);
     box.appendChild(sw);
-    box.appendChild(el('p', 'hint', 'Estimated schedule: coupon = invested \u00d7 ' + rate + '% \u00f7 2 = ' + Calc.inr(full) + ' every ~6 months on the purchase date, plus face-value redemption (' + Calc.inr(Math.round((c.units || 0) * 1000)) + ') at maturity. Record a coupon below and its period fills in green. This is an estimate, not a bank promise.'));
+    box.appendChild(el('p', 'hint', 'Estimated schedule: coupon = invested \u00d7 ' + rate + '% \u00f7 2 = ' + Calc.inr(full) + ' every ~6 months on the purchase date, plus face-value redemption (' + Calc.inr(Math.round((c.units || 0) * 1000)) + ') at maturity. Tap a period\u2019s record button to pre-fill the form. This is an estimate, not a bank promise.'));
   }
   function commodityCoupon(c) {
     c.coupons = c.coupons || [];
@@ -1518,7 +1541,13 @@
     f.form.appendChild(el('p', 'hint', 'SGB pays a 2.5% p.a. coupon on face value, semi-annually. Record each receipt; it feeds the return and XIRR.'));
     var cSchedBox = el('div', 'comSched');
     f.form.appendChild(cSchedBox);
-    appendCommoditySchedule(c, cSchedBox);
+    function startRecord(row) {
+      document.getElementById('cpDate').value = Calc.isoToDDMMYYYY(row.date);
+      document.getElementById('cpAmt').value = row.amount != null ? row.amount : '';
+      f.err.textContent = '';
+      document.getElementById('cpAmt').focus();
+    }
+    appendCommoditySchedule(c, cSchedBox, startRecord);
     f.form.appendChild(field('Date', dateInput('cpDate', '')));
     f.form.appendChild(field('Amount (₹)', numInput('cpAmt', '', 'e.g. 3000')));
     var save = el('button', 'primary', 'Add coupon');

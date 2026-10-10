@@ -175,7 +175,7 @@ whenReady(function run() {
   console.log('5) summary chips reflect totals');
   App.renderAll();
   var chips = $('#sumChips').textContent;
-  eq('chip shows 4 FDs', chips.indexOf('4 FDs') >= 0, true);
+  eq('chip shows 4 active FDs', chips.indexOf('4 active FDs') >= 0, true);
 
   console.log('6) interest ledger modal — add payout, compound running');
   // Open the interest modal for the first FD (the one added in step 2).
@@ -524,6 +524,12 @@ whenReady(function run() {
   eq('schedule has first coupon', stText.indexOf('21 Aug 2024') >= 0, true);
   eq('schedule marks redemption (face)', stText.indexOf('redemption (face)') >= 0, true);
   eq('schedule has estimated total', stText.indexOf('estimated total') >= 0, true);
+  // unrecorded coupon periods offer a record button that pre-fills the form
+  var sgbRecBtn = $('#modalBox .intTable button.record');
+  eq('sgb record button present', !!sgbRecBtn, true);
+  sgbRecBtn.click();
+  eq('sgb record pre-fills date', $('#cpDate').value.length === 10, true);
+  eq('sgb record pre-fills estimate', Number($('#cpAmt').value) > 0, true);
   // close the modal
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Cancel') b.click(); });
 
@@ -669,11 +675,27 @@ whenReady(function run() {
   $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Add FD') b.click(); });
   var remFd = App.DATA.fds.filter(function (f) { return f.account === '130910DP00004099'; })[0];
   eq('payout FD added', !!remFd, true);
+  // A past-dated FD with no recorded payouts -> its overdue period shows red.
+  App.DATA.fds.push({ id: 'overdueFd', account: '130910DP00004009', panId: 'pan1', pan: '', holder: '',
+    amount: 100000, rate: 8, issueDate: '2024-01-01', maturityDate: '2027-01-01',
+    interestMode: 'payout', entries: [] });
   App.renderAll();
+  eq('overdue item shown in red', !!$('#sec-fd .reminder .remItem.overdue'), true);
   var remCard = $('#sec-fd .reminder');
   eq('reminder banner shown', !!remCard, true);
-  eq('reminder lists the FD', remCard.textContent.indexOf('130910DP00004099') >= 0, true);
   eq('reminder has a due item', $$('#sec-fd .remItem').length >= 1, true);
+  // Banner is capped at 3 items; the rest sit behind a "show N more" button.
+  eq('banner capped at 3 items', $$('#sec-fd .remItem').length <= 3, true);
+  var moreBtn = $('#sec-fd .reminder button.remMore');
+  if (moreBtn) {
+    var hidden = Number(moreBtn.textContent.match(/\d+/)[0]);
+    moreBtn.click();
+    eq('show more expands the list', $$('#sec-fd .remItem').length, 3 + hidden);
+    eq('show more button removed after expand', !$('#sec-fd .reminder button.remMore'), true);
+    eq('expanded banner lists the FD', remCard.textContent.indexOf('130910DP00004099') >= 0, true);
+  } else {
+    eq('no show more when 3 or fewer -> FD visible', remCard.textContent.indexOf('130910DP00004099') >= 0, true);
+  }
   // Open the interest modal: unrecorded periods offer a "record" button that
   // pre-fills the form with the period's date + estimate.
   App.buildInterestForm(remFd);

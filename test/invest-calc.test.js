@@ -527,9 +527,12 @@ console.log('mergeSchedule / nextUnrecorded — matching actuals to estimated pe
   eq('two recorded -> next is Sep', n2.date, '2026-09-30');
   var n3 = Calc.nextUnrecorded(sched, [{ date: '2026-03-29', int: 1 }, { date: '2026-06-29', int: 1 }, { date: '2026-09-29', int: 1 }], '2026-03-01', 10);
   eq('all recorded -> none', n3, null);
-  // a period due before today but unrecorded is not "next" (it's overdue, not upcoming)
+  // overdue (unrecorded, date < today) periods still surface — the UI flags them red
   var n4 = Calc.nextUnrecorded(sched, [], '2026-08-01', 10);
-  eq('today past first two -> next is Sep', n4.date, '2026-09-30');
+  eq('overdue period is still "next"', n4.date, '2026-03-31');
+  // but a recorded overdue period is skipped
+  var n5 = Calc.nextUnrecorded(sched, [{ date: '2026-03-29', int: 1 }], '2026-08-01', 10);
+  eq('recorded overdue skipped -> next Jun', n5.date, '2026-06-30');
 })();
 
 console.log('commodities — market value / coupons / return / XIRR');
