@@ -149,7 +149,37 @@
     box.appendChild(el('div', 'form'));
     box.lastChild.appendChild(ok);
     modal(box, true);
-    setTimeout(function () { inp.focus(); }, 30);
+  }
+  function deleteCard() {
+    if (!C || DATA.cards.length <= 1) { toast('Keep at least one card profile.', 'warn'); return; }
+    var c = C;
+    var box = el('div');
+    box.appendChild(el('h2', '', 'Delete card'));
+    var msg = el('p', 'muted', 'This permanently removes ');
+    msg.appendChild(el('b', '', c.name));
+    msg.appendChild(el('span', '', ' and its ' + c.records.length + ' statement(s) and ' +
+      c.ledger.length + ' ledger entr' + (c.ledger.length === 1 ? 'y' : 'ies') + '. This cannot be undone.'));
+    box.appendChild(msg);
+    var row = el('div', 'form');
+    var del = el('button', 'danger', 'Delete');
+    del.onclick = function () {
+      var idx = DATA.cards.indexOf(c);
+      DATA.cards.splice(idx, 1);
+      /* if the deleted card was active, fall back to the first remaining one */
+      if (DATA.activeCardId === c.id) DATA.activeCardId = DATA.cards[0].id;
+      C = activeCard();
+      S.editing = null;
+      persist();
+      closeModal();
+      renderCardSwitcher();
+      renderAll();
+      toast('Deleted ' + c.name, 'ok');
+    };
+    var cancel = el('button', 'ghost', 'Cancel');
+    cancel.onclick = closeModal;
+    row.appendChild(del); row.appendChild(cancel);
+    box.appendChild(row);
+    modal(box, true);
   }
 
   function importFile(file) {
@@ -1365,6 +1395,7 @@
     });
     renderCardSwitcher();
     $('addCardBtn').addEventListener('click', addCard);
+    $('delCardBtn').addEventListener('click', deleteCard);
     $('homeGo').addEventListener('click', function () { showView('landing'); });
     $('ledgerGo').addEventListener('click', function () { showView('ledger'); });
     $('rewardsGo').addEventListener('click', function () { showView('rewards'); });
