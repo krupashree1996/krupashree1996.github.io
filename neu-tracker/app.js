@@ -18,7 +18,7 @@
 
   var STORE_KEY = 'ne.tracker.data';
   var PW_KEY = 'ne.tracker.pw';
-  var APP_VERSION = 5;
+  var APP_VERSION = 6;
 
   /* ---------------- tiny DOM helpers ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -74,9 +74,17 @@
   }
 
   /* ---------------- state ---------------- */
-  var DATA = null;      // migrated copy of window.DATA / localStorage
+  var DATA = null;      // migrated copy of window.DATA / localStorage (holds cards[])
+  var C = null;         // the active card profile (DATA.cards[activeCardId])
   var S = { st: null, checks: null, decisions: {}, curRecord: null, recId: null, rwRec: null, chartB: null, chartC: null, autoScheduled: false, committed: false, autoTimer: null, histCount: 3, dueCount: 3, editing: null };
   var importing = false;
+
+  function activeCard() {
+    var id = DATA.activeCardId;
+    var c = DATA.cards.filter(function (x) { return x.id === id; })[0];
+    return c || DATA.cards[0];
+  }
+  function isNeu() { return C && C.type === 'neu'; }
 
   function persist() {
     try {
@@ -92,6 +100,7 @@
     if (m.incompatible) { toast('Saved bundle is from a newer app version — update the app.', 'bad'); return; }
     DATA = m;
     window.DATA = m;
+    C = activeCard();
     normalizeLedgerDates();
   }
   /* Session-only: lives in sessionStorage — survives reloads of this tab,
@@ -296,7 +305,7 @@
   }
 
   function prevRecordOf(rec) {
-    var sorted = DATA.records.filter(function (r) { return r !== rec; }).sort(function (a, b) {
+    var sorted = C.records.filter(function (r) { return r !== rec; }).sort(function (a, b) {
       return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0);
     });
     for (var i = sorted.length - 1; i >= 0; i--) if ((Calc.pdate(sorted[i].periodTo) || 0) < (Calc.pdate(rec.periodTo) || 0)) return sorted[i];
@@ -308,10 +317,10 @@
     S.autoScheduled = false;
     S.committed = false;
     if (S.autoTimer) { clearInterval(S.autoTimer); S.autoTimer = null; }
-    var dup = DATA.records.filter(function (r) { return r.periodTo === st.periodTo; })[0];
+    var dup = C.records.filter(function (r) { return r.periodTo === st.periodTo; })[0];
     S.curRecord = dup || null;
     if (dup) toast('A record for this period already exists — verifying again will replace it.', 'warn');
-    var v = Calc.verifyStatement(st, { prevRecord: prevRecordOf(dup || { periodTo: st.periodTo }) || (DATA.records.length ? DATA.records[DATA.records.length - 1] : null), cardNo: DATA.card.no });
+    var v = Calc.verifyStatement(st, { prevRecord: prevRecordOf(dup || { periodTo: st.periodTo }) || (C.records.length ? C.records[C.records.length - 1] : null), cardNo: C.card.no });
     S.checks = v.checks;
     S.decisions = {};
     $('verifyTitle').textContent = 'Verify ' + (st.periodTo || st.statementDate) + ' statement';
@@ -349,12 +358,12 @@
   function commitStatement(auto) {
     S.committed = true;
     var rec = buildRecord();
-    var i = DATA.records.findIndex(function (r) { return r.id === rec.id; });
-    if (i >= 0) DATA.records[i] = rec; else DATA.records.push(rec);
-    DATA.records.sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); });
+    var i = C.records.findIndex(function (r) { return r.id === rec.id; });
+    if (i >= 0) C.records[i] = rec; else C.records.push(rec);
+    C.records.sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); });
     /* importing this statement proves the previous bill's dues were paid →
      * auto-record that payment so the old bill shows 'settled'. */
-    if (Calc.autoSettlePrior(DATA.records, DATA.ledger, rec) > 0) {
+    if (Calc.autoSettlePrior(C.records, C.ledger, rec) > 0) {
       toast('Previous bill marked paid (auto).', 'ok');
     }
     persist();
@@ -364,7 +373,7 @@
     /* auto-reconcile when the ledger fully matches the bill (nothing unmatched on
      * either side) → home. Otherwise the user must close the cycle out: stay on
      * the reconcile page until they click "Mark as reconciled (anyway)". */
-    var res = Calc.reconcile(rec, DATA.ledger, prevRecordOf(rec));
+    var res = Calc.reconcile(rec, C.ledger, prevRecordOf(rec));
     if (!rec.reconciled && res.matchedCount > 0 && !res.bookOnlyCount && !res.stmtOnlyCount) {
       markReconciled(rec, res);
       return;
@@ -391,7 +400,7 @@
   /* group keys below use date.slice(6,10)/slice(3,5) — needs fixed-width
    * dd/mm/yyyy; normalize every ledger date on load and after edits */
   function normalizeLedgerDates() {
-    DATA.ledger.forEach(function (e) {
+    C.ledger.forEach(function (e) {
       var iso = toISO(e.date);
       if (iso && iso !== e.date) e.date = fromISO(iso);
     });
@@ -418,7 +427,7 @@
     if (!isFinite(amount) || amount <= 0) { toast('Amount must be a positive number.', 'warn'); return; }
     var editing = S.editing;
     var entry = editing
-      ? DATA.ledger.filter(function (e) { return e.id === editing; })[0]
+      ? C.ledger.filter(function (e) { return e.id === editing; })[0]
       : { id: 'e-' + Date.now().toString(36), reconciled: '' };
     entry.date = date; entry.desc = desc; entry.category = cat;
     entry.amount = Math.round(amount * 100) / 100;
@@ -429,7 +438,7 @@
     } else {
       delete entry.forPeriod;
     }
-    if (!editing) DATA.ledger.push(entry);
+    if (!editing) C.ledger.push(entry);
     normalizeLedgerDates();
     S.editing = null;
     $('addBtn').textContent = 'Add entry';
@@ -441,7 +450,7 @@
     $('leDate').value = todayISO();
   }
   function editEntry(id) {
-    var e = DATA.ledger.filter(function (x) { return x.id === id; })[0];
+    var e = C.ledger.filter(function (x) { return x.id === id; })[0];
     if (!e) return;
     S.editing = id;
     $('leDate').value = toISO(e.date);
@@ -467,7 +476,7 @@
     renderLedger();
   }
   function delEntry(id) {
-    DATA.ledger = DATA.ledger.filter(function (e) { return e.id !== id; });
+    C.ledger = C.ledger.filter(function (e) { return e.id !== id; });
     if (S.editing === id) cancelEdit();
     persist();
     renderLedger();
@@ -500,7 +509,7 @@
     var cats = {};
     var groups = {};
     var byCat = { upi: 0, grocery: 0, base: 0, tata: 0, nocoins: 0, payment: 0 };
-    DATA.ledger.forEach(function (e) {
+    C.ledger.forEach(function (e) {
       /* dates are dd/mm/yyyy → group key "yyyy-mm" (e.g. "2025-12"); string
        * sort on that key is chronological across year boundaries too.
        * Entries within a month are re-sorted below by real timestamp. */
@@ -537,19 +546,19 @@
   /* ---------------- reconcile ---------------- */
   function renderRecordOptions(sel) {
     sel.replaceChildren();
-    if (!DATA.records.length) {
+    if (!C.records.length) {
       var o = el('option', '', 'No statements imported yet');
       sel.appendChild(o);
       return;
     }
-    DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); }).forEach(function (r) {
+    C.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); }).forEach(function (r) {
       var o = el('option', '', r.periodTo + (r.reconciled ? ' ✓ reconciled' : '') + ' · ' + fmtMoney(r.total));
       o.value = r.periodTo;
       sel.appendChild(o);
     });
   }
   function pickRecord(periodTo) {
-    return DATA.records.filter(function (r) { return r.periodTo === periodTo; })[0] || null;
+    return C.records.filter(function (r) { return r.periodTo === periodTo; })[0] || null;
   }
   function openReconcile(rec) {
     if (rec) {
@@ -567,7 +576,7 @@
    * number of ledger entries added. If the bill now fully matches, it
    * auto-reconciles (→ home); otherwise the current view is refreshed. */
   function bookStmtOnly(rec) {
-    var res = Calc.reconcile(rec, DATA.ledger, prevRecordOf(rec));
+    var res = Calc.reconcile(rec, C.ledger, prevRecordOf(rec));
     /* count-based dedupe: a statement can carry N identical rows (same
      * day + amount + merchant). Book exactly as many ledger entries as there
      * are statement rows, and no more — so re-clicking never duplicates, and
@@ -578,7 +587,7 @@
       want[k] = (want[k] || 0) + 1;
     });
     var have = {}; // key -> entries already in the ledger
-    DATA.ledger.forEach(function (e) {
+    C.ledger.forEach(function (e) {
       var k = e.date + '|' + Math.round((e.amount || 0) * 100) / 100 + '|' + e.desc;
       if (want[k]) have[k] = (have[k] || 0) + 1;
     });
@@ -586,7 +595,7 @@
     res.stmtOnly.forEach(function (tx) {
       var k = tx.date + '|' + Math.round(tx.amount * 100) / 100 + '|' + tx.desc;
       if ((have[k] || 0) >= want[k]) return; // this key is already fully booked
-      DATA.ledger.push({
+      C.ledger.push({
         id: 'e-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
         date: tx.date, desc: tx.desc,
         category: Calc.guessCategory(tx),
@@ -603,7 +612,7 @@
     renderLedger();
     /* re-run reconcile and follow the usual path: if the bill now fully
      * matches, auto-reconcile and return home; else refresh the current view. */
-    var res2 = Calc.reconcile(rec, DATA.ledger, prevRecordOf(rec));
+    var res2 = Calc.reconcile(rec, C.ledger, prevRecordOf(rec));
     if (!rec.reconciled && res2.matchedCount > 0 && !res2.bookOnlyCount && !res2.stmtOnlyCount) {
       markReconciled(rec, res2);
       return added;
@@ -617,7 +626,7 @@
     renderRecordOptions(sel);
     var rec = pickRecord(sel.value);
     if (!rec) { $('rcBody').replaceChildren(el('p', 'muted', 'Import a statement first, then reconcile it against your ledger.')); return; }
-    var res = Calc.reconcile(rec, DATA.ledger, prevRecordOf(rec));
+    var res = Calc.reconcile(rec, C.ledger, prevRecordOf(rec));
     S.recId = rec.id;
     var body = el('div');
     var head = el('div', 'kv');
@@ -721,21 +730,22 @@
   function rwCycleOptions() {
     var sel = $('rwSel');
     sel.replaceChildren();
-    if (!DATA.records.length) { sel.appendChild(el('option', '', 'No statements yet')); return; }
-    var sorted = DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); });
+    if (!C.records.length) { sel.appendChild(el('option', '', 'No statements yet')); return; }
+    var sorted = C.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); });
     sorted.forEach(function (r) {
       var o = el('option', '', r.periodTo + (isFinite(r.earnedNeuCoins) ? ' · +' + fmtCoins(r.earnedNeuCoins) : ''));
       o.value = r.periodTo;
       sel.appendChild(o);
     });
-    if (S.rwRec && DATA.records.some(function (r) { return r.periodTo === S.rwRec; })) sel.value = S.rwRec;
+    if (S.rwRec && C.records.some(function (r) { return r.periodTo === S.rwRec; })) sel.value = S.rwRec;
     else { sel.value = sorted[0].periodTo; S.rwRec = sel.value; }
   }
   function renderRewards() {
-    var rate = isFinite(Number(DATA.rewardsConfig.valuePerCoin)) ? Number(DATA.rewardsConfig.valuePerCoin) : Calc.DEFAULT_COIN_VALUE;
+    if (!isNeu()) { $('rwSummary').replaceChildren(el('p', 'muted', 'Rewards tracking is Neu-specific — switch to a Neu card.')); return; }
+    var rate = isFinite(Number(C.rewardsConfig.valuePerCoin)) ? Number(C.rewardsConfig.valuePerCoin) : Calc.DEFAULT_COIN_VALUE;
     rwCycleOptions();
     var h = el('div', 'kv');
-    var rr = Calc.redemptionReconcile(DATA.records, DATA.redemptions);
+    var rr = Calc.redemptionReconcile(C.records, C.redemptions);
     h.appendChild(kvRow('Total earned (all cycles)', fmtCoins(rr.totalEarned)));
     h.appendChild(kvRow('Transferred to Tata Neu', fmtCoins(rr.totalTransferred)));
     h.appendChild(kvRow('Redeemed (your ledger)', fmtCoins(rr.totalRedeemed)));
@@ -748,7 +758,7 @@
   }
   function cycleRewardsTable(rec) {
     var body = el('div');
-    var rb = Calc.rewardsByCategory(rec, DATA.ledger, prevRecordOf(rec));
+    var rb = Calc.rewardsByCategory(rec, C.ledger, prevRecordOf(rec));
     var cats = { upi: 'UPI', grocery: 'Grocery', base: 'Base', tata: 'Tata' };
     var has = Object.keys(rb.expected).length || Object.keys(rb.actual).length;
     if (!has) return el('p', 'muted', 'No coin-earning entries in this cycle.');
@@ -791,26 +801,26 @@
     var note = $('rwNote').value.trim();
     if (!date) { toast('Date required.', 'warn'); return; }
     if (!isFinite(coins) || coins <= 0) { toast('NeuCoins must be positive.', 'warn'); return; }
-    DATA.redemptions.push({ id: 'r-' + Date.now().toString(36), date: date, coins: Math.round(coins), value: isFinite(value) ? Math.round(value * 100) / 100 : NaN, note: note });
+    C.redemptions.push({ id: 'r-' + Date.now().toString(36), date: date, coins: Math.round(coins), value: isFinite(value) ? Math.round(value * 100) / 100 : NaN, note: note });
     persist();
     $('rwCoins').value = ''; $('rwValue').value = ''; $('rwNote').value = '';
     $('rwDate').value = todayISO();
     renderRewards();
   }
   function delRedemption(id) {
-    DATA.redemptions = DATA.redemptions.filter(function (x) { return x.id !== id; });
+    C.redemptions = C.redemptions.filter(function (x) { return x.id !== id; });
     persist();
     renderRewards();
   }
   function renderRedemptions() {
     var body = el('div');
-    if (!DATA.redemptions.length) {
+    if (!C.redemptions.length) {
       body.appendChild(el('p', 'muted', 'No redemptions logged. Add each spend of NeuCoins (coins + what it was worth).'));
       $('rwList').replaceChildren(body);
       return;
     }
     var t = el('div', 'table');
-    DATA.redemptions.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).forEach(function (x) {
+    C.redemptions.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).forEach(function (x) {
       var row = el('div', 'lrow');
       row.appendChild(el('span', 'l-date', fmtDate(x.date)));
       var d = el('span', 'l-desc', x.note || 'redemption');
@@ -832,12 +842,12 @@
     box.appendChild(el('p', 'muted', 'Value of one NeuCoin in ₹, used for the "worth of rewards" estimates. Default: ₹0.25.'));
     var row = el('div', 'form');
     var inp = el('input'); inp.type = 'number'; inp.min = '0'; inp.step = '0.01';
-    inp.value = isFinite(Number(DATA.rewardsConfig.valuePerCoin)) ? DATA.rewardsConfig.valuePerCoin : Calc.DEFAULT_COIN_VALUE;
+    inp.value = isFinite(Number(C.rewardsConfig.valuePerCoin)) ? C.rewardsConfig.valuePerCoin : Calc.DEFAULT_COIN_VALUE;
     row.appendChild(inp);
     var ok = el('button', 'primary', 'Save');
     ok.onclick = function () {
       var v = parseFloat(String(inp.value).replace(/[, ]/g, ''));
-      DATA.rewardsConfig.valuePerCoin = isFinite(v) ? v : Calc.DEFAULT_COIN_VALUE;
+      C.rewardsConfig.valuePerCoin = isFinite(v) ? v : Calc.DEFAULT_COIN_VALUE;
       persist();
       closeModal();
       renderRewards();
@@ -858,7 +868,7 @@
     var cur = sel.value;
     sel.replaceChildren();
     sel.appendChild(el('option', '', 'Not linked (current balance)'));
-    DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); }).forEach(function (r) {
+    C.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); }).forEach(function (r) {
       var o = el('option', '', r.periodTo + (r.reconciled ? ' ✓' : ''));
       o.value = r.periodTo;
       sel.appendChild(o);
@@ -867,15 +877,15 @@
   }
   function renderDueBoard() {
     var body = el('div');
-    if (!DATA.records.length) {
+    if (!C.records.length) {
       body.appendChild(el('p', 'muted', 'No statements yet — import and record one to see due dates.'));
       $('blDue').replaceChildren(body);
       return;
     }
-    var recs = DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); });
+    var recs = C.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); });
     var t = el('div', 'table');
     recs.slice(0, S.dueCount).forEach(function (r) {
-      var ds = Calc.dueStatus(r, DATA.ledger, DATA.records);
+      var ds = Calc.dueStatus(r, C.ledger, C.records);
       var row = el('div', 'lrow');
       row.appendChild(el('span', 'l-date', fmtDate(r.periodTo)));
       var d = el('span', 'l-desc', 'due ' + fmtDate(ds.dueDate) + ' · total ' + fmtMoney(r.total) + ' · min ' + fmtMoney(r.minimumDue));
@@ -899,8 +909,9 @@
    * [Jan 19 → next Jan 18] window. Spend = statement purchases with periodTo
    * in the window. */
   function renderFeeWaiver() {
-    var cfg = DATA.feeConfig || {};
-    var w = Calc.waiverStatus(DATA.records, new Date(), cfg);
+    if (!isNeu()) { $('blFee').replaceChildren(el('p', 'muted', 'Annual-fee waiver tracking is Neu-specific.')); return; }
+    var cfg = C.feeConfig || {};
+    var w = Calc.waiverStatus(C.records, new Date(), cfg);
     var box = el('div');
     var kw = el('div', 'kv');
     /* window is [Jan 19, y) → the last included day is Jan 18, y+1; show both
@@ -925,12 +936,12 @@
     box.appendChild(el('p', 'muted', 'Spend at least this much between Jan 19 and Jan 18 (next year) and the annual fee is waived. Default ₹3,00,000.'));
     var row = el('div', 'form');
     var inp = el('input'); inp.type = 'number'; inp.min = '0'; inp.step = '1000';
-    inp.value = isFinite(Number(DATA.feeConfig.target)) ? DATA.feeConfig.target : 300000;
+    inp.value = isFinite(Number(C.feeConfig.target)) ? C.feeConfig.target : 300000;
     row.appendChild(inp);
     var ok = el('button', 'primary', 'Save');
     ok.onclick = function () {
       var v = parseFloat(String(inp.value).replace(/[, ]/g, ''));
-      DATA.feeConfig.target = isFinite(v) && v > 0 ? v : 300000;
+      C.feeConfig.target = isFinite(v) && v > 0 ? v : 300000;
       persist();
       closeModal();
       renderFeeWaiver();
@@ -947,12 +958,12 @@
     box.appendChild(el('p', 'muted', 'Type the last 4 digits (e.g. 8311) or the full 16-digit number — either works. It is stored on this device only and never sent anywhere.'));
     var row = el('div', 'form');
     var inp = el('input'); inp.type = 'text'; inp.inputMode = 'numeric'; inp.autocomplete = 'off';
-    inp.placeholder = 'e.g. 8311 (last 4) or all 16 digits'; inp.value = DATA.card.no || '';
+    inp.placeholder = 'e.g. 8311 (last 4) or all 16 digits'; inp.value = C.card.no || '';
     row.appendChild(inp);
     var ok = el('button', 'primary', 'Save');
     ok.onclick = function () {
       var v = String(inp.value || '').replace(/\D/g, '');
-      DATA.card.no = v;
+      C.card.no = v;
       persist();
       closeModal();
       renderLanding();
@@ -961,7 +972,7 @@
     row.appendChild(ok);
     var clr = el('button', 'ghost', 'Clear');
     clr.onclick = function () {
-      DATA.card.no = '';
+      C.card.no = '';
       persist();
       closeModal();
       renderLanding();
@@ -974,8 +985,8 @@
   }
   function renderInterest() {
     var box = el('div');
-    if (!DATA.records.length) { box.appendChild(el('p', 'muted', 'No statements yet.')); $('blInterest').replaceChildren(box); return; }
-    var is = Calc.interestSummary(DATA.records);
+    if (!C.records.length) { box.appendChild(el('p', 'muted', 'No statements yet.')); $('blInterest').replaceChildren(box); return; }
+    var is = Calc.interestSummary(C.records);
     var charged = (is.perRecord || []).filter(function (r) { return r.finance > 0; });
     var kw = el('div', 'kv');
     kw.appendChild(kvRow('Cycles with interest', String(charged.length) + ' of ' + is.perRecord.length));
@@ -1022,7 +1033,7 @@
     /* monthly spend bar (from records) */
     /* last 12 cycles only, sorted by real date (string sort on dd/mm/yyyy
      * interleaves years: 01/2025, 01/2026, 02/2025, …) */
-    var recs = DATA.records.slice().sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); }).filter(function (r) { return isFinite(r.purchases); }).slice(-12);
+    var recs = C.records.slice().sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); }).filter(function (r) { return isFinite(r.purchases); }).slice(-12);
     var cv1 = $('chartMonthly');
     var has1 = recs.length > 0;
     setH4(cv1, has1);
@@ -1035,7 +1046,7 @@
     }
     /* category donut (from ledger) */
     var cats = {};
-    DATA.ledger.forEach(function (e) {
+    C.ledger.forEach(function (e) {
       if (e.category === 'payment') return;
       cats[e.category] = (cats[e.category] || 0) + e.amount;
     });
@@ -1055,7 +1066,7 @@
     /* rewards: earned bar + balance line (only when the tab is open) */
     var rwVis = $('rewards').style.display === 'block';
     if (rwVis) {
-      var tl = Calc.rewardsTimeline(DATA.records);
+      var tl = Calc.rewardsTimeline(C.records);
       var cvE = $('chartEarned'), cvB = $('chartBalance');
       var hasE = tl.earned.length > 0;
       setH4(cvE, hasE);
@@ -1078,7 +1089,7 @@
     }
 
     /* utilization line (home chart, from records) */
-    var utRecs = DATA.records.filter(function (r) { return Calc.utilizationOf(r) != null; }).sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); }).slice(-12);
+    var utRecs = C.records.filter(function (r) { return Calc.utilizationOf(r) != null; }).sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); }).slice(-12);
     var cvU = $('chartUtil');
     var hasU = utRecs.length > 0;
     setH4(cvU, hasU);
@@ -1112,7 +1123,7 @@
     var h = el('div');
     var kw = el('div', 'kv');
     var k = null;
-    DATA.records.forEach(function (r) {
+    C.records.forEach(function (r) {
       var t = Calc.pdate(r.periodTo) || 0;
       if (!k || t > (Calc.pdate(k.periodTo) || 0)) k = r;
     });
@@ -1120,7 +1131,7 @@
     kw.appendChild(kvRow('Latest total', k ? fmtMoney(k.total) : '—'));
     /* a number of 8 digits or less is shown as-is (e.g. just the last four:
      * "8311"), never "8311 … 8311" */
-    var cno = DATA.card.no || '';
+    var cno = C.card.no || '';
     var cardRow = el('div');
     cardRow.appendChild(el('b', '', 'Profile card'));
     var cardVal = el('button', cno ? 'primary small' : 'primary', cno ? (cno.length <= 8 ? cno : cno.slice(0, 4) + ' … ' + cno.slice(-4)) : 'not set — tap to set');
@@ -1140,13 +1151,13 @@
     if (k) {
       var coins = { base: 0, upi: 0, grocery: 0, tata: 0 };
       var unbilled = 0;
-      DATA.ledger.forEach(function (e) {
+      C.ledger.forEach(function (e) {
         if (e.reconciled) return; // already booked on a statement
         if (e.category === 'payment') return; // a payment is a credit, not new spend
         unbilled += e.amount; // every other unbilled entry (incl. nocoins) is new spend
         if (e.category in coins) coins[e.category] += Calc.predictedCoins(e).coins;
       });
-      var ds = Calc.dueStatus(k, DATA.ledger, DATA.records);
+      var ds = Calc.dueStatus(k, C.ledger, C.records);
       /* unpaid portion of the current bill rolls into the next one */
       var carried = Math.max(Math.round((k.total - ds.paid) * 100) / 100, 0);
       /* finance estimate: none if the last bill is fully paid, otherwise the
@@ -1163,10 +1174,10 @@
       up.appendChild(kvRow('Coins still earnable', coinLine));
       h.appendChild(up);
     }
-    if (DATA.records.length) {
+    if (C.records.length) {
       h.appendChild(el('h4', '', 'History'));
       var t = el('div', 'table');
-      var recs = DATA.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); });
+      var recs = C.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); });
       recs.slice(0, S.histCount).forEach(function (r) {
         var row = el('div', 'lrow');
         row.appendChild(el('span', 'l-date', fmtDate(r.periodTo)));
@@ -1178,7 +1189,7 @@
           var btn = el('button', 'small', 'Reconcile');
           btn.onclick = function () { openReconcile(r); };
           row.appendChild(btn);
-          var res = Calc.reconcile(r, DATA.ledger, prevRecordOf(r));
+          var res = Calc.reconcile(r, C.ledger, prevRecordOf(r));
           if (res.stmtOnly.length) {
             var addBtn = el('button', 'small', 'Add ' + res.stmtOnly.length + ' to ledger');
             addBtn.title = 'Book every statement-only row into the ledger from here — no need to open Reconcile.';
@@ -1202,7 +1213,7 @@
       h.appendChild(el('p', 'muted', 'No statements recorded. Use “Import statement” above to import your HDFC Neu statement PDF and start verifying.'));
     }
     $('landingStats').replaceChildren(h);
-    $('importCounter').textContent = DATA.records.length ? 'Stored: ' + DATA.records.length + ' · last ' + fmtDate(DATA.records[DATA.records.length - 1].periodTo) : 'No statements stored yet.';
+    $('importCounter').textContent = C.records.length ? 'Stored: ' + C.records.length + ' · last ' + fmtDate(C.records[C.records.length - 1].periodTo) : 'No statements stored yet.';
   }
   function removeRecord(r) {
     var box = el('div');
@@ -1210,7 +1221,7 @@
     box.appendChild(el('p', '', 'Delete the record for ' + r.periodTo + ' (' + fmtMoney(r.total) + '). Matched ledger entries will keep their ✓.'));
     var ok = el('button', 'danger', 'Remove');
     ok.onclick = function () {
-      DATA.records = DATA.records.filter(function (x) { return x.id !== r.id; });
+      C.records = C.records.filter(function (x) { return x.id !== r.id; });
       persist();
       closeModal();
       renderAll();
@@ -1223,7 +1234,7 @@
 
   /* ---------------- bundle ---------------- */
   function bundleText() {
-    return '/* HDFC Tata Neu Credit Card Tracker data bundle v' + (DATA.version || 1) + ' — regenerate via Save bundle. */\nwindow.DATA = ' +
+    return '/* Credit Card Tracker data bundle v' + (DATA.version || 1) + ' (multi-card) — regenerate via Save bundle. */\nwindow.DATA = ' +
       JSON.stringify(DATA, null, 1) + ';\n';
   }
   function saveBundle() {
@@ -1241,19 +1252,90 @@
       } else {
         d = JSON.parse(s); // also accept a bare JSON bundle (renamed/extracted backup)
       }
-      if (!d || (!Array.isArray(d.records) && !Array.isArray(d.ledger))) throw new Error('not a bundle');
+      /* v6 stores data per-card in cards[]; older bundles have top-level
+       * records/ledger. Accept either — migrateBundle normalizes both. */
+      if (!d || (!Array.isArray(d.records) && !Array.isArray(d.ledger) && !Array.isArray(d.cards))) throw new Error('not a bundle');
       var migrated = Calc.migrateBundle(d);
       if (migrated.incompatible) { toast('Bundle is from a newer app version — update first.', 'bad'); return; }
       DATA = migrated;
       window.DATA = migrated;
+      C = activeCard();
       persist();
+      renderCardSwitcher();
       renderAll();
-      toast('Bundle loaded: ' + migrated.records.length + ' statements, ' + migrated.ledger.length + ' ledger entries.', 'ok');
+      toast('Bundle loaded: ' + C.records.length + ' statements, ' + C.ledger.length + ' ledger entries.', 'ok');
     }, function (e) { toast('Could not read bundle: ' + e.message, 'bad'); }).catch(function (e) { toast('Invalid bundle file: ' + e.message, 'bad'); });
   }
 
   /* ---------------- wiring ---------------- */
-  function showView(id) { show(id); renderAll(); }
+  function showView(id) {
+    /* statement import + the rewards model are Tata-Neu specific — hide them
+     * for a generic (non-neu) card like Axis Scapia. */
+    if (id === 'rewards' && !isNeu()) { toast('Rewards tracking is Neu-specific — set up a Neu card first.', 'warn'); return; }
+    if (id === 'import') { if (!isNeu()) { toast('Import is Neu-specific for now.', 'warn'); return; } showView('landing'); $('importFile').click(); return; }
+    show(id); renderAll();
+  }
+
+  /* ---------------- multi-card: switch / add profile ---------------- */
+  function cardNameLabel(c) {
+    var no = c.card.no || '';
+    return c.name + (no ? (no.length <= 8 ? ' · ' + no : ' · …' + no.slice(-4)) : '');
+  }
+  function renderCardSwitcher() {
+    var box = $('cardBox');
+    if (!box) return;
+    var sel = el('select', 'cardsel');
+    sel.title = 'Switch the active card profile';
+    DATA.cards.forEach(function (c) {
+      var o = el('option'); o.value = c.id; o.textContent = cardNameLabel(c);
+      if (c.id === DATA.activeCardId) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', function () { switchCard(sel.value); });
+    box.replaceChildren(sel);
+    /* statement import + rewards are Tata-Neu specific — disable those nav
+     * buttons for a generic (non-neu) card. */
+    var neu = isNeu();
+    $('importGo').disabled = !neu;
+    $('rewardsGo').disabled = !neu;
+    $('importGo').title = neu ? '' : 'Statement import is Neu-specific (Axis parser comes later)';
+    $('rewardsGo').title = neu ? '' : 'Rewards tracking is Neu-specific';
+  }
+  function switchCard(id) {
+    var c = DATA.cards.filter(function (x) { return x.id === id; })[0];
+    if (!c) return;
+    DATA.activeCardId = c.id;
+    C = c;
+    S.editing = null;
+    persist();
+    renderCardSwitcher();
+    renderAll();
+  }
+  function addCard() {
+    var box = el('div');
+    box.appendChild(el('h2', '', 'Add card profile'));
+    box.appendChild(el('p', 'muted', 'Name it (e.g. "Axis Scapia"). It starts empty — add ledger entries to it from the Ledger view.'));
+    var nameInp = el('input'); nameInp.placeholder = 'Card name';
+    var typeSel = el('select');
+    var g = el('option'); g.value = 'generic'; g.textContent = 'Generic (ledger only)';
+    var n = el('option'); n.value = 'neu'; n.textContent = 'Tata Neu (rewards + import)';
+    typeSel.appendChild(g); typeSel.appendChild(n);
+    var row = el('div', 'form');
+    row.appendChild(nameInp); row.appendChild(typeSel);
+    box.appendChild(row);
+    var ok = el('button', 'primary', 'Add');
+    ok.onclick = function () {
+      var name = String(nameInp.value).trim() || 'Credit card';
+      var nc = Calc.newCard(typeSel.value, name);
+      DATA.cards.push(nc);
+      switchCard(nc.id);
+      closeModal();
+      toast('Added ' + nc.name, 'ok');
+    };
+    box.appendChild(el('div', 'form'));
+    box.lastChild.appendChild(ok);
+    modal(box, true);
+  }
 
   function showVersion() {
     var badge = $('verBadge');
@@ -1281,10 +1363,12 @@
       if (f) importFile(f);
       e.target.value = '';
     });
+    renderCardSwitcher();
+    $('addCardBtn').addEventListener('click', addCard);
     $('homeGo').addEventListener('click', function () { showView('landing'); });
     $('ledgerGo').addEventListener('click', function () { showView('ledger'); });
     $('rewardsGo').addEventListener('click', function () { showView('rewards'); });
-    $('importGo').addEventListener('click', function () { showView('landing'); $('importFile').click(); });
+    $('importGo').addEventListener('click', function () { showView('import'); });
     $('addBtn').addEventListener('click', addEntry);
     renderCategoryOptions($('leCat'));
     $('leCat').addEventListener('change', function () { $('leHint').textContent = hintFor($('leCat').value); });

@@ -1,6 +1,10 @@
 # Neu-Tracker — Requirements, Rules & Verification Spec
 
-HDFC Tata Neu Credit-Card statement tracker (single card, Tata Neu only).
+Credit-Card statement tracker (multi-card). Ships with the HDFC **Tata Neu
+Infinity** profile (full feature: import + verify + NeuCoins rewards + fee
+waiver) and an **Axis Scapia** profile (generic: ledger + due board only —
+statement import and the rewards model are Tata-Neu specific and deferred to a
+later Axis parser).
 
 **Purpose of this file:** capture every rule, formula, layout quirk and verified
 decision so the assistant can re-implement / continue the work from this doc
@@ -10,8 +14,17 @@ alone. Keep it up to date when behaviour changes.
 
 ## 1. Scope & non-goals
 
-- One credit card: HDFC **Tata Neu Infinity** (₹5,00,000 limit). No multi-card support.
-- NeuCoins value model: 1 NeuCoin = ₹0.25 by default (`rewardsConfig.valuePerCoin`).
+- **Multi-card:** multiple card profiles in `DATA.cards[]`, each self-contained
+  (its own statements, ledger, redemptions, rewards + fee config). `activeCardId`
+  selects the profile the views render. A header dropdown switches profiles;
+  "+ Card" adds one (type **neu** or **generic**).
+  - `type: 'neu'` — full feature: statement import/verify + NeuCoins rewards +
+    fee waiver (HDFC Tata Neu Infinity).
+  - `type: 'generic'` — ledger + due board + card number only. Import & Rewards
+    nav are disabled; reward/fee config stay `null` (the parser and reward model
+    are Tata-Neu specific — a generic Axis parser is deferred).
+- NeuCoins value model (per neu card): 1 NeuCoin = ₹0.25 by default
+  (`card.rewardsConfig.valuePerCoin`).
 - "Rewards" = NeuCoin ledger reconciled per category. The "Bills" dashboard
   (due dates, payment log, interest, utilization) is merged into **Home** +
   **Ledger** — there is no separate Bills tab.
@@ -35,28 +48,52 @@ alone. Keep it up to date when behaviour changes.
 
 ---
 
-## 3. Data model — bundle schema `version: 2`
+## 3. Data model — bundle schema `version: 6` (multi-card)
+
+The bundle is a list of card profiles. Each profile is self-contained: its own
+identity, statements, ledger, redemptions and (for neu cards) reward/fee config.
+`activeCardId` picks the profile the views render. `Calc.migrateBundle` upgrades
+any older flat bundle (v0–v5, which had a single top-level card) into this shape
+and seeds an empty **Axis Scapia** generic profile.
 
 ```js
 {
-  version: 2,
-  card: { issuer: 'HDFC', program: 'Tata Neu Infinity', last4: '…', limit: 500000 },
-  statement: {
-    period: '18/01/2025', total: 4243, minimumDue: 220, dueDate: '07/02/2025',
-    creditLimit: 500000, availLimit: 495757, previousDue: 0, finance: NaN,
-    purchases: NaN, payments: NaN, importOK: true, source: 'anonymous', date: 1737138600000
-  },
-  transactions: [ { date:'13/01/2025', time:'22:53', desc:'…', base:7, amount:485, credit:false } ],
-  coins: { open: 0, earned: 7, transferred: 0, adjusted: 0, close: 5 },  /* or `prev` alt */
-  mad: 220, cbilled: 0,
-  reconcile: { },                       /* per-check acceptance/exceptions */
-  redemptions: [ { date, coins, value, note } ],
-  payments: [ { date, amount, mode } ],
-  rewardsConfig: { valuePerCoin: 0.25 },
-  payments: …,
-  importTrace: /* raw page texts, kept for debugging */
+  version: 6,
+  activeCardId: 'neu',          // id of the currently-selected profile
+  cards: [
+    {
+      id: 'neu',                // stable id
+      name: 'HDFC Tata Neu Infinity',
+      type: 'neu',              // 'neu' | 'generic'
+      card: { no: '…8311', aan: '…', name: '…' },   // stored locally only
+      records: [ /* statements, see below */ ],
+      ledger: [ { id, date, desc, amount, category, reconciled, forPeriod, note } ],
+      redemptions: [ { id, date, coins, value, note } ],
+      rewardsConfig: { valuePerCoin: 0.25 },   // neu only; null for generic
+      feeConfig: { target: 300000, month: 0, day: 19 }   // neu only; null for generic
+    },
+    {
+      id: 'scapia', name: 'Axis Scapia', type: 'generic',
+      card: { no: '', aan: '', name: '' },
+      records: [], ledger: [], redemptions: [],
+      rewardsConfig: null, feeConfig: null
+    }
+  ]
 }
 ```
+
+A **statement** (`records[i]`, produced by `verifyStatement` from a PDF) carries
+the parsed cycle: `periodFrom/periodTo/total/minimumDue/prevDues/payments/
+purchases/finance/creditLimit/availLimit/dueDate`, NeuCoins fields
+(`opening/earned/transferred/adjusted/closingNeuCoins`, `bonusPrograms[]`),
+`txns[]`, `status` (`verified`/`unverified`) and `reconciled` (period it was
+matched to). `importTrace` (raw page texts) is kept per record for debugging.
+
+Migration is idempotent and versioned: `SCHEMA_VERSION` in `calc.js` is the
+target; `MIGRATIONS[n]` transforms shape `n → n+1`. v5 → v6 moves the legacy
+top-level `card/records/ledger/redemptions/rewardsConfig/feeConfig` into
+`cards[0]` (type `neu`), seeds the `scapia` profile, sets `activeCardId`, and
+deletes the now-redundant top-level fields.
 
 Endpoints exposed by `Calc`: `Calc.migrateBundle`, `Calc.SCHEMA_VERSION=4`,
 `Calc.DEFAULT_COIN_VALUE=0.25`, `Calc.verifyStatement`, `Calc.applyExceptions`,

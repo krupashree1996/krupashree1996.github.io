@@ -602,7 +602,7 @@ const Calc = (function () {
   }
 
   /* ---------- schema migration ---------- */
-  var SCHEMA_VERSION = 5;
+  var SCHEMA_VERSION = 6;
   var MIGRATIONS = {
     0: function (d) { d.version = 1; if (!Array.isArray(d.records)) d.records = []; if (!Array.isArray(d.ledger)) d.ledger = []; return d; },
     1: function (d) {
@@ -662,10 +662,52 @@ const Calc = (function () {
           auto: !!p.auto
         });
       });
-      d.payments = [];
-      return d;
-    }
-  };
+       d.payments = [];
+       return d;
+     },
+     /* Multi-card: the single top-level card/records/ledger/redemptions move
+      * into cards[] (each card profile is self-contained — its own statements,
+      * ledger, redemptions and reward/fee config) + activeCardId. The existing
+      * (single) card becomes the first profile, and an empty Axis Scapia
+      * profile is seeded so a second card can be added without a fresh
+      * bundle. Non-neu cards (type !== 'neu') get no rewards/fee config —
+      * the parser + reward model are Tata-Neu specific (deferred to a later
+      * Axis parser). */
+     5: function (d) {
+       d.version = 6;
+       if (Array.isArray(d.cards)) return d; // already migrated
+       var neu = {
+         id: 'neu', name: 'HDFC Tata Neu Infinity', type: 'neu',
+         card: d.card || { no: '', aan: '', name: '' },
+         records: d.records || [], ledger: d.ledger || [], redemptions: d.redemptions || [],
+         rewardsConfig: d.rewardsConfig || { valuePerCoin: DEFAULT_COIN_VALUE },
+         feeConfig: d.feeConfig || { target: DEFAULT_WAIVER.target, month: DEFAULT_WAIVER.month, day: DEFAULT_WAIVER.day }
+       };
+       neu.card.no = String(neu.card.no || '');
+       neu.card.aan = String(neu.card.aan || '');
+       neu.card.name = String(neu.card.name || '');
+       d.cards = [neu];
+       /* seed an empty Axis Scapia profile so a second card is ready without a
+        * fresh bundle (type !== 'neu' → no rewards/fee config). Guarded so a
+        * reload (cards already present) does not seed a duplicate. */
+       if (!d.cards.some(function (c) { return c.id === 'scapia'; })) {
+         d.cards.push({
+           id: 'scapia', name: 'Axis Scapia', type: 'generic',
+           card: { no: '', aan: '', name: '' },
+           records: [], ledger: [], redemptions: [],
+           rewardsConfig: null, feeConfig: null
+         });
+       }
+        if (typeof d.activeCardId !== 'string' || !d.cards.some(function (c) { return c.id === d.activeCardId; })) {
+          d.activeCardId = neu.id;
+        }
+        /* data now lives per-card in d.cards[] — drop the legacy top-level
+         * fields so the persisted shape carries no duplicate / stale card data. */
+        delete d.card; delete d.records; delete d.ledger; delete d.redemptions;
+        delete d.payments; delete d.rewardsConfig; delete d.feeConfig;
+        return d;
+      }
+   };
 
   function migrateRecord(r) {
     if (!r || typeof r !== 'object') return r;
@@ -714,40 +756,64 @@ const Calc = (function () {
     if (v > SCHEMA_VERSION) return { incompatible: true, version: v };
     var d = raw;
     while (v < SCHEMA_VERSION && MIGRATIONS[v]) { d = MIGRATIONS[v](d) || d; v++; }
-    if (!Array.isArray(d.records)) d.records = [];
-    if (!Array.isArray(d.ledger)) d.ledger = [];
-    if (!Array.isArray(d.redemptions)) d.redemptions = [];
-    if (!Array.isArray(d.payments)) d.payments = [];
-    if (!d.rewardsConfig || typeof d.rewardsConfig !== 'object') d.rewardsConfig = {};
-    if (!isFinite(Number(d.rewardsConfig.valuePerCoin))) d.rewardsConfig.valuePerCoin = DEFAULT_COIN_VALUE;
-    d.records.forEach(migrateRecord);
-    d.ledger.forEach(migrateLedgerEntry);
-    d.redemptions.forEach(function (r) {
+    /* Per-card normalization: every card profile is self-contained. */
+    if (!Array.isArray(d.cards)) d.cards = [];
+    if (!d.cards.length) {
+      d.cards.push(newCard('neu', 'HDFC Tata Neu Infinity'));
+    }
+    d.cards.forEach(normalizeCard);
+    if (typeof d.activeCardId !== 'string' || !d.cards.some(function (c) { return c.id === d.activeCardId; })) {
+      d.activeCardId = d.cards[0].id;
+    }
+    d.version = SCHEMA_VERSION;
+    return d;
+  }
+
+  function newCard(type, name) {
+    return {
+      id: type + '-' + (Math.random() + Date.now()).toString(36).slice(2, 8),
+      name: name || (type === 'neu' ? 'HDFC Tata Neu Infinity' : 'Credit card'),
+      type: type,
+      card: { no: '', aan: '', name: '' },
+      records: [], ledger: [], redemptions: [],
+      rewardsConfig: type === 'neu' ? { valuePerCoin: DEFAULT_COIN_VALUE } : null,
+      feeConfig: type === 'neu' ? { target: DEFAULT_WAIVER.target, month: DEFAULT_WAIVER.month, day: DEFAULT_WAIVER.day } : null
+    };
+  }
+
+  function normalizeCard(c) {
+    if (!c || typeof c !== 'object') return;
+    if (typeof c.id !== 'string' || !c.id) c.id = (c.type || 'card') + '-' + (Math.random() + Date.now()).toString(36).slice(2, 8);
+    c.name = String(c.name || 'Credit card');
+    c.type = String(c.type || 'neu');
+    if (!c.card || typeof c.card !== 'object') c.card = { no: '', aan: '', name: '' };
+    c.card.no = String(c.card.no || '');
+    c.card.aan = String(c.card.aan || '');
+    c.card.name = String(c.card.name || '');
+    if (!Array.isArray(c.records)) c.records = [];
+    if (!Array.isArray(c.ledger)) c.ledger = [];
+    if (!Array.isArray(c.redemptions)) c.redemptions = [];
+    c.records.forEach(migrateRecord);
+    c.ledger.forEach(migrateLedgerEntry);
+    c.redemptions.forEach(function (r) {
       r.id = String(r.id || (Math.random() + Date.now()).toString(36).slice(2));
       r.date = String(r.date || '');
       r.coins = isFinite(Number(r.coins)) ? round2(Number(r.coins)) : 0;
       r.value = (r.value === undefined || r.value === null || r.value === '') ? NaN : round2(Number(r.value));
       r.note = String(r.note || '');
     });
-    d.payments.forEach(function (p) {
-      p.id = String(p.id || (Math.random() + Date.now()).toString(36).slice(2));
-      p.date = String(p.date || '');
-      p.amount = isFinite(Number(p.amount)) ? round2(Number(p.amount)) : NaN;
-      p.forPeriod = String(p.forPeriod || '');
-      p.method = String(p.method || '');
-      p.note = String(p.note || '');
-    });
-    d.records.sort(function (a, b) { return (pdate(a.periodTo) || 0) - (pdate(b.periodTo) || 0); });
-    if (!d.feeConfig || typeof d.feeConfig !== 'object') d.feeConfig = {};
-    if (!isFinite(Number(d.feeConfig.target)) || d.feeConfig.target <= 0) d.feeConfig.target = DEFAULT_WAIVER.target;
-    d.feeConfig.month = isFinite(Number(d.feeConfig.month)) ? d.feeConfig.month : DEFAULT_WAIVER.month;
-    d.feeConfig.day = isFinite(Number(d.feeConfig.day)) ? d.feeConfig.day : DEFAULT_WAIVER.day;
-    if (!d.card || typeof d.card !== 'object') d.card = { no: '', aan: '', name: '' };
-    d.card.no = String(d.card.no || '');
-    d.card.aan = String(d.card.aan || '');
-    d.card.name = String(d.card.name || '');
-    d.version = SCHEMA_VERSION;
-    return d;
+    c.records.sort(function (a, b) { return (pdate(a.periodTo) || 0) - (pdate(b.periodTo) || 0); });
+    if (c.type === 'neu') {
+      if (!c.rewardsConfig || typeof c.rewardsConfig !== 'object') c.rewardsConfig = {};
+      if (!isFinite(Number(c.rewardsConfig.valuePerCoin))) c.rewardsConfig.valuePerCoin = DEFAULT_COIN_VALUE;
+      if (!c.feeConfig || typeof c.feeConfig !== 'object') c.feeConfig = {};
+      if (!isFinite(Number(c.feeConfig.target)) || c.feeConfig.target <= 0) c.feeConfig.target = DEFAULT_WAIVER.target;
+      c.feeConfig.month = isFinite(Number(c.feeConfig.month)) ? c.feeConfig.month : DEFAULT_WAIVER.month;
+      c.feeConfig.day = isFinite(Number(c.feeConfig.day)) ? c.feeConfig.day : DEFAULT_WAIVER.day;
+    } else {
+      c.rewardsConfig = null;
+      c.feeConfig = null;
+    }
   }
 
   return {
@@ -764,7 +830,7 @@ const Calc = (function () {
     utilizationOf: utilizationOf, interestSummary: interestSummary,
     waiverStatus: waiverStatus,
     DEFAULT_COIN_VALUE: DEFAULT_COIN_VALUE,
-    SCHEMA_VERSION: SCHEMA_VERSION, migrateBundle: migrateBundle, BLOCKING: BLOCKING
+    SCHEMA_VERSION: SCHEMA_VERSION, migrateBundle: migrateBundle, newCard: newCard, BLOCKING: BLOCKING
   };
 })();
 

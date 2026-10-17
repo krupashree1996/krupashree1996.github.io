@@ -54,14 +54,19 @@ whenReady(function run() {
   var App = dom.window.App;
   var Calc = dom.window.Calc;
   var DATA = dom.window.DATA;
+  /* v6: card data lives per-card in DATA.cards[]; CUR is the active profile
+   * (the migrated Neu card). Mutations here are live refs into the app's C. */
+  var CUR = DATA.cards.filter(function (c) { return c.id === DATA.activeCardId; })[0];
 
-  console.log('1) boot — bundle migrated to schema v5 on load');
-  eq('data version 5', DATA.version, 5);
-  ok('redemptions array', Array.isArray(DATA.redemptions));
-  ok('payments array (drained into ledger at v5)', Array.isArray(DATA.payments));
-  eq('payments drained', DATA.payments.length, 0);
-  ok('feeConfig present', !!DATA.feeConfig);
-  eq('coin value default', DATA.rewardsConfig.valuePerCoin, 0.25);
+  console.log('1) boot — bundle migrated to schema v6 on load (multi-card)');
+  eq('data version 6', DATA.version, 6);
+  ok('cards[] present', Array.isArray(DATA.cards) && DATA.cards.length >= 1);
+  eq('active card is neu', CUR.type, 'neu');
+  ok('redemptions array', Array.isArray(CUR.redemptions));
+  ok('feeConfig present', !!CUR.feeConfig);
+  eq('coin value default', CUR.rewardsConfig.valuePerCoin, 0.25);
+  ok('scapia profile seeded', DATA.cards.some(function (c) { return c.id === 'scapia'; }));
+  ok('card switcher present', !!$('#cardBox select'));
   ok('landing section present', !!$('#landing'));
 
   console.log('1b) file inputs use sr-only (Android picker regression)');
@@ -80,7 +85,7 @@ whenReady(function run() {
   setValue('#leCat', 'grocery');
   setValue('#leAmt', '200');
   $('#addBtn').click();
-  eq('ledger entry added', DATA.ledger.length, 1);
+  eq('ledger entry added', CUR.ledger.length, 1);
   eq('date input defaults to today (yyyy-mm-dd)', /^20\d\d-\d\d-\d\d$/.test($('#leDate').value), true);
   eq('ledger row rendered', $('#ledgerList').textContent.indexOf('DMART buy') >= 0, true);
   eq('predicted coins shown', $('#ledgerList').textContent.indexOf('+3') >= 0, true);
@@ -107,10 +112,10 @@ whenReady(function run() {
   setValue('#leDesc', 'DMART buy (edited)');
   setValue('#leAmt', '250');
   $('#addBtn').click();
-  eq('edit did not add a new entry', DATA.ledger.length, 1);
-  eq('edited date stored dd/mm/yyyy', DATA.ledger[0].date, '11/11/2025');
-  eq('edited desc saved', DATA.ledger[0].desc, 'DMART buy (edited)');
-  eq('edited amount saved', DATA.ledger[0].amount, 250);
+  eq('edit did not add a new entry', CUR.ledger.length, 1);
+  eq('edited date stored dd/mm/yyyy', CUR.ledger[0].date, '11/11/2025');
+  eq('edited desc saved', CUR.ledger[0].desc, 'DMART buy (edited)');
+  eq('edited amount saved', CUR.ledger[0].amount, 250);
   eq('edit mode cleared after save', $('#addBtn').textContent, 'Add entry');
   /* restore for the reconcile expectations below */
   editBtns = $$('#ledgerList button', document).filter(function (b) { return b.textContent.trim() === 'Edit'; });
@@ -119,7 +124,7 @@ whenReady(function run() {
   setValue('#leDesc', 'DMART buy');
   setValue('#leAmt', '200');
   $('#addBtn').click();
-  eq('restored date', DATA.ledger[0].date, '10/11/2025');
+  eq('restored date', CUR.ledger[0].date, '10/11/2025');
   $('#editCancelBtn').click();
   eq('cancel edit clears form', $('#leDesc').value, '');
   eq('cancel edit resets date to today', /^20\d\d-\d\d-\d\d$/.test($('#leDate').value), true);
@@ -128,13 +133,13 @@ whenReady(function run() {
   console.log('2c) ledger — unpadded date (5/10/2026) groups under Oct 2026, not undefined');
   /* legacy/manual entries could be stored without zero-padding; the month
    * group key (dd/mm/yyyy slice) used to produce "undefined" for those */
-  DATA.ledger.push({ id: 'e-unpadded', date: '5/10/2026', desc: 'UNPADDED spend', category: 'grocery', amount: 40, reconciled: '' });
+  CUR.ledger.push({ id: 'e-unpadded', date: '5/10/2026', desc: 'UNPADDED spend', category: 'grocery', amount: 40, reconciled: '' });
   dom.window.App.renderLedger();
-  eq('unpadded entry normalized to dd/mm/yyyy on render', DATA.ledger.filter(function (e) { return e.id === 'e-unpadded'; })[0].date, '05/10/2026');
+  eq('unpadded entry normalized to dd/mm/yyyy on render', CUR.ledger.filter(function (e) { return e.id === 'e-unpadded'; })[0].date, '05/10/2026');
   var lgHeaders = $$('#ledgerList .lg-h', document).map(function (h) { return h.textContent; });
   ok('October 2026 group exists', lgHeaders.indexOf('Oct 2026') >= 0, true);
   ok('no undefined month group', lgHeaders.every(function (h) { return h.indexOf('undefined') < 0; }), true);
-  DATA.ledger = DATA.ledger.filter(function (e) { return e.id !== 'e-unpadded'; });
+  CUR.ledger = CUR.ledger.filter(function (e) { return e.id !== 'e-unpadded'; });
   dom.window.App.renderLedger();
 
   console.log('3) rewards view');
@@ -147,8 +152,8 @@ whenReady(function run() {
   setValue('#rwCoins', '100');
   setValue('#rwValue', '25');
   $('#rwAddBtn').click();
-  eq('redemption added', DATA.redemptions.length, 1);
-  eq('redemption coins stored', DATA.redemptions[0].coins, 100);
+  eq('redemption added', CUR.redemptions.length, 1);
+  eq('redemption coins stored', CUR.redemptions[0].coins, 100);
   eq('redemption listed', $('#rwList').textContent.indexOf('100 coins') >= 0, true);
 
   console.log('5) home — due board + interest (merged in from Bills)');
@@ -167,8 +172,8 @@ whenReady(function run() {
   console.log('6) reconcile engine against the in-app ledger');
   /* the DMART entry was imported with s-1, so reconcile marks it as on-statement
    * (unbilled = non-reconciled entries) */
-  DATA.ledger.filter(function (e) { return e.desc === 'DMART buy'; })[0].reconciled = '18/11/2025';
-  DATA.records.push({ id: 's-1', periodTo: '18/11/2025', periodFrom: '19/10/2025', total: 200, minimumDue: 10, prevDues: 0, payments: 0, purchases: 200, finance: 0, creditLimit: 100000, availLimit: 99800, dueDate: '08/12/2025', earnedNeuCoins: 3, transferredNeuCoins: 0, openingNeuCoins: 0, adjustedNeuCoins: 0, closingNeuCoins: 3, bonusPrograms: [{ program: 'Base_Grocery', coins: 3 }], txns: [{ date: '10/11/2025', desc: 'DMART', amount: 200, credit: false, base: 0 }] });
+  CUR.ledger.filter(function (e) { return e.desc === 'DMART buy'; })[0].reconciled = '18/11/2025';
+  CUR.records.push({ id: 's-1', periodTo: '18/11/2025', periodFrom: '19/10/2025', total: 200, minimumDue: 10, prevDues: 0, payments: 0, purchases: 200, finance: 0, creditLimit: 100000, availLimit: 99800, dueDate: '08/12/2025', earnedNeuCoins: 3, transferredNeuCoins: 0, openingNeuCoins: 0, adjustedNeuCoins: 0, closingNeuCoins: 3, bonusPrograms: [{ program: 'Base_Grocery', coins: 3 }], txns: [{ date: '10/11/2025', desc: 'DMART', amount: 200, credit: false, base: 0 }] });
   $('#rewardsGo').click();
   eq('cycle breakdown expected grocery', $('#rwCycle').textContent.indexOf('expected +3') >= 0, true);
   eq('redeem reconcile shows net −97 (3 earned − 0 transferred − 100 redeemed)', $('#rwReconcile').textContent.indexOf('more redeemed than earned') >= 0 && $('#rwReconcile').textContent.indexOf('-97') >= 0, true);
@@ -183,9 +188,9 @@ whenReady(function run() {
   setValue('#lePeriod', '18/11/2025');
   setValue('#leAmt', '200');
   $('#addBtn').click();
-  eq('payment logged as a ledger entry', DATA.ledger.length, 2);
-  eq('payment entry is category payment', DATA.ledger[1].category, 'payment');
-  eq('payment entry carries forPeriod', DATA.ledger[1].forPeriod, '18/11/2025');
+  eq('payment logged as a ledger entry', CUR.ledger.length, 2);
+  eq('payment entry is category payment', CUR.ledger[1].category, 'payment');
+  eq('payment entry carries forPeriod', CUR.ledger[1].forPeriod, '18/11/2025');
   $('#homeGo').click();
   eq('due board shows payment', $('#blDue').textContent.indexOf('paid') >= 0, true);
   $('#ledgerGo').click();
@@ -195,14 +200,14 @@ whenReady(function run() {
   /* isolated record: one statement row not yet in the ledger, and (because
    * it is the oldest record) no statement row falls inside its window — so
    * stmtOnly is exactly that one row and the Home booking button is shown. */
-  DATA.records.push({ id: 's-9', periodTo: '18/09/2025', periodFrom: '19/08/2025', total: 150, minimumDue: 10, prevDues: 0, payments: 0, purchases: 150, finance: 0, creditLimit: 100000, availLimit: 99850, dueDate: '08/10/2025', earnedNeuCoins: 1, transferredNeuCoins: 0, openingNeuCoins: 0, adjustedNeuCoins: 0, closingNeuCoins: 1, bonusPrograms: [{ program: 'Base_Grocery', coins: 1 }], txns: [{ date: '05/09/2025', desc: 'BIGBAZZAR', amount: 150, credit: false, base: 0 }] });
+  CUR.records.push({ id: 's-9', periodTo: '18/09/2025', periodFrom: '19/08/2025', total: 150, minimumDue: 10, prevDues: 0, payments: 0, purchases: 150, finance: 0, creditLimit: 100000, availLimit: 99850, dueDate: '08/10/2025', earnedNeuCoins: 1, transferredNeuCoins: 0, openingNeuCoins: 0, adjustedNeuCoins: 0, closingNeuCoins: 1, bonusPrograms: [{ program: 'Base_Grocery', coins: 1 }], txns: [{ date: '05/09/2025', desc: 'BIGBAZZAR', amount: 150, credit: false, base: 0 }] });
   $('#homeGo').click();
   var addBtns = $$('#landingStats button', document).filter(function (b) { return b.textContent.trim() === 'Add 1 to ledger'; });
   ok('home shows an "Add N to ledger" button for an un-reconciled statement', addBtns.length >= 1, true);
   if (addBtns.length) {
-    var beforeLedger = DATA.ledger.length;
+    var beforeLedger = CUR.ledger.length;
     addBtns[0].click();
-    eq('clicking it books the statement-only row into the ledger', DATA.ledger.length, beforeLedger + 1);
+    eq('clicking it books the statement-only row into the ledger', CUR.ledger.length, beforeLedger + 1);
     /* after booking, that row is matched (no longer statement-only), so the button vanishes */
     eq('button is gone once the row is booked', $$('#landingStats button', document).filter(function (b) { return b.textContent.trim() === 'Add 1 to ledger'; }).length, 0);
   }
@@ -212,7 +217,7 @@ whenReady(function run() {
     var y = mm === 12 ? 2024 : 2025;
     var mm2 = (mm === 12 ? 11 : mm - 1);
     var p2 = function (n) { return String(n).length < 2 ? '0' + n : String(n); };
-    DATA.records.push({ id: 's-h' + y + mm, periodTo: '18/' + p2(mm) + '/' + y, periodFrom: '19/' + p2(mm2) + '/' + y, total: 10 * mm, minimumDue: 5, prevDues: 0, payments: 0, purchases: 10 * mm, finance: 0, creditLimit: 100000, availLimit: 99900, dueDate: '08/' + p2(mm) + '/' + y, closingNeuCoins: 0, bonusPrograms: [], txns: [] });
+    CUR.records.push({ id: 's-h' + y + mm, periodTo: '18/' + p2(mm) + '/' + y, periodFrom: '19/' + p2(mm2) + '/' + y, total: 10 * mm, minimumDue: 5, prevDues: 0, payments: 0, purchases: 10 * mm, finance: 0, creditLimit: 100000, availLimit: 99900, dueDate: '08/' + p2(mm) + '/' + y, closingNeuCoins: 0, bonusPrograms: [], txns: [] });
   });
   $('#homeGo').click();
   function histRows() { return $$('#landingStats .table .lrow', document).length; }
@@ -261,12 +266,12 @@ whenReady(function run() {
   ok('profile modal has an input', !!profInp, true);
   profInp.value = '1234567812345678';
   $('#modalBox button').click(); /* first modal button = Save */
-  eq('card number stored', DATA.card.no, '1234567812345678');
+  eq('card number stored', CUR.card.no, '1234567812345678');
   $('#homeGo').click();
   eq('profile card shown masked', $('#landingStats').textContent.indexOf('1234 … 5678') >= 0, true);
   ok('full number not displayed', $('#landingStats').textContent.indexOf('1234567812345678') < 0, true);
   /* short number (last 4 only) displays as-is, never "8311 … 8311" */
-  DATA.card.no = '8311';
+  CUR.card.no = '8311';
   $('#homeGo').click();
   ok('short card number shown as-is', $('#landingStats').textContent.indexOf('8311') >= 0, true);
   ok('short card number not doubled', $('#landingStats').textContent.indexOf('8311 … 8311') < 0, true);
@@ -281,10 +286,11 @@ whenReady(function run() {
 
       console.log('7) persistence round-trip');
       var saved = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
-      eq('persisted version', saved.version, 5);
-      eq('persisted ledger entries', saved.ledger.length, 4); // 1 grocery (2) + 1 payment (6) + 1 bulk-booked statement row (6c) + 1 post-statement buy (6e)
-      eq('persisted payments drained', saved.payments.length, 0);
-      eq('persisted redemptions', saved.redemptions.length, 1);
+      var sCard = saved.cards.filter(function (c) { return c.id === saved.activeCardId; })[0];
+      eq('persisted version', saved.version, 6);
+      eq('persisted ledger entries', sCard.ledger.length, 4); // 1 grocery (2) + 1 payment (6) + 1 bulk-booked statement row (6c) + 1 post-statement buy (6e)
+      eq('persisted redemptions', sCard.redemptions.length, 1);
+      ok('no legacy top-level ledger', !('ledger' in saved));
       ok('no password persisted', !('password' in saved));
 
       console.log('8a) bundle export — dated filename (neu_tracker_yyyymmdd)');
@@ -308,11 +314,12 @@ whenReady(function run() {
       document.getElementById('openBundleInput').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
       setTimeout(function () {
         var now = dom.window.DATA;
-        eq('bare-JSON bundle loaded (records replaced)', now.records.length, 1);
-        eq('record id from JSON', now.records[0].id, 's-test');
-        eq('ledger from JSON', now.ledger.length, 0);
+        var nCard = now.cards.filter(function (c) { return c.id === now.activeCardId; })[0];
+        eq('bare-JSON bundle loaded (records replaced)', nCard.records.length, 1);
+        eq('record id from JSON', nCard.records[0].id, 's-test');
+        eq('ledger from JSON', nCard.ledger.length, 0);
         var saved2 = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
-        eq('persisted bare-JSON bundle version (migrated)', saved2.version, 5);
+        eq('persisted bare-JSON bundle version (migrated)', saved2.version, 6);
 
         console.log('\n' + passed + ' passed, ' + failed + ' failed');
         process.exit(failed ? 1 : 0);

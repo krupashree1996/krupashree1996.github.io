@@ -299,30 +299,37 @@ eq('amount-differs day list empty', rc2.bookOnlyCount, 1);
 
 /* ------------------------------------------------------------------ */
 section('migrateBundle / schema');
+/* v6: data lives per-card in DATA.cards[]; the legacy single card becomes the
+ * first profile (type 'neu') and an empty generic 'Axis Scapia' is seeded. */
+function neuOf(m) { return m.cards.filter(function (c) { return c.type === 'neu'; })[0]; }
 var m0 = Calc.migrateBundle({ version: 0, records: [{ periodTo: '18/03/2025', total: '9012.15' }], ledger: [{ desc: 'x', amount: '100', category: 'upi' }] });
-eq('upgraded version', m0.version, 5);
-eq('record total coerced', m0.records[0].total, 9012.15);
-eq('ledger amount coerced', m0.ledger[0].amount, 100);
-eq('card defaulted', m0.card.no, '');
+eq('upgraded version', m0.version, 6);
+ok('cards[] present', Array.isArray(m0.cards) && m0.cards.length >= 1);
+eq('legacy card migrated to neu profile', neuOf(m0).records[0].total, 9012.15);
+eq('ledger amount coerced', neuOf(m0).ledger[0].amount, 100);
+eq('card defaulted', neuOf(m0).card.no, '');
+ok('scapia profile seeded', m0.cards.some(function (c) { return c.id === 'scapia'; }));
+eq('activeCardId set', m0.activeCardId, neuOf(m0).id);
 ok('future schema rejected', Calc.migrateBundle({ version: 99 }).incompatible);
 ok('garbage rejected', Calc.migrateBundle(null).incompatible);
-eq('SCHEMA_VERSION', Calc.SCHEMA_VERSION, 5);
+eq('SCHEMA_VERSION', Calc.SCHEMA_VERSION, 6);
 
-section('schema v1 → v5 (rewards & payments fields carried through)');
+section('schema v1 → v6 (rewards & payments fields carried through)');
 var m1 = Calc.migrateBundle({ version: 1, card: { no: 'x' }, records: [], ledger: [], redemptions: [{ coins: '100', value: '25' }], payments: [{ amount: '500', forPeriod: '18/11/2025' }] });
-eq('migrated to v5', m1.version, 5);
-ok('redemptions array present', Array.isArray(m1.redemptions));
-ok('payments array drained into ledger', Array.isArray(m1.payments) && m1.payments.length === 0);
-eq('redemption coins coerced', m1.redemptions[0].coins, 100);
-eq('redemption value coerced', m1.redemptions[0].value, 25);
-eq('payment moved to ledger as Payment entry', m1.ledger.length, 1);
-eq('payment ledger category', m1.ledger[0].category, 'payment');
-eq('payment amount coerced', m1.ledger[0].amount, 500);
-eq('payment forPeriod kept', m1.ledger[0].forPeriod, '18/11/2025');
-eq('feeConfig defaulted', m1.feeConfig.target, 300000);
-eq('coin value defaults to 0.25', m1.rewardsConfig.valuePerCoin, 0.25);
+var c1 = neuOf(m1);
+eq('migrated to v6', m1.version, 6);
+ok('redemptions array present', Array.isArray(c1.redemptions));
+eq('redemption coins coerced', c1.redemptions[0].coins, 100);
+eq('redemption value coerced', c1.redemptions[0].value, 25);
+eq('payment moved to ledger as Payment entry', c1.ledger.length, 1);
+eq('payment ledger category', c1.ledger[0].category, 'payment');
+eq('payment amount coerced', c1.ledger[0].amount, 500);
+eq('payment forPeriod kept', c1.ledger[0].forPeriod, '18/11/2025');
+eq('feeConfig defaulted', c1.feeConfig.target, 300000);
+eq('coin value defaults to 0.25', c1.rewardsConfig.valuePerCoin, 0.25);
 var m2 = Calc.migrateBundle({ version: 0, records: [], ledger: [], rewardsConfig: { valuePerCoin: 1 } });
-eq('coin value preserved when set', m2.rewardsConfig.valuePerCoin, 1);
+eq('coin value preserved when set', neuOf(m2).rewardsConfig.valuePerCoin, 1);
+ok('generic card has no rewards/fee config', (function () { var g = m0.cards.filter(function (c) { return c.id === 'scapia'; })[0]; return g.rewardsConfig === null && g.feeConfig === null; })());
 
 section('rewards');
 eq('rewardsValue default (500 coins @ 0.25)', Calc.rewardsValue(500, undefined), 125);
