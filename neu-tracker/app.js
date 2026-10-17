@@ -75,7 +75,7 @@
 
   /* ---------------- state ---------------- */
   var DATA = null;      // migrated copy of window.DATA / localStorage
-  var S = { st: null, checks: null, decisions: {}, curRecord: null, recId: null, rwRec: null, chartB: null, chartC: null, autoScheduled: false, committed: false, autoTimer: null, histCount: 3, dueCount: 3 };
+  var S = { st: null, checks: null, decisions: {}, curRecord: null, recId: null, rwRec: null, chartB: null, chartC: null, autoScheduled: false, committed: false, autoTimer: null, histCount: 3, dueCount: 3, editing: null };
   var importing = false;
 
   function persist() {
@@ -92,6 +92,7 @@
     if (m.incompatible) { toast('Saved bundle is from a newer app version — update the app.', 'bad'); return; }
     DATA = m;
     window.DATA = m;
+    normalizeLedgerDates();
   }
   /* Session-only: lives in sessionStorage — survives reloads of this tab,
    * wiped when the browser (or tab) closes. Never in localStorage. */
@@ -372,11 +373,29 @@
   }
 
   /* ---------------- ledger ---------------- */
-  function todayStr() {
+  function todayISO() {
     var d = new Date();
-    return [pad(d.getDate()), pad(d.getMonth() + 1), d.getFullYear()].join('/');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   }
   function pad(n) { return String(n).length === 1 ? '0' + n : String(n); }
+  /* native <input type=date> works in yyyy-mm-dd; storage keeps dd/mm/yyyy.
+   * Both directions tolerate non-zero-padded day/month (e.g. 5/10/2026). */
+  function toISO(d) {
+    var m = String(d || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    return m ? m[3] + '-' + pad(m[2]) + '-' + pad(m[1]) : '';
+  }
+  function fromISO(s) {
+    var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? pad(m[3]) + '/' + pad(m[2]) + '/' + m[1] : '';
+  }
+  /* group keys below use date.slice(6,10)/slice(3,5) — needs fixed-width
+   * dd/mm/yyyy; normalize every ledger date on load and after edits */
+  function normalizeLedgerDates() {
+    DATA.ledger.forEach(function (e) {
+      var iso = toISO(e.date);
+      if (iso && iso !== e.date) e.date = fromISO(iso);
+    });
+  }
 
   function renderCategoryOptions(sel) {
     sel.replaceChildren();
@@ -392,28 +411,64 @@
     return c ? c.label + ': ' + c.note + (c.rate ? ' → ' + Math.round(c.rate * 100) + '%' : '') : '';
   }
   function addEntry() {
-    var date = $('leDate').value, desc = $('leDesc').value.trim(), cat = $('leCat').value;
+    var date = fromISO($('leDate').value), desc = $('leDesc').value.trim(), cat = $('leCat').value;
     var amount = parseFloat(String($('leAmt').value).replace(/[, ]/g, ''));
     if (!date) { toast('Date required.', 'warn'); return; }
     if (!desc) { toast('Description required.', 'warn'); return; }
     if (!isFinite(amount) || amount <= 0) { toast('Amount must be a positive number.', 'warn'); return; }
-    var entry = {
-      id: 'e-' + Date.now().toString(36),
-      date: date, desc: desc, category: cat, amount: Math.round(amount * 100) / 100, reconciled: ''
-    };
+    var editing = S.editing;
+    var entry = editing
+      ? DATA.ledger.filter(function (e) { return e.id === editing; })[0]
+      : { id: 'e-' + Date.now().toString(36), reconciled: '' };
+    entry.date = date; entry.desc = desc; entry.category = cat;
+    entry.amount = Math.round(amount * 100) / 100;
     if (cat === 'payment') {
       /* a Payment entry with a linked period is the repayment that reduces
        * that bill's outstanding on the due-date board */
       entry.forPeriod = $('lePeriod').value;
+    } else {
+      delete entry.forPeriod;
     }
-    DATA.ledger.push(entry);
+    if (!editing) DATA.ledger.push(entry);
+    normalizeLedgerDates();
+    S.editing = null;
+    $('addBtn').textContent = 'Add entry';
+    $('editCancelBtn').hidden = true;
     persist();
     renderLedger();
     $('leDesc').value = '';
     $('leAmt').value = '';
+    $('leDate').value = todayISO();
+  }
+  function editEntry(id) {
+    var e = DATA.ledger.filter(function (x) { return x.id === id; })[0];
+    if (!e) return;
+    S.editing = id;
+    $('leDate').value = toISO(e.date);
+    $('leDesc').value = e.desc;
+    $('leCat').value = e.category;
+    $('leHint').textContent = hintFor(e.category);
+    $('lePeriod').value = e.category === 'payment' ? (e.forPeriod || '') : '';
+    $('lePeriodWrap').style.display = e.category === 'payment' ? '' : 'none';
+    $('leAmt').value = e.amount;
+    $('addBtn').textContent = 'Save changes';
+    $('editCancelBtn').hidden = false;
+    showView('ledger');
+    $('leDate').focus();
+    $('leDate').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  function cancelEdit() {
+    S.editing = null;
+    $('addBtn').textContent = 'Add entry';
+    $('editCancelBtn').hidden = true;
+    $('leDesc').value = '';
+    $('leAmt').value = '';
+    $('leDate').value = todayISO();
+    renderLedger();
   }
   function delEntry(id) {
     DATA.ledger = DATA.ledger.filter(function (e) { return e.id !== id; });
+    if (S.editing === id) cancelEdit();
     persist();
     renderLedger();
   }
@@ -430,6 +485,10 @@
     var amt = el('span', 'l-amt', fmtMoney(e.category === 'payment' ? -e.amount : e.amount));
     if (e.reconciled) amt.appendChild(el('span', 'tick', ' ✓ reconciled'));
     row.appendChild(amt);
+    var edit = el('button', 'small', 'Edit');
+    edit.title = 'Edit this entry';
+    edit.onclick = function () { editEntry(e.id); };
+    row.appendChild(edit);
     var del = el('button', 'danger small', '✕');
     del.title = 'Delete this entry';
     del.onclick = function () { delEntry(e.id); };
@@ -437,6 +496,7 @@
     return row;
   }
   function renderLedger() {
+    normalizeLedgerDates();
     var cats = {};
     var groups = {};
     var byCat = { upi: 0, grocery: 0, base: 0, tata: 0, nocoins: 0, payment: 0 };
@@ -444,7 +504,8 @@
       /* dates are dd/mm/yyyy → group key "yyyy-mm" (e.g. "2025-12"); string
        * sort on that key is chronological across year boundaries too.
        * Entries within a month are re-sorted below by real timestamp. */
-       var mk = e.date.slice(6, 10) + '-' + e.date.slice(3, 5); // "yyyy-mm"
+        var giso = toISO(e.date); // fixed yyyy-mm-dd, even if stored as 5/10/2026
+        var mk = giso ? giso.slice(0, 7) : '????-??'; // "yyyy-mm"
       if (groups[mk] == null) groups[mk] = [];
       groups[mk].push(e);
       byCat[e.category] = (byCat[e.category] || 0) + (e.category === 'payment' ? -e.amount : e.amount);
@@ -462,8 +523,8 @@
     $('ledgerList').replaceChildren();
     var months = Object.keys(groups).sort().reverse();
     months.forEach(function (m) {
-      var mnames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      var h = el('div', 'lg-h', mnames[+m.slice(5) - 1] + ' ' + m.slice(0, 4));
+        var mnames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        var h = el('div', 'lg-h', (mnames[+m.slice(5) - 1] ? mnames[+m.slice(5) - 1] + ' ' + m.slice(0, 4) : 'Unknown date'));
       $('ledgerList').appendChild(h);
       groups[m].slice().sort(function (a, b) { return (Calc.pdate(b.date) || 0) - (Calc.pdate(a.date) || 0); }).forEach(function (e) {
         $('ledgerList').appendChild(ledgerEntryRow(e));
@@ -725,7 +786,7 @@
     return box;
   }
   function addRedemption() {
-    var date = $('rwDate').value, coins = parseFloat(String($('rwCoins').value).replace(/[, ]/g, ''));
+    var date = fromISO($('rwDate').value), coins = parseFloat(String($('rwCoins').value).replace(/[, ]/g, ''));
     var value = parseFloat(String($('rwValue').value).replace(/[, ]/g, ''));
     var note = $('rwNote').value.trim();
     if (!date) { toast('Date required.', 'warn'); return; }
@@ -733,6 +794,7 @@
     DATA.redemptions.push({ id: 'r-' + Date.now().toString(36), date: date, coins: Math.round(coins), value: isFinite(value) ? Math.round(value * 100) / 100 : NaN, note: note });
     persist();
     $('rwCoins').value = ''; $('rwValue').value = ''; $('rwNote').value = '';
+    $('rwDate').value = todayISO();
     renderRewards();
   }
   function delRedemption(id) {
@@ -1224,15 +1286,16 @@
     $('addBtn').addEventListener('click', addEntry);
     renderCategoryOptions($('leCat'));
     $('leCat').addEventListener('change', function () { $('leHint').textContent = hintFor($('leCat').value); });
-    $('leDate').value = todayStr();
+    $('leDate').value = todayISO();
     $('leHint').textContent = hintFor('upi');
+    $('editCancelBtn').addEventListener('click', cancelEdit);
     $('rcSel').addEventListener('change', renderReconcile);
     $('commitBtn').addEventListener('click', commitStatement);
     $('discardBtn').addEventListener('click', function () { showView('landing'); toast('Discarded.', 'warn'); });
     $('rwSel').addEventListener('change', function () { S.rwRec = $('rwSel').value; renderRewards(); });
     $('rwAddBtn').addEventListener('click', addRedemption);
     $('rwConfigBtn').addEventListener('click', coinConfig);
-    $('rwDate').value = todayStr();
+    $('rwDate').value = todayISO();
     $('leCat').addEventListener('change', function () {
       /* the "For period" picker only makes sense for Payment entries — the
        * repayment that clears a specific bill */
@@ -1250,5 +1313,6 @@
   }
   document.addEventListener('DOMContentLoaded', init);
 
+  App.renderLedger = renderLedger;
   window.App = App;
 })();

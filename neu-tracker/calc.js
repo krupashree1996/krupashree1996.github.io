@@ -279,7 +279,9 @@ const Calc = (function () {
 
   /* ---------- reconciliation ---------- */
   function pdate(s) {
-    var m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    /* day/month tolerate a single digit (5/10/2026) — ledger entries are
+     * free-typed and are normalized on load, but reconcile must not miss */
+    var m = String(s || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     return m ? new Date(+m[3], +m[2] - 1, +m[1]).getTime() : NaN;
   }
   function prevPeriodTo(st, prevRecord) {

@@ -75,14 +75,59 @@ whenReady(function run() {
   });
 
   console.log('2) ledger — add an entry');
-  setValue('#leDate', '10/11/2025');
+  setValue('#leDate', '2025-11-10');
   setValue('#leDesc', 'DMART buy');
   setValue('#leCat', 'grocery');
   setValue('#leAmt', '200');
   $('#addBtn').click();
   eq('ledger entry added', DATA.ledger.length, 1);
+  eq('date input defaults to today (yyyy-mm-dd)', /^20\d\d-\d\d-\d\d$/.test($('#leDate').value), true);
   eq('ledger row rendered', $('#ledgerList').textContent.indexOf('DMART buy') >= 0, true);
   eq('predicted coins shown', $('#ledgerList').textContent.indexOf('+3') >= 0, true);
+
+  console.log('2b) ledger — date picker + edit an entry');
+  eq('date input is type=date', $('#leDate').type, 'date');
+  var editBtns = $$('#ledgerList button', document).filter(function (b) { return b.textContent.trim() === 'Edit'; });
+  eq('each ledger entry has an Edit button', editBtns.length, 1);
+  editBtns[0].click();
+  eq('edit mode — button becomes Save changes', $('#addBtn').textContent, 'Save changes');
+  eq('edit mode — cancel visible', !$('#editCancelBtn').hidden, true);
+  eq('edit mode — form pre-filled with date', $('#leDate').value, '2025-11-10');
+  eq('edit mode — form pre-filled with desc', $('#leDesc').value, 'DMART buy');
+  eq('edit mode — form pre-filled with amount', $('#leAmt').value, '200');
+  setValue('#leDate', '2025-11-11');
+  setValue('#leDesc', 'DMART buy (edited)');
+  setValue('#leAmt', '250');
+  $('#addBtn').click();
+  eq('edit did not add a new entry', DATA.ledger.length, 1);
+  eq('edited date stored dd/mm/yyyy', DATA.ledger[0].date, '11/11/2025');
+  eq('edited desc saved', DATA.ledger[0].desc, 'DMART buy (edited)');
+  eq('edited amount saved', DATA.ledger[0].amount, 250);
+  eq('edit mode cleared after save', $('#addBtn').textContent, 'Add entry');
+  /* restore for the reconcile expectations below */
+  editBtns = $$('#ledgerList button', document).filter(function (b) { return b.textContent.trim() === 'Edit'; });
+  editBtns[0].click();
+  setValue('#leDate', '2025-11-10');
+  setValue('#leDesc', 'DMART buy');
+  setValue('#leAmt', '200');
+  $('#addBtn').click();
+  eq('restored date', DATA.ledger[0].date, '10/11/2025');
+  $('#editCancelBtn').click();
+  eq('cancel edit clears form', $('#leDesc').value, '');
+  eq('cancel edit resets date to today', /^20\d\d-\d\d-\d\d$/.test($('#leDate').value), true);
+  eq('cancel edit not in save mode', $('#addBtn').textContent, 'Add entry');
+
+  console.log('2c) ledger — unpadded date (5/10/2026) groups under Oct 2026, not undefined');
+  /* legacy/manual entries could be stored without zero-padding; the month
+   * group key (dd/mm/yyyy slice) used to produce "undefined" for those */
+  DATA.ledger.push({ id: 'e-unpadded', date: '5/10/2026', desc: 'UNPADDED spend', category: 'grocery', amount: 40, reconciled: '' });
+  dom.window.App.renderLedger();
+  eq('unpadded entry normalized to dd/mm/yyyy on render', DATA.ledger.filter(function (e) { return e.id === 'e-unpadded'; })[0].date, '05/10/2026');
+  var lgHeaders = $$('#ledgerList .lg-h', document).map(function (h) { return h.textContent; });
+  ok('October 2026 group exists', lgHeaders.indexOf('Oct 2026') >= 0, true);
+  ok('no undefined month group', lgHeaders.every(function (h) { return h.indexOf('undefined') < 0; }), true);
+  DATA.ledger = DATA.ledger.filter(function (e) { return e.id !== 'e-unpadded'; });
+  dom.window.App.renderLedger();
 
   console.log('3) rewards view');
   $('#rewardsGo').click();
@@ -90,7 +135,7 @@ whenReady(function run() {
   eq('rewards summary shows coin value', $('#rwSummary').textContent.indexOf('Worth of earned') >= 0, true);
 
   console.log('4) redemptions — add one');
-  setValue('#rwDate', '12/11/2025');
+  setValue('#rwDate', '2025-11-12');
   setValue('#rwCoins', '100');
   setValue('#rwValue', '25');
   $('#rwAddBtn').click();
@@ -121,7 +166,7 @@ whenReady(function run() {
   /* log the repayment as a ledger Payment entry (replaces the old Payments panel) */
   $('#ledgerGo').click();
   eq('period selector now offers the new bill', Array.from($('#lePeriod').options).some(function (o) { return o.value === '18/11/2025'; }), true);
-  setValue('#leDate', '12/11/2025');
+  setValue('#leDate', '2025-11-12');
   setValue('#leDesc', 'paid off 18/11 bill');
   setValue('#leCat', 'payment');
   setValue('#lePeriod', '18/11/2025');
@@ -185,7 +230,7 @@ whenReady(function run() {
   /* the only ledger entry so far (10/11/2025) is INSIDE s-1's cycle → no open-cycle spend yet */
   eq('unbilled 0 before any open-cycle spend', $('#landingStats').textContent.indexOf('Unbilled (new spend)') >= 0 && $('#landingStats').textContent.indexOf('₹0.00') >= 0, true);
   /* add a post-statement purchase (20/11/2025 > 18/11/2025) → unbilled = 500 */
-  setValue('#leDate', '20/11/2025');
+  setValue('#leDate', '2025-11-20');
   setValue('#leDesc', 'POST STATEMENT buy');
   setValue('#leCat', 'grocery');
   setValue('#leAmt', '500');

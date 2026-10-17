@@ -212,6 +212,15 @@ no non-configurable check fails; configurable fails surface to the user to accep
 - **Ledger:** manual spend entries (category, date, amount) grouped by month,
   category totals, plus the **payment log** (what was actually paid the bank:
   date / period / amount / method) with full/min/partial classification.
+  The date field is a native `<input type="date">` (defaults to today); the
+  redemption date in Rewards is too. Storage stays dd/mm/yyyy — converted at
+  the boundary via `toISO`/`fromISO`, both of which tolerate non-zero-padded
+  day/month (`5/10/2026` → `05/10/2026`). `normalizeLedgerDates()` runs on
+  load and in `renderLedger` so legacy unpadded dates never break the month
+  group key (it used to render an "undefined" group). `Calc.pdate` is equally
+  tolerant. Every ledger entry has **Edit** (re-fills the add form, button
+  becomes "Save changes" + Cancel appears; deleting the entry being edited
+  cancels the edit) and **Delete**.
 - **Reconcile:** matches the ledger to the statement (amount + date); auto-
   reconciles and returns home when the bill fully matches (nothing unmatched on
   either side). A "Add all N to ledger" button books every statement-only row
