@@ -84,6 +84,14 @@ whenReady(function run() {
   eq('date input defaults to today (yyyy-mm-dd)', /^20\d\d-\d\d-\d\d$/.test($('#leDate').value), true);
   eq('ledger row rendered', $('#ledgerList').textContent.indexOf('DMART buy') >= 0, true);
   eq('predicted coins shown', $('#ledgerList').textContent.indexOf('+3') >= 0, true);
+  /* each ledger row must fill the .lrow grid exactly — a 6th child on a
+   * 5-column grid wraps to a new line and doubles the row height (the Edit
+   * button was added without widening the grid) */
+  var lrowCols = (fs.readFileSync(path.join(ROOT, 'neu-tracker', 'style.css'), 'utf8').match(/\.lrow\s*{[^}]*grid-template-columns:\s*([^;]+);/i) || [])[1] || '';
+  var lrowColCount = lrowCols.trim().split(/\s+/).length;
+  ok('parsed .lrow grid columns', lrowColCount >= 5, true);
+  var ledgerRows = $$('#ledgerList .lrow', document);
+  eq('ledger row child count matches grid columns', ledgerRows.length && ledgerRows.every(function (r) { return r.children.length === lrowColCount; }), true);
 
   console.log('2b) ledger — date picker + edit an entry');
   eq('date input is type=date', $('#leDate').type, 'date');

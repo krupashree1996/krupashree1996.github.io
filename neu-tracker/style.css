@@ -148,7 +148,7 @@ header .btn.ghost:hover { color: #fff; border-color: rgba(255, 255, 255, .6); }
 
 .table { display: flex; flex-direction: column; gap: 4px; }
 .lrow {
-  display: grid; grid-template-columns: 96px 1fr auto auto auto;
+  display: grid; grid-template-columns: 96px 1fr auto auto auto auto;
   gap: 10px; align-items: center; padding: 7px 10px;
   background: var(--paper); border: 1px solid var(--line); border-radius: 8px; font-size: .92rem;
 }
