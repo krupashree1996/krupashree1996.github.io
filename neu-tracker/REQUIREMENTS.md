@@ -50,11 +50,11 @@ alone. Keep it up to date when behaviour changes.
 |---|---|
 | `parser.js` | PDF text layer → structured transaction/summary parsing (new + old layouts) |
 | `calc.js` | Reconciliation engine: `verifyStatement`, math checks, categories, exceptions, schema migration |
-| `app.js` | View wiring: import, statements list, rewards/bills views, charts, verify UI, persistence |
-| `data/bundle.js` | Seed: empty ledger, `version: 2`, `rewardsConfig.valuePerCoin: 0.25` |
-| `index.html`, `style.css`, `manifest.json`, `sw.js`, `icons/` | PWA shell |
-| `test/cc-calc.test.js` | Parser+Calc unit tests (uses `test/` fixtures; holds golden `parser.test.txt` old/new variants) |
-| `test/cc-dom.test.js` | jsdom boot smoke test (uses repo `node_modules/jsdom`) |
+| `app.js` | View wiring: card switcher + add/delete card, import, statements list, ledger (with UPI coin-split sublabel), reconcile, home, charts, verify UI, persistence |
+| `data/bundle.js` | Seed bundle: `version: 2`, empty ledger, `rewardsConfig.valuePerCoin: 0.25` (migrated up to v6 on load) |
+| `index.html`, `style.css`, `manifest.json`, `sw.js` (v23), `icons/` | PWA shell |
+| `test/cc-calc.test.js` | Parser+Calc unit tests (222 checks — old/new layout fixtures + Calc reconciliation + `guessCategory` + `coinSplit`) |
+| `test/cc-dom.test.js` | jsdom boot smoke test (94 checks; uses repo `node_modules/jsdom`; asserts card switcher, UPI coin-split render, ledger edit/date, home, import-diff) |
 
 ---
 
@@ -105,12 +105,18 @@ top-level `card/records/ledger/redemptions/rewardsConfig/feeConfig` into
 `cards[0]` (type `neu`), seeds the `scapia` profile, sets `activeCardId`, and
 deletes the now-redundant top-level fields.
 
-Endpoints exposed by `Calc`: `Calc.migrateBundle`, `Calc.SCHEMA_VERSION=4`,
-`Calc.DEFAULT_COIN_VALUE=0.25`, `Calc.verifyStatement`, `Calc.applyExceptions`,
-`Calc.hasBlocking`, `Calc.statusSummary`, `Calc.redemptionReconcile`,
-`Calc.rewardsReconcile`, `Calc.dueStatus`, `Calc.utilizationOf`,
-`Calc.predictedCoins`, `Calc.classifyMerchant`, `Calc.guessCategory`,
-`Calc.accountSummary` (via parser), categories table in `Calc.CATEGORIES`.
+Endpoints exposed by `Calc`: `Calc.migrateBundle`, `Calc.SCHEMA_VERSION=6`,
+`Calc.newCard`, `Calc.DEFAULT_COIN_VALUE=0.25`, `Calc.verifyStatement`,
+`Calc.applyExceptions`, `Calc.hasBlocking`, `Calc.statusSummary`,
+`Calc.reconcile`, `Calc.pdate`, `Calc.redemptionReconcile`,
+`Calc.rewardsTimeline`, `Calc.rewardsByCategory`, `Calc.rewardsValue`,
+`Calc.dueStatus`, `Calc.utilizationOf`, `Calc.interestSummary`,
+`Calc.waiverStatus`, `Calc.autoSettlePrior`, `Calc.paymentForRecord`,
+`Calc.predictedCoins`, `Calc.coinSplit`, `Calc.classifyMerchant`,
+`Calc.guessCategory`, `Calc.accountSummary` (via parser), categories table in
+`Calc.CATEGORIES`. (`rewardsTimeline`/`rewardsByCategory`/`rewardsValue`/
+`redemptionReconcile` have no UI since the rewards-tab removal — kept for data
+model + tests.)
 
 ---
 
@@ -252,8 +258,21 @@ no non-configurable check fails; configurable fails surface to the user to accep
 
 ## 7. UI/views & behavior (`app.js`)
 
-**Views:** Home (landing), Import/Verify, Ledger, Reconcile, Rewards. There is
-**no separate Bills tab** — the bills functionality was merged:
+**Views:** Home (landing), Import/Verify, Ledger, Reconcile. There is **no
+Rewards tab** (removed — see note at top) and **no separate Bills tab** — the
+bills functionality was merged:
+
+- **Header (all views):** card profile dropdown (`#cardBox`) switches the active
+  card (persisted as `activeCardId`), **"+ Card"** opens an add-card modal
+  (name + type `neu`/`generic` + card number/AAN; `Calc.newCard` builds the
+  profile), **"Delete card"** opens a confirm modal showing the card name and
+  its record/ledger counts — the last remaining card cannot be deleted.
+  `switchCard` re-renders everything (landing, ledger, charts, category
+  dropdown) and persists the selection. For a `generic` card the **Import** nav
+  button is disabled (the parser is Tata-Neu specific) and the category
+  dropdown offers only **NoCoins + Payment** (`rebuildCategoryOptions()` runs on
+  init and on every card switch; defaults to NoCoins so generic cards earn no
+  coins).
 
 - **Home (landing):** stats + history, the monthly-purchases & spend-by-category
   charts, **credit-utilization trend** (`utilizationOf = used/limit`), the
@@ -280,7 +299,11 @@ no non-configurable check fails; configurable fails surface to the user to accep
   **Reconcile** button. Re-importing a recorded period keeps its reconciled flag.
 - **Ledger:** manual spend entries (category, date, amount) grouped by month,
   category totals, plus the **payment log** (what was actually paid the bank:
-  date / period / amount / method) with full/min/partial classification.
+  date / period / amount / method) with full/min/partial classification. Each
+  coin-earning row shows its predicted `+N`; a **UPI** row additionally renders
+  a small `.coin-split` sublabel `1% app N₁ · 0.5% statement N₂` (the two coin
+  sources — see §5) with a tooltip; the same sublabel appears in the
+  import-diff "in ledger, not on statement" list.
   The date field is a native `<input type="date">` (defaults to today); the
   redemption date in Rewards is too. Storage stays dd/mm/yyyy — converted at
   the boundary via `toISO`/`fromISO`, both of which tolerate non-zero-padded
@@ -294,10 +317,10 @@ no non-configurable check fails; configurable fails surface to the user to accep
   reconciles and returns home when the bill fully matches (nothing unmatched on
   either side). A "Add all N to ledger" button books every statement-only row
   (`Calc.guessCategory`: credit→Payment, base=0→NoCoins, else merchant-guessed).
-- **Rewards view:** NeuCoin balance timeline + coins-earned per category; monthly
-  redemption/transfer ledger (add/delete redemptions); rupee value = coins ×
-  `valuePerCoin`; bonuses (e.g. Tata 3.5% next statement).
-- **Persistence:** statements + bundle localStorage key; schema v2 with migration.
+- **Persistence:** statements + bundle in one `localStorage` key; schema v6
+  (multi-card) with migrations from v0–v5. `Calc.migrateBundle` is idempotent;
+  a bare-JSON or older bundle file opened via **Open bundle** is migrated on
+  load (see `loadBundleFile` in app.js).
 - **Password:** session-only — stored in `sessionStorage` (survives reload of the open
   tab, wiped when the browser/tab closes). Never in `localStorage`, bundle.js, or the
   repo. There is no "remember on this device" option by design.
@@ -307,11 +330,13 @@ no non-configurable check fails; configurable fails surface to the user to accep
 
 ## 8. Tests & how to run
 
-- Unit/Calc: `node test/cc-calc.test.js` (191 checks — includes old/new layout
-  fixtures + Calc reconciliation + `guessCategory`).
-- DOM boot: `node test/cc-dom.test.js` (jsdom; strips external scripts & SW
-  registration; injects stub `window.pdfjsLib` + `window.Chart` so chart draws
-  are asserted; exercises the merged Home/Ledger layout and the payment log).
+- Unit/Calc: `node test/cc-calc.test.js` (222 checks — includes old/new layout
+  fixtures + Calc reconciliation + `guessCategory` + `coinSplit`).
+- DOM boot: `node test/cc-dom.test.js` (94 checks; jsdom; strips external
+  scripts & SW registration; injects stub `window.pdfjsLib` + `window.Chart`
+  so chart draws are asserted; exercises the multi-card header, card
+  switcher, the UPI coin-split render, the merged Home/Ledger layout and the
+  payment log).
 - Harness for real PDFs (password `PDFPW01`, dir `Downloads/Neu_statement`):
   `node /tmp/opencode/run_merge.js` (ever merged result of 20 files, prints
   period/total/mad/due/limit/avail + verify status per statement).
