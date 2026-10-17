@@ -45,7 +45,7 @@ const Calc = (function () {
 
   /* ledger categories with coin rules matching the user's tracker sheet */
   var CATEGORIES = {
-    upi:     { label: 'UPI',       rate: 0.015, program: 'NeuCoins_on_UPI_Acc',  note: '1.5% (1% base + 0.5% bonus)' },
+    upi:     { label: 'UPI',       rate: 0.015, program: 'NeuCoins_on_UPI_Acc',  note: '1.5% (1% in Neu app + 0.5% on bank statement)', split: { base: 0.01, bonus: 0.005 } },
     grocery: { label: 'Grocery',   rate: 0.015, program: 'Base_Grocery',         note: '1.5% base on groceries' },
     base:    { label: 'Base',      rate: 0.015, program: 'BaseNeuCoins',         note: '1.5% base' },
     tata:    { label: 'Tata',      rate: 0.035, program: 'Add_TataPayment',      note: '3.5% — bonus lands next statement' },
@@ -63,6 +63,20 @@ const Calc = (function () {
       program: cat.program,
       note: cat.note
     };
+  }
+
+  /* Split a coin-earning entry into its app-side (base) and statement-side
+   * (bonus) parts. UPI is 1% base (credited in the Neu app, never on the
+   * bank statement) + 0.5% UPI bonus (the only coin amount printed on the
+   * statement). Returns null for categories with no split. base + bonus
+   * always equals predictedCoins(entry).coins. */
+  function coinSplit(entry) {
+    var cat = CATEGORIES[entry && entry.category];
+    if (!cat || !cat.split || cat.rate <= 0 || !isFinite(entry.amount) || entry.amount <= 0) return null;
+    var total = Math.round(entry.amount * cat.rate);
+    var bonus = Math.round(entry.amount * cat.split.bonus);
+    var base = total - bonus;
+    return { base: base, bonus: bonus, total: total, basePct: Math.round(cat.split.base * 1000) / 10, bonusPct: Math.round(cat.split.bonus * 1000) / 10 };
   }
 
   /* guess the category from a merchant description */
@@ -819,7 +833,7 @@ const Calc = (function () {
   return {
     round2: round2, close: close, cleanAmount: cleanAmount,
     fmtMoney: fmtMoney, fmtNum: fmtNum, fmtCoins: fmtCoins,
-    madFor: madFor, CATEGORIES: CATEGORIES, predictedCoins: predictedCoins,
+    madFor: madFor, CATEGORIES: CATEGORIES, predictedCoins: predictedCoins, coinSplit: coinSplit,
     classifyMerchant: classifyMerchant, guessCategory: guessCategory,
     verifyStatement: verifyStatement, applyExceptions: applyExceptions,
     hasBlocking: hasBlocking, statusSummary: statusSummary,

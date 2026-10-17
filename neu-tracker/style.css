@@ -164,6 +164,7 @@ header .btn.ghost:hover { color: #fff; border-color: rgba(255, 255, 255, .6); }
 .lrow > .l-cat { color: var(--muted); font-size: .84rem; white-space: nowrap; }
 .lrow > .l-amt { font-variant-numeric: tabular-nums; font-weight: 600; }
 .lrow .tick { margin-left: 8px; color: var(--ok); font-size: .82rem; }
+.lrow .coin-split { display: block; color: var(--muted); font-size: .72rem; opacity: .8; margin-top: 1px; }
 .lrow .meta { color: var(--muted); font-size: .8rem; margin-left: 8px; }
 
 .lg-h { font-size: .9rem; font-weight: 600; color: var(--muted); margin: 14px 0 4px; }

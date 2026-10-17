@@ -27,7 +27,6 @@
     <button id="homeGo" class="btn">Home</button>
     <button id="importGo" class="btn primary">Import statement</button>
     <button id="ledgerGo" class="btn">Ledger</button>
-    <button id="rewardsGo" class="btn">Rewards</button>
     <button id="saveBundleBtn" class="btn ghost" title="Download your data as neu_tracker_yyyymmdd.js">Save bundle</button>
     <button id="openBundleBtn" class="btn ghost" title="Restore a downloaded neu_tracker_*.js bundle">Open bundle</button>
     <input id="openBundleInput" type="file" class="sr-only" aria-hidden="true">
@@ -97,28 +96,6 @@
     <div id="rcBody"></div>
   </section>
 
-  <section id="rewards" class="panel" style="display:none">
-    <h2>Rewards — NeuCoins</h2>
-    <div id="rwSummary"></div>
-    <h4>Per-cycle breakdown</h4>
-    <div class="form"><label>Cycle</label><select id="rwSel"></select>
-      <button id="rwConfigBtn" class="btn ghost">Coin value…</button></div>
-    <div id="rwCycle"></div>
-    <div class="cards">
-      <div class="card chart"><h4>NeuCoins earned per cycle</h4><div class="cv"><canvas id="chartEarned"></canvas></div></div>
-      <div class="card chart"><h4>NeuCoin balance over time</h4><div class="cv"><canvas id="chartBalance"></canvas></div></div>
-    </div>
-    <h4>Redemptions / transfers</h4>
-    <div class="form ledger-form">
-      <div><label>Date</label><input id="rwDate" type="date"></div>
-      <div><label>NeuCoins</label><input id="rwCoins" type="number" min="0" step="1" placeholder="0"></div>
-      <div><label>Worth (₹)</label><input id="rwValue" type="number" min="0" step="0.01" placeholder="optional"></div>
-      <div class="grow"><label>Note</label><input id="rwNote" type="text" placeholder="e.g. paid for a Tata order"></div>
-      <div class="align-end"><button id="rwAddBtn" class="btn primary">Add</button></div>
-    </div>
-    <div id="rwReconcile"></div>
-    <div id="rwList"></div>
-  </section>
 
 </main>
 

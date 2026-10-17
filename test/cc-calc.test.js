@@ -257,6 +257,15 @@ eq('Tata program name', Calc.predictedCoins({ category: 'tata', amount: 2000 }).
 eq('NoCoins → 0', Calc.predictedCoins({ category: 'nocoins', amount: 1000 }).coins, 0);
 eq('Payment → 0', Calc.predictedCoins({ category: 'payment', amount: 5000 }).coins, 0);
 eq('round up 66.66 → 67', Calc.predictedCoins({ category: 'tata', amount: 1900 }).coins, 67);
+eq('UPI split 1000 → 10/5/15', (function (s) { return s.base === 10 && s.bonus === 5 && s.total === 15; })(Calc.coinSplit({ category: 'upi', amount: 1000 })), true);
+eq('UPI split base+bonus === total', (function (s) { return s.base + s.bonus === s.total; })(Calc.coinSplit({ category: 'upi', amount: 135.30 })), true);
+eq('UPI split pcts', (function (s) { return s.basePct === 1 && s.bonusPct === 0.5; })(Calc.coinSplit({ category: 'upi', amount: 1000 })), true);
+eq('UPI split matches predictedCoins', (function (s) { return s.total === Calc.predictedCoins({ category: 'upi', amount: 135.30 }).coins; })(Calc.coinSplit({ category: 'upi', amount: 135.30 })), true);
+eq('Grocery split null', Calc.coinSplit({ category: 'grocery', amount: 1000 }), null);
+eq('Base split null', Calc.coinSplit({ category: 'base', amount: 1000 }), null);
+eq('Tata split null', Calc.coinSplit({ category: 'tata', amount: 1000 }), null);
+eq('NoCoins split null', Calc.coinSplit({ category: 'nocoins', amount: 1000 }), null);
+eq('UPI split 0 amount null', Calc.coinSplit({ category: 'upi', amount: 0 }), null);
 eq('classify upi', Calc.classifyMerchant('UPI-MyGate-123', false), 'upi');
 eq('classify tata merchant', Calc.classifyMerchant('TATAPAYMENTSLIMITEGURGOAN', false), 'tata');
 eq('classify grocery', Calc.classifyMerchant('BIGBASKET', false), 'grocery');

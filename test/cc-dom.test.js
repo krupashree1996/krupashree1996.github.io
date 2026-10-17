@@ -142,21 +142,21 @@ whenReady(function run() {
   CUR.ledger = CUR.ledger.filter(function (e) { return e.id !== 'e-unpadded'; });
   dom.window.App.renderLedger();
 
-  console.log('3) rewards view');
-  $('#rewardsGo').click();
-  eq('rewards visible', $('#rewards').style.display, 'block');
-  eq('rewards summary shows coin value', $('#rwSummary').textContent.indexOf('Worth of earned') >= 0, true);
+  console.log('2d) ledger — UPI coin split (app vs statement)');
+  CUR.ledger.push({ id: 'e-upi-split', date: '10/11/2025', desc: 'UPI-Test', category: 'upi', amount: 1000, reconciled: '' });
+  dom.window.App.renderLedger();
+  var upiRow = $$('#ledgerList .lrow', document).filter(function (r) { return (r.querySelector('.l-desc') || {}).textContent === 'UPI-Test'; })[0];
+  var csSpan = upiRow ? upiRow.querySelector('.coin-split') : null;
+  ok('UPI row has a coin-split sublabel', !!csSpan, true);
+  eq('UPI split text (1000 → 10 app / 5 stmt)', csSpan && csSpan.textContent, '1% app 10 · 0.5% statement 5');
+  CUR.ledger = CUR.ledger.filter(function (e) { return e.id !== 'e-upi-split'; });
+  dom.window.App.renderLedger();
 
-  console.log('4) redemptions — add one');
-  setValue('#rwDate', '2025-11-12');
-  setValue('#rwCoins', '100');
-  setValue('#rwValue', '25');
-  $('#rwAddBtn').click();
-  eq('redemption added', CUR.redemptions.length, 1);
-  eq('redemption coins stored', CUR.redemptions[0].coins, 100);
-  eq('redemption listed', $('#rwList').textContent.indexOf('100 coins') >= 0, true);
+  console.log('3) rewards tab removed (no NeuCoins UI)');
+  ok('no Rewards nav button', !$('#rewardsGo'), true);
+  ok('no Rewards section in DOM', !$('#rewards'), true);
 
-  console.log('5) home — due board + interest (merged in from Bills)');
+  console.log('4) home — due board + interest (merged in from Bills)');
   $('#homeGo').click();
   eq('landing visible', $('#landing').style.display, 'block');
   eq('due board on home', $('#blDue').textContent.indexOf('No statements yet') >= 0, true);
@@ -174,9 +174,6 @@ whenReady(function run() {
    * (unbilled = non-reconciled entries) */
   CUR.ledger.filter(function (e) { return e.desc === 'DMART buy'; })[0].reconciled = '18/11/2025';
   CUR.records.push({ id: 's-1', periodTo: '18/11/2025', periodFrom: '19/10/2025', total: 200, minimumDue: 10, prevDues: 0, payments: 0, purchases: 200, finance: 0, creditLimit: 100000, availLimit: 99800, dueDate: '08/12/2025', earnedNeuCoins: 3, transferredNeuCoins: 0, openingNeuCoins: 0, adjustedNeuCoins: 0, closingNeuCoins: 3, bonusPrograms: [{ program: 'Base_Grocery', coins: 3 }], txns: [{ date: '10/11/2025', desc: 'DMART', amount: 200, credit: false, base: 0 }] });
-  $('#rewardsGo').click();
-  eq('cycle breakdown expected grocery', $('#rwCycle').textContent.indexOf('expected +3') >= 0, true);
-  eq('redeem reconcile shows net −97 (3 earned − 0 transferred − 100 redeemed)', $('#rwReconcile').textContent.indexOf('more redeemed than earned') >= 0 && $('#rwReconcile').textContent.indexOf('-97') >= 0, true);
   $('#homeGo').click();
   eq('due board row rendered (home)', $('#blDue').textContent.indexOf('due 08/12/2025') >= 0, true);
   /* log the repayment as a ledger Payment entry (replaces the old Payments panel) */
@@ -289,7 +286,7 @@ whenReady(function run() {
       var sCard = saved.cards.filter(function (c) { return c.id === saved.activeCardId; })[0];
       eq('persisted version', saved.version, 6);
       eq('persisted ledger entries', sCard.ledger.length, 4); // 1 grocery (2) + 1 payment (6) + 1 bulk-booked statement row (6c) + 1 post-statement buy (6e)
-      eq('persisted redemptions', sCard.redemptions.length, 1);
+      ok('redemptions field still present (kept for bundle portability, no UI)', Array.isArray(sCard.redemptions));
       ok('no legacy top-level ledger', !('ledger' in saved));
       ok('no password persisted', !('password' in saved));
 

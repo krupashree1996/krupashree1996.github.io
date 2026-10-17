@@ -1,10 +1,18 @@
 # Neu-Tracker — Requirements, Rules & Verification Spec
 
 Credit-Card statement tracker (multi-card). Ships with the HDFC **Tata Neu
-Infinity** profile (full feature: import + verify + NeuCoins rewards + fee
-waiver) and an **Axis Scapia** profile (generic: ledger + due board only —
-statement import and the rewards model are Tata-Neu specific and deferred to a
-later Axis parser).
+Infinity** profile (full feature: import + verify + fee waiver; the statement
+shows NeuCoins but there is no dedicated rewards/redeem UI) and an **Axis
+Scapia** profile (generic: ledger + due board only — statement import is
+Tata-Neu specific and deferred to a later Axis parser).
+
+> **Rewards tab removed (user decision):** the user does not redeem NeuCoins and
+> doesn't track lapsed coins, so the Rewards view (per-cycle coin breakdown,
+> redemption/transfer ledger, coin-value config, earned/balance charts) was
+> deleted. NeuCoins from statements are still parsed and shown per statement and
+> in Home's "Coins still earnable"; the `redemptions[]` field and the `Calc`
+> rewards functions are kept in the data model for bundle portability but have no
+> UI.
 
 **Purpose of this file:** capture every rule, formula, layout quirk and verified
 decision so the assistant can re-implement / continue the work from this doc
@@ -18,16 +26,18 @@ alone. Keep it up to date when behaviour changes.
   (its own statements, ledger, redemptions, rewards + fee config). `activeCardId`
   selects the profile the views render. A header dropdown switches profiles;
   "+ Card" adds one (type **neu** or **generic**).
-  - `type: 'neu'` — full feature: statement import/verify + NeuCoins rewards +
-    fee waiver (HDFC Tata Neu Infinity).
-  - `type: 'generic'` — ledger + due board + card number only. Import & Rewards
-    nav are disabled; reward/fee config stay `null` (the parser and reward model
-    are Tata-Neu specific — a generic Axis parser is deferred).
+  - `type: 'neu'` — full feature: statement import/verify + fee waiver (HDFC Tata
+    Neu Infinity). NeuCoins are parsed from statements and shown per-statement +
+    in Home's "Coins still earnable" (no dedicated rewards UI — see note above).
+  - `type: 'generic'` — ledger + due board + card number only. Import nav is
+    disabled (the parser is Tata-Neu specific — a generic Axis parser is
+    deferred); it earns no coins (category dropdown offers only NoCoins +
+    Payment), and reward/fee config stay `null`.
 - NeuCoins value model (per neu card): 1 NeuCoin = ₹0.25 by default
-  (`card.rewardsConfig.valuePerCoin`).
-- "Rewards" = NeuCoin ledger reconciled per category. The "Bills" dashboard
-  (due dates, payment log, interest, utilization) is merged into **Home** +
-  **Ledger** — there is no separate Bills tab.
+  (`card.rewardsConfig.valuePerCoin`) — used only for the per-statement /
+  Home "worth of coins" line.
+- The "Bills" dashboard (due dates, payment log, interest, utilization) is
+  merged into **Home** + **Ledger** — there is no separate Bills tab.
 - Completely offline (no network). pdf.js runs in-browser (legacy build) reading
   the user's own PDFs. No personal data ever sent anywhere (privacy guard tests
   enforce this).
@@ -164,7 +174,7 @@ Honestly verified on real statements:
 
 | category | rate | program | notes |
 |---|---|---|---|
-| `upi` | 1.5% | NeuCoins_on_UPI_Acc | 1% base + 0.5% bonus |
+| `upi` | 1.5% | NeuCoins_on_UPI_Acc | 1% (credited in the Neu **app** only) + 0.5% (printed on the bank **statement**) |
 | `grocery` | 1.5% | Base_Grocery | base rate |
 | `base` | 1.5% | BaseNeuCoins | base rate |
 | `tata` | 3.5% | Add_TataPayment | bonus lands next statement |
@@ -173,6 +183,17 @@ Honestly verified on real statements:
 
 `classifyMerchant(desc)` → UPI→`upi`; grocery keywords→`grocery`; `TATA…`→`tata`;
 `BPPY`/`UPI` bank rows→`payment`; default `base`.
+
+**UPI coin split (user request, 2026-10):** the 1.5% UPI total has two sources —
+1% is credited only in the Tata Neu **app** (never appears on the bank
+statement) and 0.5% is the UPI bonus the bank **statement** actually prints.
+`Calc.coinSplit(entry)` returns `{ base, bonus, total }` (base = total − bonus,
+so base+bonus always equals `predictedCoins(entry).coins`); only `upi` has a
+split, all other categories return `null`. Each UPI ledger row renders the
+combined `+N` as before plus a small sublabel
+`1% app N₁ · 0.5% statement N₂` (same in the import-diff "in ledger, not on
+statement" list) so the user can track the two coin sources without the
+rewards tab.
 
 NeuCoins denominations: 1 coin ≈ ₹0.25; `redemptionReconcile` computes how many
 coins the redemption `value` consumed, and `rewardsReconcile` sanity-checks

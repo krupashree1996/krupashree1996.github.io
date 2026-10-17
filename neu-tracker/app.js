@@ -66,7 +66,7 @@
   function download(name, text, mime) { saveFile(name, text, mime || 'application/octet-stream'); }
 
   function show(id) {
-    ['landing', 'verify', 'ledger', 'reconcile', 'rewards'].forEach(function (x) {
+    ['landing', 'verify', 'ledger', 'reconcile'].forEach(function (x) {
       var n = $(x);
       if (!n) return;
       n.style.display = (x === id ? 'block' : 'none');
@@ -76,7 +76,7 @@
   /* ---------------- state ---------------- */
   var DATA = null;      // migrated copy of window.DATA / localStorage (holds cards[])
   var C = null;         // the active card profile (DATA.cards[activeCardId])
-  var S = { st: null, checks: null, decisions: {}, curRecord: null, recId: null, rwRec: null, chartB: null, chartC: null, autoScheduled: false, committed: false, autoTimer: null, histCount: 3, dueCount: 3, editing: null };
+  var S = { st: null, checks: null, decisions: {}, curRecord: null, recId: null, chartB: null, chartC: null, autoScheduled: false, committed: false, autoTimer: null, histCount: 3, dueCount: 3, editing: null };
   var importing = false;
 
   function activeCard() {
@@ -535,7 +535,14 @@
     if (e.category === 'payment' && e.forPeriod) d.appendChild(el('span', 'meta', ' · for ' + fmtDate(e.forPeriod)));
     row.appendChild(d);
     var p = Calc.predictedCoins(e);
-    row.appendChild(el('span', 'l-cat', Calc.CATEGORIES[e.category].label + (p.coins ? ' +' + fmtCoins(p.coins) : '')));
+    var cat = el('span', 'l-cat', Calc.CATEGORIES[e.category].label + (p.coins ? ' +' + fmtCoins(p.coins) : ''));
+    var cs = Calc.coinSplit(e);
+    if (cs) {
+      var sub = el('span', 'coin-split', cs.basePct + '% app ' + fmtCoins(cs.base) + ' · ' + cs.bonusPct + '% statement ' + fmtCoins(cs.bonus));
+      sub.title = cs.basePct + '% credited in the Tata Neu app (never on the bank statement) + ' + cs.bonusPct + '% UPI bonus printed on the statement';
+      cat.appendChild(sub);
+    }
+    row.appendChild(cat);
     var amt = el('span', 'l-amt', fmtMoney(e.category === 'payment' ? -e.amount : e.amount));
     if (e.reconciled) amt.appendChild(el('span', 'tick', ' ✓ reconciled'));
     row.appendChild(amt);
@@ -705,7 +712,13 @@
         var r = el('div', 'lrow');
         r.appendChild(el('span', 'l-date', fmtDate(e.date)));
         r.appendChild(el('span', 'l-desc', e.desc));
-        r.appendChild(el('span', 'l-cat', Calc.CATEGORIES[e.category].label + (Calc.predictedCoins(e).coins ? ' +' + fmtCoins(Calc.predictedCoins(e).coins) : '')));
+        var dcat = el('span', 'l-cat', Calc.CATEGORIES[e.category].label + (Calc.predictedCoins(e).coins ? ' +' + fmtCoins(Calc.predictedCoins(e).coins) : ''));
+        var dcs = Calc.coinSplit(e);
+        if (dcs) {
+          var dsub = el('span', 'coin-split', dcs.basePct + '% app ' + fmtCoins(dcs.base) + ' · ' + dcs.bonusPct + '% statement ' + fmtCoins(dcs.bonus));
+          dcat.appendChild(dsub);
+        }
+        r.appendChild(dcat);
         r.appendChild(el('span', 'l-amt', fmtMoney(e.amount)));
         b2.appendChild(r);
       });
@@ -769,138 +782,6 @@
     renderLedger();
     show('landing');
     renderAll();
-  }
-
-  /* ---------------- rewards ---------------- */
-  function rwCycleOptions() {
-    var sel = $('rwSel');
-    sel.replaceChildren();
-    if (!C.records.length) { sel.appendChild(el('option', '', 'No statements yet')); return; }
-    var sorted = C.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); });
-    sorted.forEach(function (r) {
-      var o = el('option', '', r.periodTo + (isFinite(r.earnedNeuCoins) ? ' · +' + fmtCoins(r.earnedNeuCoins) : ''));
-      o.value = r.periodTo;
-      sel.appendChild(o);
-    });
-    if (S.rwRec && C.records.some(function (r) { return r.periodTo === S.rwRec; })) sel.value = S.rwRec;
-    else { sel.value = sorted[0].periodTo; S.rwRec = sel.value; }
-  }
-  function renderRewards() {
-    if (!isNeu()) { $('rwSummary').replaceChildren(el('p', 'muted', 'Rewards tracking is Neu-specific — switch to a Neu card.')); return; }
-    var rate = isFinite(Number(C.rewardsConfig.valuePerCoin)) ? Number(C.rewardsConfig.valuePerCoin) : Calc.DEFAULT_COIN_VALUE;
-    rwCycleOptions();
-    var h = el('div', 'kv');
-    var rr = Calc.redemptionReconcile(C.records, C.redemptions);
-    h.appendChild(kvRow('Total earned (all cycles)', fmtCoins(rr.totalEarned)));
-    h.appendChild(kvRow('Transferred to Tata Neu', fmtCoins(rr.totalTransferred)));
-    h.appendChild(kvRow('Redeemed (your ledger)', fmtCoins(rr.totalRedeemed)));
-    h.appendChild(kvRow('Worth of earned at ₹' + fmtNum(rate) + '/coin', fmtMoney(Calc.rewardsValue(rr.totalEarned, rate))));
-    $('rwSummary').replaceChildren(h);
-    var rec = pickRecord(S.rwRec);
-    $('rwCycle').replaceChildren(rec ? cycleRewardsTable(rec) : el('p', 'muted', 'Import a statement to see its category breakdown.'));
-    $('rwReconcile').replaceChildren(redeemReconcileBox(rr));
-    renderRedemptions();
-  }
-  function cycleRewardsTable(rec) {
-    var body = el('div');
-    var rb = Calc.rewardsByCategory(rec, C.ledger, prevRecordOf(rec));
-    var cats = { upi: 'UPI', grocery: 'Grocery', base: 'Base', tata: 'Tata' };
-    var has = Object.keys(rb.expected).length || Object.keys(rb.actual).length;
-    if (!has) return el('p', 'muted', 'No coin-earning entries in this cycle.');
-    var t = el('div', 'table');
-    Object.keys(cats).forEach(function (k) {
-      var exp = rb.expected[k] || 0, act = rb.actual[k] || 0;
-      if (!exp && !act) return;
-      var row = el('div', 'lrow');
-      row.appendChild(el('span', 'l-date', cats[k]));
-      var d = el('span', 'l-desc', 'expected +' + fmtCoins(exp));
-      if (act !== exp) d.appendChild(el('span', 'meta', ' statement ' + (act ? '+' + fmtCoins(act) : '0')));
-      row.appendChild(d);
-      row.appendChild(el('span', 'l-cat', act === exp ? '✓' : (act > exp ? 'statement higher' : 'statement lower')));
-      row.appendChild(el('span', 'l-amt', fmtCoins(exp)));
-      t.appendChild(row);
-    });
-    Object.keys(rb.actual).forEach(function (k) {
-      if (cats[k] != null) return;
-      var row = el('div', 'lrow');
-      row.appendChild(el('span', 'l-date', 'Other'));
-      row.appendChild(el('span', 'l-desc', 'statement bonus program'));
-      row.appendChild(el('span', 'l-cat', '—'));
-      row.appendChild(el('span', 'l-amt', fmtCoins(rb.actual[k])));
-      t.appendChild(row);
-    });
-    body.appendChild(t);
-    body.appendChild(el('p', 'muted', 'Expected uses your ledger categories and the verified rates (UPI/Grocery/Base 1.5%, Tata 3.5%).'));
-    return body;
-  }
-  function redeemReconcileBox(rr) {
-    var box = el('div', 'kv');
-    var gap = rr.netUnspent === 0 ? 'balanced ✓'
-      : (rr.netUnspent > 0 ? 'more earned than redeemed/transferred — still in your balances' : 'more redeemed than earned — check older cycles');
-    box.appendChild(kvRow('Earned − transferred − redeemed', fmtCoins(rr.netUnspent) + ' ' + gap));
-    return box;
-  }
-  function addRedemption() {
-    var date = fromISO($('rwDate').value), coins = parseFloat(String($('rwCoins').value).replace(/[, ]/g, ''));
-    var value = parseFloat(String($('rwValue').value).replace(/[, ]/g, ''));
-    var note = $('rwNote').value.trim();
-    if (!date) { toast('Date required.', 'warn'); return; }
-    if (!isFinite(coins) || coins <= 0) { toast('NeuCoins must be positive.', 'warn'); return; }
-    C.redemptions.push({ id: 'r-' + Date.now().toString(36), date: date, coins: Math.round(coins), value: isFinite(value) ? Math.round(value * 100) / 100 : NaN, note: note });
-    persist();
-    $('rwCoins').value = ''; $('rwValue').value = ''; $('rwNote').value = '';
-    $('rwDate').value = todayISO();
-    renderRewards();
-  }
-  function delRedemption(id) {
-    C.redemptions = C.redemptions.filter(function (x) { return x.id !== id; });
-    persist();
-    renderRewards();
-  }
-  function renderRedemptions() {
-    var body = el('div');
-    if (!C.redemptions.length) {
-      body.appendChild(el('p', 'muted', 'No redemptions logged. Add each spend of NeuCoins (coins + what it was worth).'));
-      $('rwList').replaceChildren(body);
-      return;
-    }
-    var t = el('div', 'table');
-    C.redemptions.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).forEach(function (x) {
-      var row = el('div', 'lrow');
-      row.appendChild(el('span', 'l-date', fmtDate(x.date)));
-      var d = el('span', 'l-desc', x.note || 'redemption');
-      if (isFinite(x.value)) d.appendChild(el('span', 'meta', ' worth ' + fmtMoney(x.value)));
-      row.appendChild(d);
-      row.appendChild(el('span', 'l-cat', fmtCoins(x.coins) + ' coins'));
-      row.appendChild(el('span', 'l-amt', isFinite(x.value) ? fmtMoney(x.value) : '—'));
-      var del = el('button', 'danger small', '✕');
-      del.onclick = function () { delRedemption(x.id); };
-      row.appendChild(del);
-      t.appendChild(row);
-    });
-    body.appendChild(t);
-    $('rwList').replaceChildren(body);
-  }
-  function coinConfig() {
-    var box = el('div');
-    box.appendChild(el('h2', '', 'Coin value'));
-    box.appendChild(el('p', 'muted', 'Value of one NeuCoin in ₹, used for the "worth of rewards" estimates. Default: ₹0.25.'));
-    var row = el('div', 'form');
-    var inp = el('input'); inp.type = 'number'; inp.min = '0'; inp.step = '0.01';
-    inp.value = isFinite(Number(C.rewardsConfig.valuePerCoin)) ? C.rewardsConfig.valuePerCoin : Calc.DEFAULT_COIN_VALUE;
-    row.appendChild(inp);
-    var ok = el('button', 'primary', 'Save');
-    ok.onclick = function () {
-      var v = parseFloat(String(inp.value).replace(/[, ]/g, ''));
-      C.rewardsConfig.valuePerCoin = isFinite(v) ? v : Calc.DEFAULT_COIN_VALUE;
-      persist();
-      closeModal();
-      renderRewards();
-    };
-    row.appendChild(ok);
-    box.appendChild(row);
-    modal(box, true);
-    setTimeout(function () { inp.focus(); }, 30);
   }
 
   /* ---------------- dues & interest (due board + interest on Home) ----------- */
@@ -1057,7 +938,7 @@
   }
 
   /* ---------------- charts ---------------- */
-  var chartMonthly = null, chartCats = null, chartEarned = null, chartBalance = null, chartUtil = null;
+  var chartMonthly = null, chartCats = null, chartUtil = null;
   /* the <h4> title sits inside the .card, a level above the canvas (.cv > canvas) */
   function setH4(canvas, show) {
     var card = canvas && canvas.closest('.card');
@@ -1068,8 +949,6 @@
   function destroyCharts() {
     if (chartMonthly) { chartMonthly.destroy(); chartMonthly = null; }
     if (chartCats) { chartCats.destroy(); chartCats = null; }
-    if (chartEarned) { chartEarned.destroy(); chartEarned = null; }
-    if (chartBalance) { chartBalance.destroy(); chartBalance = null; }
     if (chartUtil) { chartUtil.destroy(); chartUtil = null; }
   }
   function drawCharts() {
@@ -1108,31 +987,6 @@
       });
     }
 
-    /* rewards: earned bar + balance line (only when the tab is open) */
-    var rwVis = $('rewards').style.display === 'block';
-    if (rwVis) {
-      var tl = Calc.rewardsTimeline(C.records);
-      var cvE = $('chartEarned'), cvB = $('chartBalance');
-      var hasE = tl.earned.length > 0;
-      setH4(cvE, hasE);
-      if (hasE) {
-        chartEarned = new Chart(cvE, {
-          type: 'bar',
-          data: { labels: tl.earned.map(function (p) { return shortMonth(p.periodTo); }), datasets: [{ label: 'Earned', data: tl.earned.map(function (p) { return p.coins; }), backgroundColor: '#b8860b' }] },
-          options: { responsive: true, plugins: { legend: { display: false } } }
-        });
-      }
-      var hasB = tl.balance.length > 0;
-      setH4(cvB, hasB);
-      if (hasB) {
-        chartBalance = new Chart(cvB, {
-          type: 'line',
-          data: { labels: tl.balance.map(function (p) { return shortMonth(p.periodTo); }), datasets: [{ label: 'Balance', data: tl.balance.map(function (p) { return p.coins; }), borderColor: '#b8860b', backgroundColor: 'rgba(184,134,11,.15)', fill: true, tension: .25, pointRadius: 3 }] },
-          options: { responsive: true, plugins: { legend: { display: false } } }
-        });
-      }
-    }
-
     /* utilization line (home chart, from records) */
     var utRecs = C.records.filter(function (r) { return Calc.utilizationOf(r) != null; }).sort(function (a, b) { return (Calc.pdate(a.periodTo) || 0) - (Calc.pdate(b.periodTo) || 0); }).slice(-12);
     var cvU = $('chartUtil');
@@ -1161,7 +1015,6 @@
     renderDueBoard();
     renderFeeWaiver();
     renderInterest();
-    if ($('rewards').style.display === 'block') renderRewards();
     if (S.recId && $('rcSel') && $('reconcile').style.display === 'block') renderReconcile();
   }
   function renderLanding() {
@@ -1329,9 +1182,8 @@
 
   /* ---------------- wiring ---------------- */
   function showView(id) {
-    /* statement import + the rewards model are Tata-Neu specific — hide them
-     * for a generic (non-neu) card like Axis Scapia. */
-    if (id === 'rewards' && !isNeu()) { toast('Rewards tracking is Neu-specific — set up a Neu card first.', 'warn'); return; }
+    /* statement import is Tata-Neu specific — block it for a generic (non-neu)
+     * card like Axis Scapia. */
     if (id === 'import') { if (!isNeu()) { toast('Import is Neu-specific for now.', 'warn'); return; } showView('landing'); $('importFile').click(); return; }
     show(id); renderAll();
   }
@@ -1353,13 +1205,11 @@
     });
     sel.addEventListener('change', function () { switchCard(sel.value); });
     box.replaceChildren(sel);
-    /* statement import + rewards are Tata-Neu specific — disable those nav
-     * buttons for a generic (non-neu) card. */
+    /* statement import is Tata-Neu specific — disable that nav button for a
+     * generic (non-neu) card. */
     var neu = isNeu();
     $('importGo').disabled = !neu;
-    $('rewardsGo').disabled = !neu;
     $('importGo').title = neu ? '' : 'Statement import is Neu-specific (Axis parser comes later)';
-    $('rewardsGo').title = neu ? '' : 'Rewards tracking is Neu-specific';
   }
   function switchCard(id) {
     var c = DATA.cards.filter(function (x) { return x.id === id; })[0];
@@ -1429,7 +1279,6 @@
     $('delCardBtn').addEventListener('click', deleteCard);
     $('homeGo').addEventListener('click', function () { showView('landing'); });
     $('ledgerGo').addEventListener('click', function () { showView('ledger'); });
-    $('rewardsGo').addEventListener('click', function () { showView('rewards'); });
     $('importGo').addEventListener('click', function () { showView('import'); });
     $('addBtn').addEventListener('click', addEntry);
     $('leCat').addEventListener('change', function () { $('leHint').textContent = hintFor($('leCat').value); });
@@ -1439,10 +1288,6 @@
     $('rcSel').addEventListener('change', renderReconcile);
     $('commitBtn').addEventListener('click', commitStatement);
     $('discardBtn').addEventListener('click', function () { showView('landing'); toast('Discarded.', 'warn'); });
-    $('rwSel').addEventListener('change', function () { S.rwRec = $('rwSel').value; renderRewards(); });
-    $('rwAddBtn').addEventListener('click', addRedemption);
-    $('rwConfigBtn').addEventListener('click', coinConfig);
-    $('rwDate').value = todayISO();
     $('leCat').addEventListener('change', function () {
       /* the "For period" picker only makes sense for Payment entries — the
        * repayment that clears a specific bill */
