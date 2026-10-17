@@ -241,9 +241,14 @@ no non-configurable check fails; configurable fails surface to the user to accep
   the **Upcoming bill (est.)** projection. Unbilled (new spend) = the sum of
   **non-reconciled** non-payment ledger entries — NOT a date cutoff. The bank's
   cut-off means a statement omits txns near its period end (an 18/09 statement
-  only prints through 15/09), so spend dated *before* `periodTo` can still land on
-  the next bill; the `reconciled` flag is the authoritative "already on a
-  statement" marker (set by the reconcile flow when a bill fully matches).
+   only prints through 15/09), so spend dated *before* `periodTo` can still land on
+   the next bill; the `reconciled` flag is the authoritative "already on a
+   statement" marker (set by the reconcile flow when a bill fully matches).
+   Unbilled is independent of statements, so a statement-less card (Axis Scapia)
+   still shows its "Unbilled (new spend)" on Home; the "Upcoming bill (est.)",
+   "Carried from last bill" and "Finance (est.)" lines (and the coins line, which
+   is Neu-only) appear only once a statement has been imported / for a neu card.
+   Adding/editing/deleting a ledger entry re-renders Home so the total stays live.
 - **Import:** `readPdf` reads ALL pages of a multi-page statement (merges page
   text, offsetting each page's y by +10000 so coordinates stay unique), runs the
   parser, then `Calc.verifyStatement`.

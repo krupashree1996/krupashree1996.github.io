@@ -438,12 +438,25 @@
 
   function renderCategoryOptions(sel) {
     sel.replaceChildren();
+    /* coin-earning categories (upi/grocery/base/tata) use Tata-Neu rates —
+     * a generic card (Axis Scapia) earns no coins, so only NoCoins + Payment
+     * apply to it. */
+    var onlyNoCoin = !isNeu();
     Object.keys(Calc.CATEGORIES).forEach(function (k) {
+      if (onlyNoCoin && Calc.CATEGORIES[k].rate > 0) return;
       var c = Calc.CATEGORIES[k];
       var o = el('option', '', c.label + ' · ' + c.note);
       o.value = k;
       sel.appendChild(o);
     });
+  }
+  /* (re)build the category dropdown for the active card and pick its default:
+   * Neu → UPI (the usual case), generic → NoCoins. */
+  function rebuildCategoryOptions() {
+    var sel = $('leCat');
+    renderCategoryOptions(sel);
+    sel.value = isNeu() ? 'upi' : 'nocoins';
+    $('leHint').textContent = hintFor(sel.value);
   }
   function hintFor(cat) {
     var c = Calc.CATEGORIES[cat];
@@ -475,6 +488,7 @@
     $('editCancelBtn').hidden = true;
     persist();
     renderLedger();
+    renderLanding(); // keep the home "Unbilled" total live as entries are added/edited
     $('leDesc').value = '';
     $('leAmt').value = '';
     $('leDate').value = todayISO();
@@ -510,6 +524,7 @@
     if (S.editing === id) cancelEdit();
     persist();
     renderLedger();
+    renderLanding();
   }
   function ledgerEntryRow(e) {
     var row = el('div', 'lrow');
@@ -1178,30 +1193,45 @@
      * cut-off means a statement does not contain txns near its period end
      * (e.g. an 18/09 statement only prints through 15/09), so spend dated
      * *before* periodTo can still land on the next bill. */
+    /* Unbilled = ledger spend not yet reconciled to any statement (reconcile
+     * marks matched entries), NOT a date cutoff: the bank's cut-off means a
+     * statement does not contain txns near its period end (e.g. an 18/09
+     * statement only prints through 15/09), so spend dated *before* periodTo
+     * can still land on the next bill. This holds for any card — even one with
+     * no imported statements yet (e.g. Axis Scapia), where only the unbilled
+     * line is meaningful. */
+    var coins = { base: 0, upi: 0, grocery: 0, tata: 0 };
+    var unbilled = 0;
+    C.ledger.forEach(function (e) {
+      if (e.reconciled) return; // already booked on a statement
+      if (e.category === 'payment') return; // a payment is a credit, not new spend
+      unbilled += e.amount; // every other unbilled entry (incl. nocoins) is new spend
+      if (e.category in coins) coins[e.category] += Calc.predictedCoins(e).coins;
+    });
+    /* carried-over dues + finance estimate exist only once a statement has
+     * been imported; unbilled spend shows regardless. */
+    var carried = 0, finEst = 0;
     if (k) {
-      var coins = { base: 0, upi: 0, grocery: 0, tata: 0 };
-      var unbilled = 0;
-      C.ledger.forEach(function (e) {
-        if (e.reconciled) return; // already booked on a statement
-        if (e.category === 'payment') return; // a payment is a credit, not new spend
-        unbilled += e.amount; // every other unbilled entry (incl. nocoins) is new spend
-        if (e.category in coins) coins[e.category] += Calc.predictedCoins(e).coins;
-      });
       var ds = Calc.dueStatus(k, C.ledger, C.records);
-      /* unpaid portion of the current bill rolls into the next one */
-      var carried = Math.max(Math.round((k.total - ds.paid) * 100) / 100, 0);
-      /* finance estimate: none if the last bill is fully paid, otherwise the
-       * last printed finance charge rolls over once */
-      var finEst = (isFinite(k.finance) && carried > 0) ? k.finance : 0;
-      var projected = Math.round((carried + unbilled + finEst) * 100) / 100;
+      carried = Math.max(Math.round((k.total - ds.paid) * 100) / 100, 0); // unpaid portion of the last bill
+      finEst = (isFinite(k.finance) && carried > 0) ? k.finance : 0;     // last finance charge rolls over once
+    }
+    var hasCoins = isNeu() && Object.keys(coins).some(function (c) { return coins[c] > 0; });
+    /* a card with a statement always shows the block (even at ₹0 unbilled); a
+     * statement-less card (Axis Scapia) shows it only once it has unbilled spend. */
+    if (k || unbilled > 0 || hasCoins) {
       var up = el('div', 'kv');
-      up.appendChild(kvRow('Upcoming bill (est.)', fmtMoney(projected)));
+      if (k) up.appendChild(kvRow('Upcoming bill (est.)', fmtMoney(Math.round((carried + unbilled + finEst) * 100) / 100)));
       up.appendChild(kvRow('Unbilled (new spend)', fmtMoney(unbilled)));
-      up.appendChild(kvRow('Carried from last bill', fmtMoney(carried)));
-      if (finEst > 0) up.appendChild(kvRow('Finance (est.)', fmtMoney(finEst)));
-      var coinLine = Object.keys(coins).filter(function (c) { return coins[c] > 0; })
-        .map(function (c) { return c + ' +' + fmtCoins(coins[c]); }).join(' · ') || 'no coins yet';
-      up.appendChild(kvRow('Coins still earnable', coinLine));
+      if (k) {
+        up.appendChild(kvRow('Carried from last bill', fmtMoney(carried)));
+        if (finEst > 0) up.appendChild(kvRow('Finance (est.)', fmtMoney(finEst)));
+      }
+      if (isNeu()) {
+        var coinLine = Object.keys(coins).filter(function (c) { return coins[c] > 0; })
+          .map(function (c) { return c + ' +' + fmtCoins(coins[c]) }).join(' · ') || 'no coins yet';
+        up.appendChild(kvRow('Coins still earnable', coinLine));
+      }
       h.appendChild(up);
     }
     if (C.records.length) {
@@ -1339,6 +1369,7 @@
     S.editing = null;
     persist();
     renderCardSwitcher();
+    rebuildCategoryOptions();
     renderAll();
   }
   function addCard() {
@@ -1401,10 +1432,9 @@
     $('rewardsGo').addEventListener('click', function () { showView('rewards'); });
     $('importGo').addEventListener('click', function () { showView('import'); });
     $('addBtn').addEventListener('click', addEntry);
-    renderCategoryOptions($('leCat'));
     $('leCat').addEventListener('change', function () { $('leHint').textContent = hintFor($('leCat').value); });
+    rebuildCategoryOptions();
     $('leDate').value = todayISO();
-    $('leHint').textContent = hintFor('upi');
     $('editCancelBtn').addEventListener('click', cancelEdit);
     $('rcSel').addEventListener('change', renderReconcile);
     $('commitBtn').addEventListener('click', commitStatement);
