@@ -165,6 +165,9 @@ whenReady(function run() {
   setValue('#leCat', 'upi');
 
   console.log('6) reconcile engine against the in-app ledger');
+  /* the DMART entry was imported with s-1, so reconcile marks it as on-statement
+   * (unbilled = non-reconciled entries) */
+  DATA.ledger.filter(function (e) { return e.desc === 'DMART buy'; })[0].reconciled = '18/11/2025';
   DATA.records.push({ id: 's-1', periodTo: '18/11/2025', periodFrom: '19/10/2025', total: 200, minimumDue: 10, prevDues: 0, payments: 0, purchases: 200, finance: 0, creditLimit: 100000, availLimit: 99800, dueDate: '08/12/2025', earnedNeuCoins: 3, transferredNeuCoins: 0, openingNeuCoins: 0, adjustedNeuCoins: 0, closingNeuCoins: 3, bonusPrograms: [{ program: 'Base_Grocery', coins: 3 }], txns: [{ date: '10/11/2025', desc: 'DMART', amount: 200, credit: false, base: 0 }] });
   $('#rewardsGo').click();
   eq('cycle breakdown expected grocery', $('#rwCycle').textContent.indexOf('expected +3') >= 0, true);
@@ -232,11 +235,13 @@ whenReady(function run() {
   dueMore().click();
   eq('due board shows all 9 after second click', dueRows(), 9);
   eq('due board show-more gone once all shown', !!dueMore(), false);
-  /* upcoming bill (est.) — unbilled is now the post-statement ledger spend,
-   * not creditLimit − availLimit − total (availLimit lags a full cycle) */
+  /* upcoming bill (est.) — unbilled is the non-reconciled (not yet on any
+   * statement) ledger spend, not a date cutoff (the bank's cut-off means a
+   * statement may omit txns near its period end, so spend dated before
+   * periodTo can still land on the next bill) */
   eq('upcoming bill (est.) shown on home', $('#landingStats').textContent.indexOf('Upcoming bill (est.)') >= 0, true);
-  /* the only ledger entry so far (10/11/2025) is INSIDE s-1's cycle → no open-cycle spend yet */
-  eq('unbilled 0 before any open-cycle spend', $('#landingStats').textContent.indexOf('Unbilled (new spend)') >= 0 && $('#landingStats').textContent.indexOf('₹0.00') >= 0, true);
+  /* the only ledger entry so far (DMART, 10/11/2025) is reconciled to s-1 → no unbilled spend yet */
+  eq('unbilled 0 when all spend is reconciled', $('#landingStats').textContent.indexOf('Unbilled (new spend)') >= 0 && $('#landingStats').textContent.indexOf('₹0.00') >= 0, true);
   /* add a post-statement purchase (20/11/2025 > 18/11/2025) → unbilled = 500 */
   setValue('#leDate', '2025-11-20');
   setValue('#leDesc', 'POST STATEMENT buy');

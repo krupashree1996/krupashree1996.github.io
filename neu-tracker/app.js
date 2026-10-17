@@ -1130,18 +1130,20 @@
     kw.appendChild(cardRow);
     h.appendChild(kw);
 
-    /* Upcoming bill (est.): what the NEXT bill will look like, from the open
-     * cycle — spend booked since the last statement + coins still earnable,
-     * plus the carried-over dues and a finance estimate. */
+    /* Upcoming bill (est.): what the NEXT bill will look like — the unbilled
+     * spend + coins still earnable, plus the carried-over dues and a finance
+     * estimate. Unbilled = ledger entries not yet reconciled to any statement
+     * (reconcile marks matched entries), NOT a date cutoff: the bank's
+     * cut-off means a statement does not contain txns near its period end
+     * (e.g. an 18/09 statement only prints through 15/09), so spend dated
+     * *before* periodTo can still land on the next bill. */
     if (k) {
-      var from = Calc.pdate(k.periodTo);
       var coins = { base: 0, upi: 0, grocery: 0, tata: 0 };
       var unbilled = 0;
       DATA.ledger.forEach(function (e) {
-        var t = Calc.pdate(e.date);
-        if (!isFinite(t) || isFinite(from) && t <= from) return; // open cycle only
+        if (e.reconciled) return; // already booked on a statement
         if (e.category === 'payment') return; // a payment is a credit, not new spend
-        unbilled += e.amount; // every other open-cycle entry (incl. nocoins) is new spend
+        unbilled += e.amount; // every other unbilled entry (incl. nocoins) is new spend
         if (e.category in coins) coins[e.category] += Calc.predictedCoins(e).coins;
       });
       var ds = Calc.dueStatus(k, DATA.ledger, DATA.records);

@@ -199,8 +199,14 @@ no non-configurable check fails; configurable fails surface to the user to accep
 
 - **Home (landing):** stats + history, the monthly-purchases & spend-by-category
   charts, **credit-utilization trend** (`utilizationOf = used/limit`), the
-  **finance/interest summary** (`interestSummary`), and the **due-dates board**
-  (`dueStatus`: due date, days left, overdue, full/min/partial, outstanding).
+  **finance/interest summary** (`interestSummary`), the **due-dates board**
+  (`dueStatus`: due date, days left, overdue, full/min/partial, outstanding), and
+  the **Upcoming bill (est.)** projection. Unbilled (new spend) = the sum of
+  **non-reconciled** non-payment ledger entries — NOT a date cutoff. The bank's
+  cut-off means a statement omits txns near its period end (an 18/09 statement
+  only prints through 15/09), so spend dated *before* `periodTo` can still land on
+  the next bill; the `reconciled` flag is the authoritative "already on a
+  statement" marker (set by the reconcile flow when a bill fully matches).
 - **Import:** `readPdf` reads ALL pages of a multi-page statement (merges page
   text, offsetting each page's y by +10000 so coordinates stay unique), runs the
   parser, then `Calc.verifyStatement`.
