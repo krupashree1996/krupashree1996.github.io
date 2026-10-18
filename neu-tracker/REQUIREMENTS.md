@@ -50,15 +50,15 @@ alone. Keep it up to date when behaviour changes.
 |---|---|
 | `parser.js` | PDF text layer → structured transaction/summary parsing (new + old layouts) |
 | `calc.js` | Reconciliation engine: `verifyStatement`, math checks, categories, exceptions, schema migration |
-| `app.js` | View wiring: card switcher + add/delete card, import, statements list, ledger (with UPI coin-split sublabel), reconcile, home, charts, verify UI, persistence |
+| `app.js` | View wiring: card switcher + add/delete card, import, statements list, ledger (with UPI + Tata+Groc coin-split sublabels), reconcile, home, charts, verify UI, persistence |
 | `data/bundle.js` | Seed bundle: `version: 2`, empty ledger, `rewardsConfig.valuePerCoin: 0.25` (migrated up to v6 on load) |
 | `index.html`, `style.css`, `manifest.json`, `sw.js` (v23), `icons/` | PWA shell |
-| `test/cc-calc.test.js` | Parser+Calc unit tests (222 checks — old/new layout fixtures + Calc reconciliation + `guessCategory` + `coinSplit`) |
-| `test/cc-dom.test.js` | jsdom boot smoke test (94 checks; uses repo `node_modules/jsdom`; asserts card switcher, UPI coin-split render, ledger edit/date, home, import-diff) |
+| `test/cc-calc.test.js` | Parser+Calc unit tests (229 checks — old/new layout fixtures + Calc reconciliation + `guessCategory` + `coinSplit` incl. Tata+Groc + v7 BigBasket migration) |
+| `test/cc-dom.test.js` | jsdom boot smoke test (97 checks; uses repo `node_modules/jsdom`; asserts card switcher, UPI + Tata+Groc coin-split render, ledger edit/date, home, import-diff) |
 
 ---
 
-## 3. Data model — bundle schema `version: 6` (multi-card)
+## 3. Data model — bundle schema `version: 7` (multi-card)
 
 The bundle is a list of card profiles. Each profile is self-contained: its own
 identity, statements, ledger, redemptions and (for neu cards) reward/fee config.
@@ -103,9 +103,10 @@ Migration is idempotent and versioned: `SCHEMA_VERSION` in `calc.js` is the
 target; `MIGRATIONS[n]` transforms shape `n → n+1`. v5 → v6 moves the legacy
 top-level `card/records/ledger/redemptions/rewardsConfig/feeConfig` into
 `cards[0]` (type `neu`), seeds the `scapia` profile, sets `activeCardId`, and
-deletes the now-redundant top-level fields.
+deletes the now-redundant top-level fields. v6 → v7 re-books BigBasket ledger
+entries `nocoins` → `tatagroc` (see the BigBasket rule in §5).
 
-Endpoints exposed by `Calc`: `Calc.migrateBundle`, `Calc.SCHEMA_VERSION=6`,
+Endpoints exposed by `Calc`: `Calc.migrateBundle`, `Calc.SCHEMA_VERSION=7`,
 `Calc.newCard`, `Calc.DEFAULT_COIN_VALUE=0.25`, `Calc.verifyStatement`,
 `Calc.applyExceptions`, `Calc.hasBlocking`, `Calc.statusSummary`,
 `Calc.reconcile`, `Calc.pdate`, `Calc.redemptionReconcile`,
@@ -181,25 +182,43 @@ Honestly verified on real statements:
 | category | rate | program | notes |
 |---|---|---|---|
 | `upi` | 1.5% | NeuCoins_on_UPI_Acc | 1% (credited in the Neu **app** only) + 0.5% (printed on the bank **statement**) |
-| `grocery` | 1.5% | Base_Grocery | base rate |
-| `base` | 1.5% | BaseNeuCoins | base rate |
-| `tata` | 3.5% | Add_TataPayment | bonus lands next statement |
+| `grocery` | 1.5% | Base_Grocery | base rate (bank statement only; app credits nothing) |
+| `base` | 1.5% | BaseNeuCoins | base rate (bank statement only; app credits nothing) |
+| `tata` | 3.5% | Add_TataPayment | bonus lands next statement/cycle |
+| `tatagroc` | 5% | Add_TataPayment | 1.5% grocery (this cycle) + 3.5% Tata (**next cycle**) — e.g. BigBasket paid via Tata Pay; the app already shows the full 5% instantly |
 | `nocoins` | 0 | — | no NeuCoins |
 | `payment` | 0 | — | repayment, no NeuCoins |
 
 `classifyMerchant(desc)` → UPI→`upi`; grocery keywords→`grocery`; `TATA…`→`tata`;
 `BPPY`/`UPI` bank rows→`payment`; default `base`.
 
-**UPI coin split (user request, 2026-10):** the 1.5% UPI total has two sources —
-1% is credited only in the Tata Neu **app** (never appears on the bank
-statement) and 0.5% is the UPI bonus the bank **statement** actually prints.
-`Calc.coinSplit(entry)` returns `{ base, bonus, total }` (base = total − bonus,
-so base+bonus always equals `predictedCoins(entry).coins`); only `upi` has a
-split, all other categories return `null`. Each UPI ledger row renders the
-combined `+N` as before plus a small sublabel
-`1% app N₁ · 0.5% statement N₂` (same in the import-diff "in ledger, not on
-statement" list) so the user can track the two coin sources without the
-rewards tab.
+**Coin splits in the ledger (user requests, 2026-10):** there are only two
+major coin sources — the Tata Neu **app** and the bank **statement**:
+- **UPI**: 1% app (never on the statement) + 0.5% statement.
+- **Base/Grocery**: 1.5% statement only; the app credits nothing.
+- **Tata Pay spend (e.g. BigBasket)**: 1.5% grocery this cycle + 3.5% Tata
+  next cycle (`Add_TataPayment`); the app already shows the full 5% instantly.
+
+`Calc.coinSplit(entry)` returns
+`{ base, bonus, total, basePct, bonusPct, srcBase, srcBonus, nextCycle }`
+(base = total − round(amount × bonusRate), so base+bonus always equals
+`predictedCoins(entry).coins`); only `upi` and `tatagroc` have a `split`, all
+other categories return `null`. Each such ledger row renders the combined `+N`
+plus a small sublabel built from the source labels —
+`1% app 10 · 0.5% statement 5` (UPI) or
+`1.5% grocery 14 · 3.5% Tata 33 (next cycle)` (BigBasket, ₹942.12) — in both
+the ledger and the import-diff "in ledger, not on statement" list. The total
+is the calculated 5% (47 on the 02/02/25 entry); the app's own display
+(47.55) is not tracked.
+
+**BigBasket rule:** the statement prints `base=0` on BigBasket rows, so the
+importer used to book them `nocoins`. `classifyMerchant` now returns
+`tatagroc` for `BIGBASKET` descriptors (matched *before* the generic grocery
+rule), and `guessCategory` does the same for statement txns. MIGRATIONS[6]
+(v6→v7, `SCHEMA_VERSION=7`) re-books any existing BigBasket ledger entry from
+`nocoins` to `tatagroc` (payments excluded). Verified against the user's real
+bundle: 5 entries re-booked (02/02/25 ₹942.12 → +47 = 14+33, 16/03/25,
+10/05/26, 18/07/26, 26/08/26).
 
 NeuCoins denominations: 1 coin ≈ ₹0.25; `redemptionReconcile` computes how many
 coins the redemption `value` consumed, and `rewardsReconcile` sanity-checks
@@ -300,12 +319,13 @@ bills functionality was merged:
 - **Ledger:** manual spend entries (category, date, amount) grouped by month,
   category totals, plus the **payment log** (what was actually paid the bank:
   date / period / amount / method) with full/min/partial classification. Each
-  coin-earning row shows its predicted `+N`; a **UPI** row additionally renders
-  a small `.coin-split` sublabel `1% app N₁ · 0.5% statement N₂` (the two coin
-  sources — see §5) with a tooltip; the same sublabel appears in the
-  import-diff "in ledger, not on statement" list.
-  The date field is a native `<input type="date">` (defaults to today); the
-  redemption date in Rewards is too. Storage stays dd/mm/yyyy — converted at
+   coin-earning row shows its predicted `+N`; **UPI** and **Tata+Groc** rows
+   additionally render a small `.coin-split` sublabel with their source
+   breakdown (UPI: `1% app N₁ · 0.5% statement N₂`; BigBasket: `1.5% grocery
+   N₁ · 3.5% Tata N₂ (next cycle)` — see §5) with a category-note tooltip; the
+   same sublabel appears in the import-diff "in ledger, not on statement" list.
+   The date field is a native `<input type="date">` (defaults to today).
+   Storage stays dd/mm/yyyy — converted at
   the boundary via `toISO`/`fromISO`, both of which tolerate non-zero-padded
   day/month (`5/10/2026` → `05/10/2026`). `normalizeLedgerDates()` runs on
   load and in `renderLedger` so legacy unpadded dates never break the month
@@ -330,9 +350,10 @@ bills functionality was merged:
 
 ## 8. Tests & how to run
 
-- Unit/Calc: `node test/cc-calc.test.js` (222 checks — includes old/new layout
-  fixtures + Calc reconciliation + `guessCategory` + `coinSplit`).
-- DOM boot: `node test/cc-dom.test.js` (94 checks; jsdom; strips external
+- Unit/Calc: `node test/cc-calc.test.js` (229 checks — includes old/new layout
+  fixtures + Calc reconciliation + `guessCategory` + `coinSplit` + v7
+  BigBasket migration).
+- DOM boot: `node test/cc-dom.test.js` (97 checks; jsdom; strips external
   scripts & SW registration; injects stub `window.pdfjsLib` + `window.Chart`
   so chart draws are asserted; exercises the multi-card header, card
   switcher, the UPI coin-split render, the merged Home/Ledger layout and the

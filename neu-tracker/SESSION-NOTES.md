@@ -4,10 +4,33 @@ Hand-off notes for the next assistant session. Full spec: [REQUIREMENTS.md](REQU
 All work is committed & pushed on `main` (GitHub Pages, no build step).
 
 ## Current state (verified green)
-- `node test/cc-calc.test.js` → **222 passed, 0 failed**
-- `node test/cc-dom.test.js` → **94 passed, 0 failed**
-- Versions: `SCHEMA_VERSION=6` (calc.js), `APP_VERSION=6` (app.js), SW `neu-tracker-v23` (sw.js)
-- Latest commit: `08ef46f` — "remove rewards tab; show UPI coin split (1% app / 0.5% statement) in ledger"
+- `node test/cc-calc.test.js` → **229 passed, 0 failed**
+- `node test/cc-dom.test.js` → **97 passed, 0 failed**
+- Versions: `SCHEMA_VERSION=7` (calc.js), `APP_VERSION=6` (app.js build badge), SW `neu-tracker-v24` (sw.js)
+- Latest commit: see `git log --oneline -3` (Tata+Groc/BigBasket + docs)
+
+## Coin-source model (confirmed against user's real 202502/202503 xlsx calc sheets)
+Two major coin sources: **app** and **bank statement**:
+- UPI: 1% app + 0.5% statement (`NeuCoins_on_UPI_Acc`)
+- Base/Grocery: 1.5% statement only (`Base_Grocery`/`BaseNeuCoins`); app credits nothing
+- Tata Pay spend (BigBasket): 1.5% grocery this cycle + 3.5% Tata next cycle
+  (`Add_TataPayment`); app shows the full 5% instantly. ₹942.12 → 14 + 33 = 47
+  (app displayed 47.55; tracker keeps the calculated 47 — user chose no override)
+
+## What was done this session (part 2)
+1. **`tatagroc` category** (5%) added: label "Tata+Groc", split
+   `{ base: 0.015 grocery, bonus: 0.035 Tata, nextCycle: true }`.
+   - `classifyMerchant`: `BIGBASKET` → `tatagroc` (matched BEFORE the grocery
+     rule which also contained BIGBASKET); `guessCategory`: same for stmt txns
+     (statement prints base=0 on these, so the old path booked them nocoins).
+   - `coinSplit` now returns `srcBase/srcBonus/nextCycle`; ledger sublabel is
+     source-aware: `1% app 10 · 0.5% statement 5` vs `1.5% grocery 14 · 3.5%
+     Tata 33 (next cycle)`.
+   - **MIGRATIONS[6]** (v6→v7, SCHEMA_VERSION=7): re-books existing BigBasket
+     ledger entries nocoins→tatagroc (payments excluded). Verified on the user's
+     real /tmp/opencode/bundle.js: 5 entries re-booked.
+   - app.js: `byCat`/coins maps + doughnut palette updated; category dropdown
+     (built from Calc.CATEGORIES) picks it up automatically.
 
 ## What was done this session
 1. **Rewards tab removed** (user: never redeems, doesn't track lapsed coins).
@@ -31,7 +54,10 @@ All work is committed & pushed on `main` (GitHub Pages, no build step).
    root README.md (neu-tracker/investments/tn-utilities entries).
 
 ## Open threads / possible next work
-- Nothing blocked. No pending uncommitted work.
+- Nothing blocked.
+- **Manual coins override** (user declined for now, 2026-10): an optional
+  per-entry "actual coins" field when the app's display (e.g. 47.55) differs
+  from the calculated rate (47). Not built — totals stay calculated.
 - Axis Scapia is still `generic`: no statement parser (deferred — needs its own
   layout rules). If requested, mirror parser.js patterns + add fixtures.
 - Coin rounding: per-entry round (matches statement behavior); if the user ever

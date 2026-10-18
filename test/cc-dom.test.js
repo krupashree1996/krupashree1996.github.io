@@ -1,8 +1,8 @@
 'use strict';
 /* DOM integration test: boots the real neu-tracker/ app in jsdom and verifies
- * the Rewards and Bills views, ledger/redemption/payment data flows, and the
- * schema-v5 bundle. Scripts are injected manually since jsdom cannot fetch
- * file:// siblings. Run: node test/cc-dom.test.js  (needs jsdom)
+ * the multi-card header, ledger (coin splits, edit/date flows), home + import
+ * data flows, and the schema-v7 bundle. Scripts are injected manually since
+ * jsdom cannot fetch file:// siblings. Run: node test/cc-dom.test.js (needs jsdom)
  */
 var path = require('path');
 var fs = require('fs');
@@ -59,7 +59,7 @@ whenReady(function run() {
   var CUR = DATA.cards.filter(function (c) { return c.id === DATA.activeCardId; })[0];
 
   console.log('1) boot — bundle migrated to schema v6 on load (multi-card)');
-  eq('data version 6', DATA.version, 6);
+  eq('data version 7', DATA.version, 7);
   ok('cards[] present', Array.isArray(DATA.cards) && DATA.cards.length >= 1);
   eq('active card is neu', CUR.type, 'neu');
   ok('redemptions array', Array.isArray(CUR.redemptions));
@@ -150,6 +150,17 @@ whenReady(function run() {
   ok('UPI row has a coin-split sublabel', !!csSpan, true);
   eq('UPI split text (1000 → 10 app / 5 stmt)', csSpan && csSpan.textContent, '1% app 10 · 0.5% statement 5');
   CUR.ledger = CUR.ledger.filter(function (e) { return e.id !== 'e-upi-split'; });
+  dom.window.App.renderLedger();
+
+  console.log('2e) ledger — Tata+Groc (BigBasket via Tata Pay) split');
+  ok('category dropdown offers Tata+Groc', Array.from($('#leCat').options).some(function (o) { return o.value === 'tatagroc'; }), true);
+  CUR.ledger.push({ id: 'e-bb-split', date: '02/02/2025', desc: 'WWWBIGBASKETCOM GURGOAN', category: 'tatagroc', amount: 942.12, reconciled: '' });
+  dom.window.App.renderLedger();
+  var bbRow = $$('#ledgerList .lrow', document).filter(function (r) { return (r.querySelector('.l-desc') || {}).textContent === 'WWWBIGBASKETCOM GURGOAN'; })[0];
+  var bbSub = bbRow ? bbRow.querySelector('.coin-split') : null;
+  ok('BigBasket row has a coin-split sublabel', !!bbSub, true);
+  eq('BigBasket split text (942.12 → 14 grocery / 33 Tata)', bbSub && bbSub.textContent, '1.5% grocery 14 · 3.5% Tata 33 (next cycle)');
+  CUR.ledger = CUR.ledger.filter(function (e) { return e.id !== 'e-bb-split'; });
   dom.window.App.renderLedger();
 
   console.log('3) rewards tab removed (no NeuCoins UI)');
@@ -284,7 +295,7 @@ whenReady(function run() {
       console.log('7) persistence round-trip');
       var saved = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
       var sCard = saved.cards.filter(function (c) { return c.id === saved.activeCardId; })[0];
-      eq('persisted version', saved.version, 6);
+      eq('persisted version', saved.version, 7);
       eq('persisted ledger entries', sCard.ledger.length, 4); // 1 grocery (2) + 1 payment (6) + 1 bulk-booked statement row (6c) + 1 post-statement buy (6e)
       ok('redemptions field still present (kept for bundle portability, no UI)', Array.isArray(sCard.redemptions));
       ok('no legacy top-level ledger', !('ledger' in saved));
@@ -316,7 +327,7 @@ whenReady(function run() {
         eq('record id from JSON', nCard.records[0].id, 's-test');
         eq('ledger from JSON', nCard.ledger.length, 0);
         var saved2 = JSON.parse(dom.window.localStorage.getItem('ne.tracker.data'));
-        eq('persisted bare-JSON bundle version (migrated)', saved2.version, 6);
+        eq('persisted bare-JSON bundle version (migrated)', saved2.version, 7);
 
         console.log('\n' + passed + ' passed, ' + failed + ' failed');
         process.exit(failed ? 1 : 0);

@@ -538,8 +538,8 @@
     var cat = el('span', 'l-cat', Calc.CATEGORIES[e.category].label + (p.coins ? ' +' + fmtCoins(p.coins) : ''));
     var cs = Calc.coinSplit(e);
     if (cs) {
-      var sub = el('span', 'coin-split', cs.basePct + '% app ' + fmtCoins(cs.base) + ' · ' + cs.bonusPct + '% statement ' + fmtCoins(cs.bonus));
-      sub.title = cs.basePct + '% credited in the Tata Neu app (never on the bank statement) + ' + cs.bonusPct + '% UPI bonus printed on the statement';
+      var sub = el('span', 'coin-split', cs.basePct + '% ' + cs.srcBase + ' ' + fmtCoins(cs.base) + ' · ' + cs.bonusPct + '% ' + cs.srcBonus + ' ' + fmtCoins(cs.bonus) + (cs.nextCycle ? ' (next cycle)' : ''));
+      sub.title = Calc.CATEGORIES[e.category].note;
       cat.appendChild(sub);
     }
     row.appendChild(cat);
@@ -715,7 +715,7 @@
         var dcat = el('span', 'l-cat', Calc.CATEGORIES[e.category].label + (Calc.predictedCoins(e).coins ? ' +' + fmtCoins(Calc.predictedCoins(e).coins) : ''));
         var dcs = Calc.coinSplit(e);
         if (dcs) {
-          var dsub = el('span', 'coin-split', dcs.basePct + '% app ' + fmtCoins(dcs.base) + ' · ' + dcs.bonusPct + '% statement ' + fmtCoins(dcs.bonus));
+          var dsub = el('span', 'coin-split', dcs.basePct + '% ' + dcs.srcBase + ' ' + fmtCoins(dcs.base) + ' · ' + dcs.bonusPct + '% ' + dcs.srcBonus + ' ' + fmtCoins(dcs.bonus) + (dcs.nextCycle ? ' (next cycle)' : ''));
           dcat.appendChild(dsub);
         }
         r.appendChild(dcat);
@@ -978,7 +978,7 @@
     var has2 = Object.keys(cats).length > 0;
     setH4(cv2, has2);
     if (has2) {
-      var palette = { upi: '#2e86de', grocery: '#27ae60', base: '#8e8e8e', tata: '#e67e22', nocoins: '#bdc3c7', payment: '#6c757d' };
+      var palette = { upi: '#2e86de', grocery: '#27ae60', base: '#8e8e8e', tata: '#e67e22', tatagroc: '#16a085', nocoins: '#bdc3c7', payment: '#6c757d' };
       var labels = Object.keys(cats).map(function (k) { return Calc.CATEGORIES[k].label; });
       chartCats = new Chart(cv2, {
         type: 'doughnut',
@@ -1053,7 +1053,7 @@
      * can still land on the next bill. This holds for any card — even one with
      * no imported statements yet (e.g. Axis Scapia), where only the unbilled
      * line is meaningful. */
-    var coins = { base: 0, upi: 0, grocery: 0, tata: 0 };
+    var coins = { base: 0, upi: 0, grocery: 0, tata: 0, tatagroc: 0 };
     var unbilled = 0;
     C.ledger.forEach(function (e) {
       if (e.reconciled) return; // already booked on a statement

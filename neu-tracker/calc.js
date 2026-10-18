@@ -45,10 +45,11 @@ const Calc = (function () {
 
   /* ledger categories with coin rules matching the user's tracker sheet */
   var CATEGORIES = {
-    upi:     { label: 'UPI',       rate: 0.015, program: 'NeuCoins_on_UPI_Acc',  note: '1.5% (1% in Neu app + 0.5% on bank statement)', split: { base: 0.01, bonus: 0.005 } },
-    grocery: { label: 'Grocery',   rate: 0.015, program: 'Base_Grocery',         note: '1.5% base on groceries' },
-    base:    { label: 'Base',      rate: 0.015, program: 'BaseNeuCoins',         note: '1.5% base' },
-    tata:    { label: 'Tata',      rate: 0.035, program: 'Add_TataPayment',      note: '3.5% — bonus lands next statement' },
+    upi:     { label: 'UPI',       rate: 0.015, program: 'NeuCoins_on_UPI_Acc',  note: '1.5% (1% app + 0.5% bank statement)', split: { base: 0.01, bonus: 0.005, srcBase: 'app', srcBonus: 'statement' } },
+    grocery: { label: 'Grocery',   rate: 0.015, program: 'Base_Grocery',         note: '1.5% (bank statement only)' },
+    base:    { label: 'Base',      rate: 0.015, program: 'BaseNeuCoins',         note: '1.5% (bank statement only)' },
+    tata:    { label: 'Tata',      rate: 0.035, program: 'Add_TataPayment',      note: '3.5% (bank statement — lands next cycle)' },
+    tatagroc:{ label: 'Tata+Groc', rate: 0.05,  program: 'Add_TataPayment',      note: '5% (1.5% grocery + 3.5% Tata) — e.g. BigBasket via Tata Pay; grocery this cycle, the 3.5% lands next cycle', split: { base: 0.015, bonus: 0.035, srcBase: 'grocery', srcBonus: 'Tata', nextCycle: true } },
     nocoins: { label: 'NoCoins',   rate: 0,     program: '',                     note: 'no NeuCoins' },
     payment: { label: 'Payment',   rate: 0,     program: '',                     note: 'repayment to the bank — pick “for period” to reduce that bill’s outstanding' }
   };
@@ -65,24 +66,35 @@ const Calc = (function () {
     };
   }
 
-  /* Split a coin-earning entry into its app-side (base) and statement-side
-   * (bonus) parts. UPI is 1% base (credited in the Neu app, never on the
-   * bank statement) + 0.5% UPI bonus (the only coin amount printed on the
-   * statement). Returns null for categories with no split. base + bonus
-   * always equals predictedCoins(entry).coins. */
+  /* Split a coin-earning entry into its two parts (the two major coin
+   * sources: the Tata Neu app and the bank statement):
+   *   upi      — 1% app (never on the statement) + 0.5% statement
+   *   tatagroc — 1.5% grocery (this cycle) + 3.5% Tata (lands next cycle);
+   *              the app already shows the full 5% instantly
+   * Returns null for categories with no split. base + bonus always equals
+   * predictedCoins(entry).coins. */
   function coinSplit(entry) {
     var cat = CATEGORIES[entry && entry.category];
     if (!cat || !cat.split || cat.rate <= 0 || !isFinite(entry.amount) || entry.amount <= 0) return null;
     var total = Math.round(entry.amount * cat.rate);
     var bonus = Math.round(entry.amount * cat.split.bonus);
     var base = total - bonus;
-    return { base: base, bonus: bonus, total: total, basePct: Math.round(cat.split.base * 1000) / 10, bonusPct: Math.round(cat.split.bonus * 1000) / 10 };
+    return {
+      base: base, bonus: bonus, total: total,
+      basePct: Math.round(cat.split.base * 1000) / 10, bonusPct: Math.round(cat.split.bonus * 1000) / 10,
+      srcBase: cat.split.srcBase || 'base', srcBonus: cat.split.srcBonus || 'bonus',
+      nextCycle: !!cat.split.nextCycle
+    };
   }
 
   /* guess the category from a merchant description */
   function classifyMerchant(desc, credit) {
     if (credit) return 'payment';
     var d = String(desc || '').toUpperCase();
+    /* BigBasket bills settle via Tata Pay: 1.5% grocery (this cycle) +
+     * 3.5% Tata (next cycle) = 5% — must match before the generic grocery
+     * rule, and the statement prints base=0 on these rows. */
+    if (/BIGBASKET/i.test(d)) return 'tatagroc';
     if (/GROCERY|SUPERMARKET|BIGBASKET|DMART|NOVEM|FRESH|ORGCHANDRACOMPLEX|GREEN|KIRANA|MEGA|RELIANCE\s*(MARKET|FRESH|MART)/.test(d)) return 'grocery';
     if (/TATAPAYMENT|TATA\b/.test(d)) return 'tata';
     if (/^UPI/.test(d)) return 'upi';
@@ -98,8 +110,10 @@ const Calc = (function () {
     if (tx.credit) return 'payment';
     /* UPI rows earn the 1.5% UPI bonus even when the statement prints no
      * base-coin column (base=0), so classify by the UPI-… descriptor before
-     * the base=0 → NoCoins fallback. */
+     * the base=0 → NoCoins fallback. Same for BigBasket (Tata Pay: 5% total,
+     * the 3.5% lands next cycle) — the statement prints base=0 on these too. */
     if (/^UPI/i.test(String(tx.desc || ''))) return 'upi';
+    if (/BIGBASKET/i.test(String(tx.desc || ''))) return 'tatagroc';
     if (!isFinite(tx.base) || tx.base <= 0) return 'nocoins';
     return classifyMerchant(tx.desc, false);
   }
@@ -616,7 +630,7 @@ const Calc = (function () {
   }
 
   /* ---------- schema migration ---------- */
-  var SCHEMA_VERSION = 6;
+  var SCHEMA_VERSION = 7;
   var MIGRATIONS = {
     0: function (d) { d.version = 1; if (!Array.isArray(d.records)) d.records = []; if (!Array.isArray(d.ledger)) d.ledger = []; return d; },
     1: function (d) {
@@ -717,11 +731,24 @@ const Calc = (function () {
         }
         /* data now lives per-card in d.cards[] — drop the legacy top-level
          * fields so the persisted shape carries no duplicate / stale card data. */
-        delete d.card; delete d.records; delete d.ledger; delete d.redemptions;
-        delete d.payments; delete d.rewardsConfig; delete d.feeConfig;
+         delete d.card; delete d.records; delete d.ledger; delete d.redemptions;
+         delete d.payments; delete d.rewardsConfig; delete d.feeConfig;
+         return d;
+       },
+      /* BigBasket bills settle via Tata Pay — 1.5% grocery (this cycle) +
+       * 3.5% Tata (next cycle) = 5% — but the statement prints base=0 on
+       * those rows, so the importer booked them 'nocoins'. Re-book any
+       * BigBasket descriptor in the ledger as 'tatagroc'. */
+      6: function (d) {
+        d.version = 7;
+        if (Array.isArray(d.cards)) d.cards.forEach(function (c) {
+          if (c && Array.isArray(c.ledger)) c.ledger.forEach(function (e) {
+            if (e && /BIGBASKET/i.test(String(e.desc || '')) && e.category !== 'payment') e.category = 'tatagroc';
+          });
+        });
         return d;
       }
-   };
+    };
 
   function migrateRecord(r) {
     if (!r || typeof r !== 'object') return r;

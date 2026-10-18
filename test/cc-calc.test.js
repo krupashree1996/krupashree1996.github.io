@@ -266,9 +266,15 @@ eq('Base split null', Calc.coinSplit({ category: 'base', amount: 1000 }), null);
 eq('Tata split null', Calc.coinSplit({ category: 'tata', amount: 1000 }), null);
 eq('NoCoins split null', Calc.coinSplit({ category: 'nocoins', amount: 1000 }), null);
 eq('UPI split 0 amount null', Calc.coinSplit({ category: 'upi', amount: 0 }), null);
+eq('Tata+Groc 942.12 → 47', Calc.predictedCoins({ category: 'tatagroc', amount: 942.12 }).coins, 47);
+eq('Tata+Groc split 942.12 → 14/33/47', (function (s) { return s.base === 14 && s.bonus === 33 && s.total === 47; })(Calc.coinSplit({ category: 'tatagroc', amount: 942.12 })), true);
+eq('Tata+Groc split pcts + sources', (function (s) { return s.basePct === 1.5 && s.bonusPct === 3.5 && s.srcBase === 'grocery' && s.srcBonus === 'Tata' && s.nextCycle === true; })(Calc.coinSplit({ category: 'tatagroc', amount: 942.12 })), true);
+eq('UPI split sources', (function (s) { return s.srcBase === 'app' && s.srcBonus === 'statement' && s.nextCycle === false; })(Calc.coinSplit({ category: 'upi', amount: 1000 })), true);
 eq('classify upi', Calc.classifyMerchant('UPI-MyGate-123', false), 'upi');
 eq('classify tata merchant', Calc.classifyMerchant('TATAPAYMENTSLIMITEGURGOAN', false), 'tata');
-eq('classify grocery', Calc.classifyMerchant('BIGBASKET', false), 'grocery');
+eq('classify bigbasket → tatagroc', Calc.classifyMerchant('BIGBASKET', false), 'tatagroc');
+eq('classify WWWBIGBASKETCOM', Calc.classifyMerchant('WWWBIGBASKETCOM GURGOAN', false), 'tatagroc');
+eq('classify dmart grocery', Calc.classifyMerchant('DMART', false), 'grocery');
 eq('classify payment', Calc.classifyMerchant('BPPY CC PAYMENT', true), 'payment');
 eq('classify default base', Calc.classifyMerchant('SRI KRISHNA SWEETS', false), 'base');
 
@@ -311,22 +317,23 @@ section('migrateBundle / schema');
 /* v6: data lives per-card in DATA.cards[]; the legacy single card becomes the
  * first profile (type 'neu') and an empty generic 'Axis Scapia' is seeded. */
 function neuOf(m) { return m.cards.filter(function (c) { return c.type === 'neu'; })[0]; }
-var m0 = Calc.migrateBundle({ version: 0, records: [{ periodTo: '18/03/2025', total: '9012.15' }], ledger: [{ desc: 'x', amount: '100', category: 'upi' }] });
-eq('upgraded version', m0.version, 6);
+var m0 = Calc.migrateBundle({ version: 0, records: [{ periodTo: '18/03/2025', total: '9012.15' }], ledger: [{ desc: 'x', amount: '100', category: 'upi' }, { desc: 'BIGBASKET GURGOAN', amount: '100', category: 'nocoins' }] });
+eq('upgraded version', m0.version, 7);
 ok('cards[] present', Array.isArray(m0.cards) && m0.cards.length >= 1);
 eq('legacy card migrated to neu profile', neuOf(m0).records[0].total, 9012.15);
 eq('ledger amount coerced', neuOf(m0).ledger[0].amount, 100);
 eq('card defaulted', neuOf(m0).card.no, '');
 ok('scapia profile seeded', m0.cards.some(function (c) { return c.id === 'scapia'; }));
 eq('activeCardId set', m0.activeCardId, neuOf(m0).id);
+eq('bigbasket nocoins re-booked as tatagroc (v7)', neuOf(m0).ledger[1].category, 'tatagroc');
 ok('future schema rejected', Calc.migrateBundle({ version: 99 }).incompatible);
 ok('garbage rejected', Calc.migrateBundle(null).incompatible);
-eq('SCHEMA_VERSION', Calc.SCHEMA_VERSION, 6);
+eq('SCHEMA_VERSION', Calc.SCHEMA_VERSION, 7);
 
 section('schema v1 → v6 (rewards & payments fields carried through)');
 var m1 = Calc.migrateBundle({ version: 1, card: { no: 'x' }, records: [], ledger: [], redemptions: [{ coins: '100', value: '25' }], payments: [{ amount: '500', forPeriod: '18/11/2025' }] });
 var c1 = neuOf(m1);
-eq('migrated to v6', m1.version, 6);
+eq('migrated to v7', m1.version, 7);
 ok('redemptions array present', Array.isArray(c1.redemptions));
 eq('redemption coins coerced', c1.redemptions[0].coins, 100);
 eq('redemption value coerced', c1.redemptions[0].value, 25);
