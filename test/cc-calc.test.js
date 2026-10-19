@@ -418,9 +418,30 @@ eq('pre-close unlinked payment ignored', Calc.dueStatus(recs2[2], [{ category: '
 eq('linked payment attributed to its bill', Calc.dueStatus(recs2[0], [{ category: 'payment', date: '03/10/2026', amount: 219972, forPeriod: '18/07/2026' }], recs2, now26).kind, 'full');
 eq('utilization 25%', Calc.utilizationOf({ total: 25000, creditLimit: 100000 }), 25);
 eq('utilization null when no limit', Calc.utilizationOf({ total: 25000 }), null);
- var isum = Calc.interestSummary([{ periodTo: '18/04/2025', finance: 0 }, { periodTo: '18/05/2025', finance: 12.5 }]);
- eq('interest total', isum.total, 12.5);
- eq('interest records', isum.perRecord.length, 2);
+  var isum = Calc.interestSummary([{ periodTo: '18/04/2025', finance: 0 }, { periodTo: '18/05/2025', finance: 12.5 }]);
+  eq('interest total', isum.total, 12.5);
+  eq('interest records', isum.perRecord.length, 2);
+
+  /* ---------- estimatedDue (next-bill estimate) ---------- */
+  /* no records → just unbilled spend, rounded up to whole rupee */
+  eq('est no records = ceil(unbilled)', Calc.estimatedDue([], [{ category: 'base', amount: 21266.24, reconciled: '' }]).total, 21267);
+  eq('est no records min due 5%', Calc.estimatedDue([], [{ category: 'base', amount: 21266.24, reconciled: '' }]).minDue, 1070);
+  eq('est no records base empty', Calc.estimatedDue([], [{ category: 'base', amount: 21266.24, reconciled: '' }]).base, '');
+  /* reconciled entries are excluded; payments excluded */
+  eq('est excludes reconciled + payment', Calc.estimatedDue([{ periodTo: '18/11/2025', total: 100 }], [
+    { category: 'base', amount: 50, reconciled: '18/11/2025' },
+    { category: 'payment', amount: 100, forPeriod: '18/11/2025' },
+    { category: 'base', amount: 75, reconciled: '' }
+  ]).total, 75);
+  /* carried (unpaid last bill) + finance roll over */
+  var eCarried = Calc.estimatedDue([{ periodTo: '18/11/2025', total: 10000, finance: 50, dueDate: '08/12/2025' }], [
+    { category: 'base', amount: 300, reconciled: '' },
+    { category: 'payment', amount: 5000, forPeriod: '18/11/2025' }
+  ], new Date(2025, 11, 1));
+  eq('est carried = 5000 (paid 5000 of 10000)', eCarried.carried, 5000);
+  eq('est carries finance when dues carried', eCarried.finEst, 50);
+  eq('est total = carried+unbilled+finance ceil', eCarried.total, Math.ceil(5000 + 300 + 50));
+  eq('est min due from 5% formula', eCarried.minDue, Calc.madFor(Math.ceil(5000 + 300 + 50)));
 
  section('annual fee waiver');
  /* window is [Jan 19 → next Jan 18]; spent = purchases of bills whose periodTo

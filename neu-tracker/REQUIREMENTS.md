@@ -53,8 +53,8 @@ alone. Keep it up to date when behaviour changes.
 | `app.js` | View wiring: card switcher + add/delete card, import, statements list, ledger (with UPI + Tata+Groc coin-split sublabels), reconcile, home, charts, verify UI, persistence |
 | `data/bundle.js` | Seed bundle: `version: 2`, empty ledger, `rewardsConfig.valuePerCoin: 0.25` (migrated up to v6 on load) |
 | `index.html`, `style.css`, `manifest.json`, `sw.js` (v23), `icons/` | PWA shell |
-| `test/cc-calc.test.js` | Parser+Calc unit tests (229 checks — old/new layout fixtures + Calc reconciliation + `guessCategory` + `coinSplit` incl. Tata+Groc + v7 BigBasket migration) |
-| `test/cc-dom.test.js` | jsdom boot smoke test (97 checks; uses repo `node_modules/jsdom`; asserts card switcher, UPI + Tata+Groc coin-split render, ledger edit/date, home, import-diff) |
+| `test/cc-calc.test.js` | Parser+Calc unit tests (237 checks — old/new layout fixtures + Calc reconciliation + `guessCategory` + `coinSplit` incl. Tata+Groc + `estimatedDue` + v7 BigBasket migration) |
+| `test/cc-dom.test.js` | jsdom boot smoke test (101 checks; uses repo `node_modules/jsdom`; asserts card switcher, UPI + Tata+Groc coin-split render, ledger edit/date, Home est./min-due + est-vs-actual, import-diff) |
 
 ---
 
@@ -112,7 +112,8 @@ Endpoints exposed by `Calc`: `Calc.migrateBundle`, `Calc.SCHEMA_VERSION=7`,
 `Calc.reconcile`, `Calc.pdate`, `Calc.redemptionReconcile`,
 `Calc.rewardsTimeline`, `Calc.rewardsByCategory`, `Calc.rewardsValue`,
 `Calc.dueStatus`, `Calc.utilizationOf`, `Calc.interestSummary`,
-`Calc.waiverStatus`, `Calc.autoSettlePrior`, `Calc.paymentForRecord`,
+`Calc.estimatedDue`, `Calc.waiverStatus`, `Calc.autoSettlePrior`,
+`Calc.paymentForRecord`,
 `Calc.predictedCoins`, `Calc.coinSplit`, `Calc.classifyMerchant`,
 `Calc.guessCategory`, `Calc.accountSummary` (via parser), categories table in
 `Calc.CATEGORIES`. (`rewardsTimeline`/`rewardsByCategory`/`rewardsValue`/
@@ -297,7 +298,11 @@ bills functionality was merged:
   charts, **credit-utilization trend** (`utilizationOf = used/limit`), the
   **finance/interest summary** (`interestSummary`), the **due-dates board**
   (`dueStatus`: due date, days left, overdue, full/min/partial, outstanding), and
-  the **Upcoming bill (est.)** projection. Unbilled (new spend) = the sum of
+   the **Upcoming bill (est.)** + **Min due (est.)** projection (single source
+   of truth: `Calc.estimatedDue(records, ledger)` = carried + unbilled + last
+   finance charge, **rounded UP to a whole rupee** to line up with the printed
+   TOTAL AMOUNT DUE; min due = the 5% formula on that rounded total — e.g.
+   unbilled ₹21,266.24 → est. ₹21,267, min due ₹1,070). Unbilled (new spend) = the sum of
   **non-reconciled** non-payment ledger entries — NOT a date cutoff. The bank's
   cut-off means a statement omits txns near its period end (an 18/09 statement
    only prints through 15/09), so spend dated *before* `periodTo` can still land on
@@ -313,9 +318,15 @@ bills functionality was merged:
   parser, then `Calc.verifyStatement`.
 - **Verify:** check list with accept/raise-concern; when every check passes it
   records automatically after a short visible countdown (15s).
-- **Statements list (Home):** each statement row shows period, total, purchases,
-  coins closing, ✓ reconciled / exception count; an un-reconciled row has a
-  **Reconcile** button. Re-importing a recorded period keeps its reconciled flag.
+ - **Statements list (Home):** each statement row shows period, total, purchases,
+   coins closing, ✓ reconciled / exception count; an un-reconciled row has a
+   **Reconcile** button. Re-importing a recorded period keeps its reconciled flag.
+   Every record stores `estimated` (the `Calc.estimatedDue` snapshot from just
+   before that statement was imported, with `base` = the previous periodTo,
+   computed over records excluding the one being committed so re-imports are
+   stable); the row then renders an **est-vs-actual** tag, e.g. `est 24,492
+   (+5)` or `est 24,492 ✓` when the printed TOTAL AMOUNT DUE matched the
+   estimate.
 - **Ledger:** manual spend entries (category, date, amount) grouped by month,
   category totals, plus the **payment log** (what was actually paid the bank:
   date / period / amount / method) with full/min/partial classification. Each
@@ -350,10 +361,10 @@ bills functionality was merged:
 
 ## 8. Tests & how to run
 
-- Unit/Calc: `node test/cc-calc.test.js` (229 checks — includes old/new layout
-  fixtures + Calc reconciliation + `guessCategory` + `coinSplit` + v7
-  BigBasket migration).
-- DOM boot: `node test/cc-dom.test.js` (97 checks; jsdom; strips external
+- Unit/Calc: `node test/cc-calc.test.js` (237 checks — includes old/new layout
+  fixtures + Calc reconciliation + `guessCategory` + `coinSplit` +
+  `estimatedDue` + v7 BigBasket migration).
+- DOM boot: `node test/cc-dom.test.js` (101 checks; jsdom; strips external
   scripts & SW registration; injects stub `window.pdfjsLib` + `window.Chart`
   so chart draws are asserted; exercises the multi-card header, card
   switcher, the UPI coin-split render, the merged Home/Ledger layout and the

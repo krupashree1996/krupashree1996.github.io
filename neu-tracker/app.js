@@ -366,8 +366,9 @@
 
   function buildRecord() {
     var st = S.st;
+    var id = 's-' + st.periodTo.replace(/\//g, '');
     return {
-      id: 's-' + st.periodTo.replace(/\//g, ''),
+      id: id,
       layout: st.layout, statementDate: st.statementDate,
       periodFrom: st.periodFrom, periodTo: st.periodTo, dueDate: st.dueDate,
       cardNo: st.cardNo, aan: st.aan, name: st.name,
@@ -379,6 +380,10 @@
       closingNeuCoins: st.closingNeuCoins,
       bonusPrograms: st.bonusPrograms, bonusTotal: st.bonusTotal, txns: st.txns,
       accepted: Object.keys(S.decisions).map(function (k) { return { key: k, note: S.decisions[k] }; }),
+      /* the estimate that was on Home BEFORE this statement was imported —
+       * lets the row compare it against the actuals right after import.
+       * Computed over records EXCLUDING this one (stable on re-import too). */
+      estimated: (function () { var e = Calc.estimatedDue(C.records.filter(function (r) { return r.id !== id; }), C.ledger); e.base = e.base || st.periodTo; return e; })(),
       status: 'verified',
       /* re-importing a recorded period must not wipe its reconciled flag or
        * previously noted exceptions */
@@ -1053,28 +1058,26 @@
      * can still land on the next bill. This holds for any card — even one with
      * no imported statements yet (e.g. Axis Scapia), where only the unbilled
      * line is meaningful. */
-    var coins = { base: 0, upi: 0, grocery: 0, tata: 0, tatagroc: 0 };
-    var unbilled = 0;
+     var coins = { base: 0, upi: 0, grocery: 0, tata: 0, tatagroc: 0 };
     C.ledger.forEach(function (e) {
       if (e.reconciled) return; // already booked on a statement
       if (e.category === 'payment') return; // a payment is a credit, not new spend
-      unbilled += e.amount; // every other unbilled entry (incl. nocoins) is new spend
       if (e.category in coins) coins[e.category] += Calc.predictedCoins(e).coins;
     });
-    /* carried-over dues + finance estimate exist only once a statement has
-     * been imported; unbilled spend shows regardless. */
-    var carried = 0, finEst = 0;
-    if (k) {
-      var ds = Calc.dueStatus(k, C.ledger, C.records);
-      carried = Math.max(Math.round((k.total - ds.paid) * 100) / 100, 0); // unpaid portion of the last bill
-      finEst = (isFinite(k.finance) && carried > 0) ? k.finance : 0;     // last finance charge rolls over once
-    }
+    /* estimate for the NEXT bill — single source of truth (Calc.estimatedDue):
+     * carried + unbilled + finance, rounded UP to a whole rupee so it lines
+     * up with the printed TOTAL AMOUNT DUE, plus the 5% min-due formula. */
+    var est = Calc.estimatedDue(C.records, C.ledger);
+    var unbilled = est.unbilled, carried = est.carried, finEst = est.finEst;
     var hasCoins = isNeu() && Object.keys(coins).some(function (c) { return coins[c] > 0; });
     /* a card with a statement always shows the block (even at ₹0 unbilled); a
      * statement-less card (Axis Scapia) shows it only once it has unbilled spend. */
     if (k || unbilled > 0 || hasCoins) {
       var up = el('div', 'kv');
-      if (k) up.appendChild(kvRow('Upcoming bill (est.)', fmtMoney(Math.round((carried + unbilled + finEst) * 100) / 100)));
+      if (k) {
+        up.appendChild(kvRow('Upcoming bill (est.)', fmtMoney(est.total)));
+        up.appendChild(kvRow('Min due (est.)', fmtMoney(est.minDue)));
+      }
       up.appendChild(kvRow('Unbilled (new spend)', fmtMoney(unbilled)));
       if (k) {
         up.appendChild(kvRow('Carried from last bill', fmtMoney(carried)));
@@ -1095,6 +1098,12 @@
         var row = el('div', 'lrow');
         row.appendChild(el('span', 'l-date', fmtDate(r.periodTo)));
         var dsc = el('span', 'l-desc', 'total ' + fmtMoney(r.total) + ' · purchased ' + fmtMoney(r.purchases) + ' · coins ' + fmtCoins(r.closingNeuCoins));
+        /* est-vs-actual: the estimate Home was showing before this statement
+         * was imported (recorded at import time) vs the printed total due. */
+        if (r.estimated && isFinite(r.estimated.total) && r.estimated.base && r.estimated.base !== r.periodTo) {
+          var delta = Math.round(r.total) - r.estimated.total;
+          dsc.appendChild(el('span', 'meta', ' · est ' + fmtMoney(r.estimated.total) + (delta === 0 ? ' ✓' : ' (' + (delta > 0 ? '+' : '−') + Math.abs(delta) + ')')));
+        }
         if (r.reconciled) dsc.appendChild(el('span', 'tick', ' ✓ reconciled'));
         if (r.accepted && r.accepted.length) dsc.appendChild(el('span', 'meta', r.accepted.length + ' exception(s)'));
         row.appendChild(dsc);

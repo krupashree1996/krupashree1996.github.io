@@ -4,10 +4,10 @@ Hand-off notes for the next assistant session. Full spec: [REQUIREMENTS.md](REQU
 All work is committed & pushed on `main` (GitHub Pages, no build step).
 
 ## Current state (verified green)
-- `node test/cc-calc.test.js` → **229 passed, 0 failed**
-- `node test/cc-dom.test.js` → **97 passed, 0 failed**
-- Versions: `SCHEMA_VERSION=7` (calc.js), `APP_VERSION=6` (app.js build badge), SW `neu-tracker-v24` (sw.js)
-- Latest commit: see `git log --oneline -3` (Tata+Groc/BigBasket + docs)
+- `node test/cc-calc.test.js` → **237 passed, 0 failed**
+- `node test/cc-dom.test.js` → **101 passed, 0 failed**
+- Versions: `SCHEMA_VERSION=7` (calc.js), `APP_VERSION=6` (app.js build badge), SW `neu-tracker-v25` (sw.js)
+- Latest commit: see `git log --oneline -3` (est. bill vs new bill + Tata+Groc/BigBasket + docs)
 
 ## Coin-source model (confirmed against user's real 202502/202503 xlsx calc sheets)
 Two major coin sources: **app** and **bank statement**:
@@ -31,6 +31,30 @@ Two major coin sources: **app** and **bank statement**:
      real /tmp/opencode/bundle.js: 5 entries re-booked.
    - app.js: `byCat`/coins maps + doughnut palette updated; category dropdown
      (built from Calc.CATEGORIES) picks it up automatically.
+
+## What was done this session (part 3)
+1. **Estimated bill vs new bill** (user: "i got a new bill, want to see if the
+   estimate matches").
+   - `Calc.estimatedDue(records, ledger)` (calc.js) — single source of truth for
+     the next-bill estimate: `{ total, minDue, unbilled, carried, finEst, base }`.
+     Total = ceil(carried + unbilled + finance) — **rounded UP to whole rupees**
+     (verified against user's numbers: ₹21,266.24 → 21,267; min due 1,070).
+     Min due = `madFor(total)` (5% formula, ₹10 rounding).
+   - Home block: "Upcoming bill (est.)" now whole-rupee + new "Min due (est.)"
+     line (shown when a statement exists; statement-less cards still show only
+     "Unbilled").
+   - `buildRecord()` snapshots `estimated` at import time (over records
+     EXCLUDING the record being committed → stable on re-import, `base` =
+     previous periodTo); the Home history row renders est-vs-actual:
+     `est 24,492 (+5)` / `est 24,492 ✓` when the printed TOTAL AMOUNT DUE
+     matches.
+   - User's wider ask (design discussed, NOT yet built): a full Bill-check
+     table — est vs actual per bonus program (Base_Grocery, NeuCoins_on_UPI_Acc,
+     Add_BigBasket, Add_1MG_Cult_Play, Retail Spends Greater50K). Blocked on:
+     (a) 1mg/CultPlay category + rate (does it also earn 1.5% base?), (b)
+     "Retail >50k" = 1 coin per purchase (not %) → flat-coin category, (c)
+     program-name mapping (2026 statements show BigBasket under `Add_BigBasket`,
+     not `Add_TataPayment`).
 
 ## What was done this session
 1. **Rewards tab removed** (user: never redeems, doesn't track lapsed coins).

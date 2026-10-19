@@ -536,6 +536,33 @@ const Calc = (function () {
     };
   }
 
+  /* Estimate the NEXT bill from what the ledger has not yet booked on a
+   * statement: carried (unpaid part of the latest bill) + unbilled spend +
+   * the last finance charge (only while dues are carried). Rounded UP to a
+   * whole rupee so it lines up with the printed TOTAL AMOUNT DUE; min due
+   * uses the 5% formula. `base` is the latest statement's periodTo (the
+   * estimate's reference bill) or '' when there is none. */
+  function estimatedDue(records, ledger) {
+    var k = null;
+    (records || []).forEach(function (r) {
+      var t = pdate(r.periodTo) || 0;
+      if (!k || t > (pdate(k.periodTo) || 0)) k = r;
+    });
+    var unbilled = 0, carried = 0, finEst = 0;
+    (ledger || []).forEach(function (e) {
+      if (e.reconciled) return;
+      if (e.category === 'payment') return;
+      unbilled += e.amount;
+    });
+    if (k) {
+      var ds = dueStatus(k, ledger, records);
+      carried = Math.max(Math.round((k.total - ds.paid) * 100) / 100, 0);
+      finEst = (isFinite(k.finance) && carried > 0) ? k.finance : 0;
+    }
+    var total = Math.ceil(round2(carried + unbilled + finEst));
+    return { total: total, minDue: madFor(total), unbilled: unbilled, carried: carried, finEst: finEst, base: k ? k.periodTo : '' };
+  }
+
   /* A statement's 'payments' column is the payment the customer made against the
    * immediately preceding bill's dues — proof that bill was paid. Auto-record it
    * (capped at that bill's total) so the old bill shows 'settled' without manual
@@ -868,7 +895,9 @@ const Calc = (function () {
     rewardsValue: rewardsValue, rewardsByCategory: rewardsByCategory,
     redemptionReconcile: redemptionReconcile, rewardsTimeline: rewardsTimeline,
     paymentForRecord: paymentForRecord, dueStatus: dueStatus, autoSettlePrior: autoSettlePrior,
-    utilizationOf: utilizationOf, interestSummary: interestSummary,
+    utilizationOf: utilizationOf,
+    interestSummary: interestSummary,
+    estimatedDue: estimatedDue,
     waiverStatus: waiverStatus,
     DEFAULT_COIN_VALUE: DEFAULT_COIN_VALUE,
     SCHEMA_VERSION: SCHEMA_VERSION, migrateBundle: migrateBundle, newCard: newCard, BLOCKING: BLOCKING

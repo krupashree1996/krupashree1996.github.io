@@ -264,6 +264,28 @@ whenReady(function run() {
   $('#homeGo').click();
   eq('unbilled = post-statement spend (500)', $('#landingStats').textContent.indexOf('₹500.00') >= 0, true);
   ok('open-cycle coins still earnable shown', $('#landingStats').textContent.indexOf('grocery +') >= 0, true);
+  ok('min due (est.) line on home', $('#landingStats').textContent.indexOf('Min due (est.)') >= 0, true);
+  /* min due (est.) must be the 5% formula of the rounded est. total — the two
+   * lines are rendered together so recompute from the record */
+  var kvRows = $$('#landingStats .kv > div', document);
+  var estRow = kvRows.filter(function (r) { return (r.querySelector('b') || {}).textContent === 'Upcoming bill (est.)'; })[0];
+  var minRow = kvRows.filter(function (r) { return (r.querySelector('b') || {}).textContent === 'Min due (est.)'; })[0];
+  if (estRow && minRow) {
+    var estTotal = parseFloat(String(estRow.querySelector('span').textContent).replace(/[₹,\s]/g, ''));
+    var minTotal = parseFloat(String(minRow.querySelector('span').textContent).replace(/[₹,\s]/g, ''));
+    ok('min due (est.) = 5% formula of est. total', minTotal === dom.window.Calc.madFor(estTotal), true);
+  } else {
+    ok('est + min due rows found', false, true);
+  }
+
+  console.log('6g) home history — est-vs-actual on the new statement row');
+  CUR.records.push({ id: 's-est', periodTo: '19/12/2025', periodFrom: '19/11/2025', total: 760, minimumDue: 380, prevDues: 0, payments: 0, purchases: 560, finance: 0, creditLimit: 100000, availLimit: 99240, dueDate: '08/01/2026', closingNeuCoins: 0, bonusPrograms: [], txns: [], estimated: { total: 755, minDue: 380, base: '18/11/2025' } });
+  $('#homeGo').click();
+  var histText = $('#landingStats').textContent;
+  ok('new statement row shows est total', histText.indexOf('est ₹755.00') >= 0, true);
+  ok('est-vs-actual delta (+5) shown', histText.indexOf('(+5)') >= 0, true);
+  CUR.records = CUR.records.filter(function (r) { return r.id !== 's-est'; });
+  $('#homeGo').click();
 
   console.log('6f) home — profile card setter (Profile card row is the entry point)');
   /* unset state: the "Profile card" value is itself the tappable button */
