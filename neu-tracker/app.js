@@ -1087,6 +1087,12 @@
         var coinLine = Object.keys(coins).filter(function (c) { return coins[c] > 0; })
           .map(function (c) { return c + ' +' + fmtCoins(coins[c]) }).join(' · ') || 'no coins yet';
         up.appendChild(kvRow('Coins still earnable', coinLine));
+        /* grand totals over unbilled entries: base coins (the 1.5%-type
+         * portion — base/grocery + UPI's 1% app part + BigBasket's grocery
+         * part) and the total the bill will earn (base + all bonus). */
+        var ct = Calc.coinTotals(C.ledger.filter(function (e) { return !e.reconciled && e.category !== 'payment'; }));
+        up.appendChild(kvRow('Coins — base (unbilled)', fmtCoins(ct.base)));
+        up.appendChild(kvRow('Coins — total (est.)', fmtCoins(ct.total)));
       }
       h.appendChild(up);
     }

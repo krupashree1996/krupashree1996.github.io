@@ -536,6 +536,23 @@ const Calc = (function () {
     };
   }
 
+  /* Sum predicted coins over entries (e.g. the unbilled ones) into two
+   * totals: `base` = the base-coin portion of each entry (base/grocery/tata
+   * are all base; UPI contributes its 1% app part; tatagroc its 1.5% grocery
+   * part — the parts NOT booked as a next-cycle bonus), `total` = everything
+   * those entries will earn. */
+  function coinTotals(entries) {
+    var base = 0, total = 0;
+    (entries || []).forEach(function (e) {
+      if (!e) return;
+      var p = predictedCoins(e);
+      total += p.coins;
+      var s = coinSplit(e);
+      base += s ? s.base : p.coins;
+    });
+    return { base: base, total: total };
+  }
+
   /* Estimate the NEXT bill from what the ledger has not yet booked on a
    * statement: carried (unpaid part of the latest bill) + unbilled spend +
    * the last finance charge (only while dues are carried). Rounded UP to a
@@ -898,6 +915,7 @@ const Calc = (function () {
     utilizationOf: utilizationOf,
     interestSummary: interestSummary,
     estimatedDue: estimatedDue,
+    coinTotals: coinTotals,
     waiverStatus: waiverStatus,
     DEFAULT_COIN_VALUE: DEFAULT_COIN_VALUE,
     SCHEMA_VERSION: SCHEMA_VERSION, migrateBundle: migrateBundle, newCard: newCard, BLOCKING: BLOCKING
