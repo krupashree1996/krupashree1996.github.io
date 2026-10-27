@@ -317,8 +317,11 @@ bills functionality was merged:
   statement has been imported / for a neu card. Adding/editing/deleting a ledger
   entry re-renders Home so the totals stay live. A manual Payment entry (no
   `sourcePeriod`, not `auto`) counts as a repayment even without a bank keyword;
-  imported statement credits still require a payment keyword or `forPeriod`, so
-  refunds/waivers do not reduce dues.
+  imported statement credits still require a payment keyword or legacy
+  `forPeriod`, so refunds/waivers do not reduce dues. Payments are auto-matched
+  to the latest bill whose period-to is before the payment date; the ledger form
+  has no manual "For period" picker. Legacy/auto-settled entries may still carry
+  `forPeriod`, and invalid values are cleared on migration.
 - **Import:** `readPdf` reads ALL pages of a multi-page statement (merges page
   text, offsetting each page's y by +10000 so coordinates stay unique), runs the
   parser, then `Calc.verifyStatement`.

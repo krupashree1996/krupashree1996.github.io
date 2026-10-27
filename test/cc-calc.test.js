@@ -377,6 +377,12 @@ eq('payment moved to ledger as Payment entry', c1.ledger.length, 1);
 eq('payment ledger category', c1.ledger[0].category, 'payment');
 eq('payment amount coerced', c1.ledger[0].amount, 500);
 eq('payment forPeriod kept', c1.ledger[0].forPeriod, '18/11/2025');
+/* older builds wrote the Auto option's label into forPeriod, which linked the
+ * payment to a bill that does not exist; normalization must clear it */
+var autoCard = Calc.newCard('neu', 'Auto-label repair');
+autoCard.ledger.push({ id: 'auto-label', date: '20/10/2026', desc: 'BPPY PYMT', category: 'payment', amount: 1070, forPeriod: 'Auto — apply by payment date', reconciled: '' });
+var mAuto = Calc.migrateBundle({ version: 7, cards: [autoCard], activeCardId: autoCard.id });
+eq('legacy Auto option label cleared', mAuto.cards[0].ledger[0].forPeriod, '');
 eq('feeConfig defaulted', c1.feeConfig.target, 300000);
 eq('coin value defaults to 0.25', c1.rewardsConfig.valuePerCoin, 0.25);
 var m2 = Calc.migrateBundle({ version: 0, records: [], ledger: [], rewardsConfig: { valuePerCoin: 1 } });
@@ -406,6 +412,17 @@ section('dues & payments');
 var recP = { periodTo: '18/11/2025', statementDate: '18/11/2025', total: 10000, minimumDue: 500 };
 eq('no payment → none', Calc.paymentForRecord(recP, []).kind, 'none');
 eq('no payment outstanding', Calc.paymentForRecord(recP, []).outstanding, 10000);
+/* which bill a payment reduces (used by the ledger row) */
+var recOct = { id: 'oct26', periodTo: '18/10/2026', total: 21267, minimumDue: 1070 };
+var recSep = { id: 'sep26', periodTo: '18/09/2026', total: 71513, minimumDue: 3580 };
+eq('auto payment reduces the bill closed just before it',
+  Calc.billForPayment({ category: 'payment', date: '20/10/2026', amount: 1070 }, [recSep, recOct]).periodTo, '18/10/2026');
+eq('auto payment before any bill close has no bill',
+  Calc.billForPayment({ category: 'payment', date: '01/09/2026', amount: 1070 }, [recSep, recOct]), null);
+eq('explicit forPeriod still wins over the date',
+  Calc.billForPayment({ category: 'payment', date: '20/10/2026', amount: 1070, forPeriod: '18/09/2026' }, [recSep, recOct]).periodTo, '18/09/2026');
+eq('explicit forPeriod that matches no bill is unattributed',
+  Calc.billForPayment({ category: 'payment', date: '20/10/2026', amount: 1070, forPeriod: '18/08/2026' }, [recSep, recOct]), null);
 eq('full', Calc.paymentForRecord(recP, [{ category: 'payment', amount: 10000, forPeriod: '18/11/2025' }]).kind, 'full');
 eq('full outstanding 0', Calc.paymentForRecord(recP, [{ category: 'payment', amount: 10000, forPeriod: '18/11/2025' }]).outstanding, 0);
 eq('minimum', Calc.paymentForRecord(recP, [{ category: 'payment', amount: 500, forPeriod: '18/11/2025' }]).kind, 'minimum');

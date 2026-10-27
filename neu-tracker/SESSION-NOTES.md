@@ -4,10 +4,10 @@ Hand-off notes for the next assistant session. Full spec: [REQUIREMENTS.md](REQU
 All work is committed & pushed on `main` (GitHub Pages, no build step).
 
 ## Current state (verified green)
-- `node test/cc-calc.test.js` → **249 passed, 0 failed**
-- `node test/cc-dom.test.js` → **106 passed, 0 failed**
+- `node test/cc-calc.test.js` → **254 passed, 0 failed**
+- `node test/cc-dom.test.js` → **104 passed, 0 failed**
 - `node test/cc-flow.test.js` → **13 passed, 0 failed**
-- Versions: `SCHEMA_VERSION=7` (calc.js), `APP_VERSION=8` (app.js build badge), SW `neu-tracker-v27` (sw.js)
+- Versions: `SCHEMA_VERSION=7` (calc.js), `APP_VERSION=9` (app.js build badge), SW `neu-tracker-v28` (sw.js)
 - Latest commit: see `git log --oneline -3` (est. bill vs new bill + Tata+Groc/BigBasket + docs)
 
 ## Coin-source model (confirmed against user's real 202502/202503 xlsx calc sheets)
@@ -17,6 +17,29 @@ Two major coin sources: **app** and **bank statement**:
 - Tata Pay spend (BigBasket): 1.5% grocery this cycle + 3.5% Tata next cycle
   (`Add_TataPayment`); app shows the full 5% instantly. ₹942.12 → 14 + 33 = 47
   (app displayed 47.55; tracker keeps the calculated 47 — user chose no override)
+
+## What was done this session (part 5)
+1. **Root cause of the ₹1,070 Paid = ₹0 report**: the Auto option in the
+   "For period" picker had no explicit `value`, so `select.value` returned the
+   label ("Auto — apply by payment date"). That label was saved as `forPeriod`
+   and `paymentForRecord` treated it as an explicit link to a nonexistent bill,
+   so the payment was ignored. The payment itself (20/10/2026, ₹1,070,
+   category Payment) was correct in the bundle.
+2. **Removed the "For period" picker entirely** (user: "do we even need to ask
+   the for-period option?"). Payments now auto-match to the latest bill whose
+   period-to is before the payment date. This is the normal path and avoids the
+   whole class of “linked to nothing” mistakes.
+3. **Legacy repair**: `migrateLedgerEntry` clears any `forPeriod` that is not a
+   real date (e.g. the old Auto label or "Not linked (current balance)") on
+   load, so the existing bad entry self-heals to auto matching. Real legacy /
+   auto-settle `forPeriod` values are kept.
+4. **Ledger clarity**: each Payment row now says which bill it reduces
+   (`reduces 18/10/2026`), or `not applied to any bill` / `linked bill not
+   found`, so the attribution is visible.
+5. Regression tests: Auto-label migration, `billForPayment` date/explicit
+   linking, and an end-to-end payment after the bill close with no picker.
+   Verified against the user's real bundle: 20/10/2026 ₹1,070 now yields
+   Paid ₹1,070 / Outstanding ₹20,197 on the 18/10/2026 bill.
 
 ## What was done this session (part 4)
 1. **Current bill is now its own entity** (user: "upcoming bill even after import

@@ -174,11 +174,7 @@ whenReady(function run() {
   eq('interest on home', $('#blInterest').textContent.indexOf('No statements yet') >= 0, true);
   eq('payment log on ledger', $('#ledger').style.display !== 'block', true);
   $('#ledgerGo').click();
-  eq('ledger form has a For-period selector (for Payment entries)', !!$('#lePeriod'), true);
-  eq('period selector hidden for the default (upi) category', $('#lePeriodWrap').style.display, 'none');
-  setValue('#leCat', 'payment');
-  eq('period selector shown for Payment category', $('#lePeriodWrap').style.display !== 'none', true);
-  setValue('#leCat', 'upi');
+  eq('ledger form has no For-period selector', !!$('#lePeriod') || !!$('#lePeriodWrap'), false);
 
   console.log('6) reconcile engine against the in-app ledger');
   /* the DMART entry was imported with s-1, so reconcile marks it as on-statement
@@ -189,16 +185,15 @@ whenReady(function run() {
   eq('due board row rendered (home)', $('#blDue').textContent.indexOf('due 08/12/2025') >= 0, true);
   /* log the repayment as a ledger Payment entry (replaces the old Payments panel) */
   $('#ledgerGo').click();
-  eq('period selector now offers the new bill', Array.from($('#lePeriod').options).some(function (o) { return o.value === '18/11/2025'; }), true);
-  setValue('#leDate', '2025-11-12');
+  setValue('#leDate', '2025-11-20');
   setValue('#leDesc', 'paid off 18/11 bill');
   setValue('#leCat', 'payment');
-  setValue('#lePeriod', '18/11/2025');
   setValue('#leAmt', '200');
   $('#addBtn').click();
   eq('payment logged as a ledger entry', CUR.ledger.length, 2);
   eq('payment entry is category payment', CUR.ledger[1].category, 'payment');
-  eq('payment entry carries forPeriod', CUR.ledger[1].forPeriod, '18/11/2025');
+  ok('payment has no manual forPeriod (auto by date)', !CUR.ledger[1].forPeriod, true);
+  ok('ledger row shows which bill the payment reduces', $('#ledgerList').textContent.indexOf('reduces 18/11/2025') >= 0, true);
   $('#homeGo').click();
   eq('due board shows payment', $('#blDue').textContent.indexOf('paid') >= 0, true);
   function statValue(label) {
@@ -211,7 +206,7 @@ whenReady(function run() {
   eq('current bill outstanding is 0 after payment', statValue('Outstanding'), '₹0.00');
   eq('current bill status settled', statValue('Status'), 'settled ✓');
   $('#ledgerGo').click();
-  eq('payment listed on ledger', $('#ledgerList').textContent.indexOf('for 18/11/2025') >= 0, true);
+  eq('payment listed on ledger', $('#ledgerList').textContent.indexOf('reduces 18/11/2025') >= 0, true);
 
   console.log('6c) home — bulk-book statement rows into the ledger (no Reconcile needed)');
   /* isolated record: one statement row not yet in the ledger, and (because

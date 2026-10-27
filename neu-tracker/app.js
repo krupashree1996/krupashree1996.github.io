@@ -18,7 +18,7 @@
 
   var STORE_KEY = 'ne.tracker.data';
   var PW_KEY = 'ne.tracker.pw';
-  var APP_VERSION = 8;
+  var APP_VERSION = 9;
 
   /* ---------------- tiny DOM helpers ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -490,13 +490,9 @@
       : { id: 'e-' + Date.now().toString(36), reconciled: '' };
     entry.date = date; entry.desc = desc; entry.category = cat;
     entry.amount = Math.round(amount * 100) / 100;
-    if (cat === 'payment') {
-      /* a linked period forces the repayment onto that bill; if left blank it
-       * applies by payment date (after a bill closes, before the next closes) */
-      entry.forPeriod = $('lePeriod').value;
-    } else {
-      delete entry.forPeriod;
-    }
+    /* Payments are auto-matched by date. Keep a legacy/auto-settled forPeriod
+     * if this is an existing payment; other categories never carry one. */
+    if (cat !== 'payment') delete entry.forPeriod;
     if (!editing) C.ledger.push(entry);
     normalizeLedgerDates();
     S.editing = null;
@@ -517,8 +513,6 @@
     $('leDesc').value = e.desc;
     $('leCat').value = e.category;
     $('leHint').textContent = hintFor(e.category);
-    $('lePeriod').value = e.category === 'payment' ? (e.forPeriod || '') : '';
-    $('lePeriodWrap').style.display = e.category === 'payment' ? '' : 'none';
     $('leAmt').value = e.amount;
     $('addBtn').textContent = 'Save changes';
     $('editCancelBtn').hidden = false;
@@ -548,7 +542,12 @@
     row.appendChild(el('span', 'l-date', fmtDate(e.date)));
     var d = el('span', 'l-desc', e.desc);
     if (guess && guess !== Calc.CATEGORIES[e.category].label) d.appendChild(el('span', 'meta', ' guessed ' + guess));
-    if (e.category === 'payment' && e.forPeriod) d.appendChild(el('span', 'meta', ' · for ' + fmtDate(e.forPeriod)));
+    if (e.category === 'payment') {
+      var bill = Calc.billForPayment(e, C.records);
+      if (bill) d.appendChild(el('span', 'meta', ' · reduces ' + fmtDate(bill.periodTo)));
+      else if (e.forPeriod) d.appendChild(el('span', 'meta', ' · linked bill not found'));
+      else d.appendChild(el('span', 'meta', ' · not applied to any bill'));
+    }
     row.appendChild(d);
     var p = Calc.predictedCoins(e);
     var cat = el('span', 'l-cat', Calc.CATEGORIES[e.category].label + (p.coins ? ' +' + fmtCoins(p.coins) : ''));
@@ -608,7 +607,6 @@
       });
     });
     if (!months.length) $('ledgerList').appendChild(el('p', 'muted', 'No entries yet. Add your card spends here and reconcile each statement after importing it.'));
-    lePeriodOptions();
   }
 
   /* ---------------- reconcile ---------------- */
@@ -787,22 +785,6 @@
   }
 
   /* ---------------- dues & interest (due board + interest on Home) ----------- */
-  /* "For period" options for Payment ledger entries: pick the bill this
-   * repayment clears, or leave it on Auto to apply by payment date. Rebuilt
-   * whenever records change. */
-  function lePeriodOptions() {
-    var sel = $('lePeriod');
-    if (!sel) return;
-    var cur = sel.value;
-    sel.replaceChildren();
-    sel.appendChild(el('option', '', 'Auto — apply by payment date'));
-    C.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); }).forEach(function (r) {
-      var o = el('option', '', r.periodTo + (r.reconciled ? ' ✓' : ''));
-      o.value = r.periodTo;
-      sel.appendChild(o);
-    });
-    sel.value = cur || '';
-  }
   function renderDueBoard() {
     var body = el('div');
     if (!C.records.length) {
@@ -1314,12 +1296,6 @@
     $('rcSel').addEventListener('change', renderReconcile);
     $('commitBtn').addEventListener('click', commitStatement);
     $('discardBtn').addEventListener('click', function () { showView('landing'); toast('Discarded.', 'warn'); });
-    $('leCat').addEventListener('change', function () {
-      /* the "For period" picker only makes sense for Payment entries — the
-       * repayment that clears a specific bill */
-      $('lePeriodWrap').style.display = $('leCat').value === 'payment' ? '' : 'none';
-      lePeriodOptions();
-    });
     $('saveBundleBtn').addEventListener('click', saveBundle);
     $('openBundleInput').addEventListener('change', function (e) {
       var f = e.target.files && e.target.files[0];

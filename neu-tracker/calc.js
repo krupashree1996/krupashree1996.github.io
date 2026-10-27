@@ -557,6 +557,25 @@ const Calc = (function () {
     };
   }
 
+  /* Which bill does a repayment actually reduce? An explicit forPeriod wins;
+   * otherwise it is the latest bill that closed before the payment date (the
+   * payment window). Returns null when the payment has not reached a bill. */
+  function billForPayment(payment, records) {
+    if (!isRepayment(payment)) return null;
+    var fp = String(payment.forPeriod || '');
+    if (fp) {
+      return (records || []).filter(function (r) { return fp === r.periodTo || fp === r.statementDate; })[0] || null;
+    }
+    var t = pdate(payment.date);
+    if (!isFinite(t)) return null;
+    var best = null, bestT = -Infinity;
+    (records || []).forEach(function (r) {
+      var s = pdate(r.periodTo);
+      if (isFinite(s) && s < t && s > bestT) { best = r; bestT = s; }
+    });
+    return best;
+  }
+
   function dueStatus(rec, ledger, records, today) {
     if (records instanceof Date) { today = records; records = undefined; }
     var ref = today || new Date();
@@ -869,6 +888,9 @@ const Calc = (function () {
     e.reconciled = e.reconciled || '';
     e.sourcePeriod = String(e.sourcePeriod || '');
     e.forPeriod = String(e.forPeriod || '');
+    /* older builds stored the Auto option's label instead of an empty value;
+     * a forPeriod must be a real date or it links the payment to no bill. */
+    if (e.forPeriod && !isFinite(pdate(e.forPeriod))) e.forPeriod = '';
     e.method = String(e.method || '');
     return e;
   }
@@ -949,7 +971,7 @@ const Calc = (function () {
     reconcile: reconcile, stmtRowsToBook: stmtRowsToBook, pdate: pdate,
     rewardsValue: rewardsValue, rewardsByCategory: rewardsByCategory,
     redemptionReconcile: redemptionReconcile, rewardsTimeline: rewardsTimeline,
-    paymentForRecord: paymentForRecord, dueStatus: dueStatus, autoSettlePrior: autoSettlePrior,
+    paymentForRecord: paymentForRecord, billForPayment: billForPayment, dueStatus: dueStatus, autoSettlePrior: autoSettlePrior,
     utilizationOf: utilizationOf,
     interestSummary: interestSummary,
     estimatedDue: estimatedDue,
