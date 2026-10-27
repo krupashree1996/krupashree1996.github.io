@@ -18,7 +18,7 @@
 
   var STORE_KEY = 'ne.tracker.data';
   var PW_KEY = 'ne.tracker.pw';
-  var APP_VERSION = 7;
+  var APP_VERSION = 8;
 
   /* ---------------- tiny DOM helpers ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -491,8 +491,8 @@
     entry.date = date; entry.desc = desc; entry.category = cat;
     entry.amount = Math.round(amount * 100) / 100;
     if (cat === 'payment') {
-      /* a Payment entry with a linked period is the repayment that reduces
-       * that bill's outstanding on the due-date board */
+      /* a linked period forces the repayment onto that bill; if left blank it
+       * applies by payment date (after a bill closes, before the next closes) */
       entry.forPeriod = $('lePeriod').value;
     } else {
       delete entry.forPeriod;
@@ -788,14 +788,14 @@
 
   /* ---------------- dues & interest (due board + interest on Home) ----------- */
   /* "For period" options for Payment ledger entries: pick the bill this
-   * repayment clears (optionally "Not linked" = spend against the current
-   * balance with no specific bill). Rebuilt whenever records change. */
+   * repayment clears, or leave it on Auto to apply by payment date. Rebuilt
+   * whenever records change. */
   function lePeriodOptions() {
     var sel = $('lePeriod');
     if (!sel) return;
     var cur = sel.value;
     sel.replaceChildren();
-    sel.appendChild(el('option', '', 'Not linked (current balance)'));
+    sel.appendChild(el('option', '', 'Auto — apply by payment date'));
     C.records.slice().sort(function (a, b) { return (Calc.pdate(b.periodTo) || 0) - (Calc.pdate(a.periodTo) || 0); }).forEach(function (r) {
       var o = el('option', '', r.periodTo + (r.reconciled ? ' ✓' : ''));
       o.value = r.periodTo;
@@ -1021,14 +1021,36 @@
   }
   function renderLanding() {
     var h = el('div');
-    var kw = el('div', 'kv');
     var k = null;
     C.records.forEach(function (r) {
       var t = Calc.pdate(r.periodTo) || 0;
       if (!k || t > (Calc.pdate(k.periodTo) || 0)) k = r;
     });
-    kw.appendChild(kvRow('Latest period', fmtDate(k ? k.periodTo : '—')));
-    kw.appendChild(kvRow('Latest total', k ? fmtMoney(k.total) : '—'));
+    var ds = k ? Calc.dueStatus(k, C.ledger, C.records) : null;
+
+    /* Current bill = the latest imported statement, kept separate from the
+     * next-bill estimate so the printed bill amount never looks like a moving
+     * forecast. Payments reduce Paid/Outstanding here first. */
+    h.appendChild(el('h4', '', 'Current bill'));
+    var kw = el('div', 'kv');
+    if (k) {
+      var dueText = fmtDate(k.dueDate);
+      if (ds.daysLeft != null) dueText += ds.daysLeft >= 0 ? ' · ' + ds.daysLeft + ' day(s) left' : ' · overdue';
+      var status = ds.kind === 'full' ? 'settled ✓'
+        : ds.kind === 'minimum' ? 'minimum paid'
+        : ds.kind === 'partial' ? 'part paid'
+        : ds.overdue ? 'overdue' : 'unpaid';
+      kw.appendChild(kvRow('Statement', fmtDate(k.periodTo)));
+      kw.appendChild(kvRow('Total bill', fmtMoney(k.total)));
+      kw.appendChild(kvRow('Minimum due', fmtMoney(k.minimumDue)));
+      kw.appendChild(kvRow('Due date', dueText));
+      kw.appendChild(kvRow('Paid', fmtMoney(ds.paid)));
+      kw.appendChild(kvRow('Outstanding', fmtMoney(ds.outstanding)));
+      kw.appendChild(kvRow('Status', status));
+    } else {
+      kw.appendChild(kvRow('Statement', 'not imported yet'));
+      kw.appendChild(kvRow('Total bill', '—'));
+    }
     /* a number of 8 digits or less is shown as-is (e.g. just the last four:
      * "8311"), never "8311 … 8311" */
     var cno = C.card.no || '';
@@ -1041,21 +1063,12 @@
     kw.appendChild(cardRow);
     h.appendChild(kw);
 
-    /* Upcoming bill (est.): what the NEXT bill will look like — the unbilled
-     * spend + coins still earnable, plus the carried-over dues and a finance
-     * estimate. Unbilled = ledger entries not yet reconciled to any statement
-     * (reconcile marks matched entries), NOT a date cutoff: the bank's
-     * cut-off means a statement does not contain txns near its period end
-     * (e.g. an 18/09 statement only prints through 15/09), so spend dated
-     * *before* periodTo can still land on the next bill. */
-    /* Unbilled = ledger spend not yet reconciled to any statement (reconcile
-     * marks matched entries), NOT a date cutoff: the bank's cut-off means a
-     * statement does not contain txns near its period end (e.g. an 18/09
-     * statement only prints through 15/09), so spend dated *before* periodTo
-     * can still land on the next bill. This holds for any card — even one with
-     * no imported statements yet (e.g. Axis Scapia), where only the unbilled
-     * line is meaningful. */
-     var coins = { base: 0, upi: 0, grocery: 0, tata: 0, tatagroc: 0 };
+    /* Next bill (est.): separate from the current printed bill. Unbilled =
+     * ledger spend not yet reconciled to any statement (the reconciled flag is
+     * authoritative), NOT a date cutoff: the bank's cut-off means a statement
+     * omits txns near its period end (an 18/09 statement only prints through
+     * 15/09), so spend dated *before* periodTo can still land on the next bill. */
+    var coins = { base: 0, upi: 0, grocery: 0, tata: 0, tatagroc: 0 };
     C.ledger.forEach(function (e) {
       if (e.reconciled) return; // already booked on a statement
       if (e.category === 'payment') return; // a payment is a credit, not new spend
@@ -1070,14 +1083,15 @@
     /* a card with a statement always shows the block (even at ₹0 unbilled); a
      * statement-less card (Axis Scapia) shows it only once it has unbilled spend. */
     if (k || unbilled > 0 || hasCoins) {
+      h.appendChild(el('h4', '', 'Next bill (est.)'));
       var up = el('div', 'kv');
       if (k) {
-        up.appendChild(kvRow('Upcoming bill (est.)', fmtMoney(est.total)));
+        up.appendChild(kvRow('Estimated total', fmtMoney(est.total)));
         up.appendChild(kvRow('Min due (est.)', fmtMoney(est.minDue)));
       }
       up.appendChild(kvRow('Unbilled (new spend)', fmtMoney(unbilled)));
       if (k) {
-        up.appendChild(kvRow('Carried from last bill', fmtMoney(carried)));
+        up.appendChild(kvRow('Carried forward', fmtMoney(carried)));
         if (finEst > 0) up.appendChild(kvRow('Finance (est.)', fmtMoney(finEst)));
       }
       if (isNeu()) {

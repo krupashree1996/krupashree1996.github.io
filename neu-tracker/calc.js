@@ -51,7 +51,7 @@ const Calc = (function () {
     tata:    { label: 'Tata',      rate: 0.035, program: 'Add_TataPayment',      note: '3.5% (bank statement — lands next cycle)' },
     tatagroc:{ label: 'Tata+Groc', rate: 0.05,  program: 'Add_TataPayment',      note: '5% (1.5% grocery + 3.5% Tata) — e.g. BigBasket via Tata Pay; grocery this cycle, the 3.5% lands next cycle', split: { base: 0.015, bonus: 0.035, srcBase: 'grocery', srcBonus: 'Tata', nextCycle: true } },
     nocoins: { label: 'NoCoins',   rate: 0,     program: '',                     note: 'no NeuCoins' },
-    payment: { label: 'Payment',   rate: 0,     program: '',                     note: 'repayment to the bank — pick “for period” to reduce that bill’s outstanding' }
+    payment: { label: 'Payment',   rate: 0,     program: '',                     note: 'repayment to the bank — reduces the matching bill by payment date, or pick “for period” to force one' }
   };
 
   function predictedCoins(entry) {
@@ -513,6 +513,11 @@ const Calc = (function () {
     /* legacy pre-ledger payment-array entries (no category, no reliable desc)
      * are accepted as-is so auto-settle backfill is unchanged */
     if (e.category === undefined) return true;
+    /* a Payment entry the user logged in the ledger (not imported from a
+     * statement, not auto-settled) is a repayment by intent — regardless of
+     * the description text. Imported statement credits carry sourcePeriod;
+     * auto-settle entries carry auto. */
+    if (!e.sourcePeriod && !e.auto) return true;
     var d = String(e.desc || '').toUpperCase();
     return /BPPY|EFT|NEFT|RTGS|ACH|UPI|ATM|CARD PAY|BANK TRANSFER|PAYMENT/.test(d);
   }

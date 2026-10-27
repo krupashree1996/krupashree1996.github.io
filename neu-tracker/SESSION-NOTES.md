@@ -1,12 +1,13 @@
-# Neu-Tracker — Session Notes (last: 2026-10-18)
+# Neu-Tracker — Session Notes (last: 2026-10-27)
 
 Hand-off notes for the next assistant session. Full spec: [REQUIREMENTS.md](REQUIREMENTS.md).
 All work is committed & pushed on `main` (GitHub Pages, no build step).
 
 ## Current state (verified green)
-- `node test/cc-calc.test.js` → **237 passed, 0 failed**
-- `node test/cc-dom.test.js` → **101 passed, 0 failed**
-- Versions: `SCHEMA_VERSION=7` (calc.js), `APP_VERSION=7` (app.js build badge), SW `neu-tracker-v26` (sw.js)
+- `node test/cc-calc.test.js` → **249 passed, 0 failed**
+- `node test/cc-dom.test.js` → **106 passed, 0 failed**
+- `node test/cc-flow.test.js` → **13 passed, 0 failed**
+- Versions: `SCHEMA_VERSION=7` (calc.js), `APP_VERSION=8` (app.js build badge), SW `neu-tracker-v27` (sw.js)
 - Latest commit: see `git log --oneline -3` (est. bill vs new bill + Tata+Groc/BigBasket + docs)
 
 ## Coin-source model (confirmed against user's real 202502/202503 xlsx calc sheets)
@@ -16,6 +17,31 @@ Two major coin sources: **app** and **bank statement**:
 - Tata Pay spend (BigBasket): 1.5% grocery this cycle + 3.5% Tata next cycle
   (`Add_TataPayment`); app shows the full 5% instantly. ₹942.12 → 14 + 33 = 47
   (app displayed 47.55; tracker keeps the calculated 47 — user chose no override)
+
+## What was done this session (part 4)
+1. **Current bill is now its own entity** (user: "upcoming bill even after import
+   bill shows same amount — can I put current bill as separate entity").
+   - Home starts with **Current bill** from the latest imported statement:
+     Statement, Total bill, Minimum due, Due date (+ days left/overdue), Paid,
+     Outstanding, Status. This is the fixed printed bill, not a forecast.
+   - The projection is now **Next bill (est.)**: Estimated total, Min due (est.),
+     Unbilled (new spend), Carried forward, Finance (est.), coins. Same
+     `Calc.estimatedDue` source of truth; only the presentation changed.
+   - `estimatedDue` still = unpaid current bill + unbilled spend + finance, so a
+     payment or new spend now visibly changes the Next bill while Current bill
+     keeps its printed total.
+2. **Manual payments reduce dues** (user: "after i add a payment shouldnt the
+   value go down").
+   - `Calc.isRepayment`: a Payment ledger entry logged by the user (no
+     `sourcePeriod`, not `auto`) now counts as a repayment regardless of the
+     description text. Imported statement credits still need a payment keyword
+     or an explicit `forPeriod`, so refunds/waivers do not reduce dues.
+   - A payment dated after a bill closes now reduces that bill's
+     Paid/Outstanding, and flows into Next bill Carried forward. Payments dated
+     before a bill closes still belong to the previous cycle.
+   - Regression tests added for a manual "paid bill" description, an imported
+     credit with `sourcePeriod`, and `estimatedDue` carried dropping after a
+     manual payment.
 
 ## What was done this session (part 2)
 1. **`tatagroc` category** (5%) added: label "Tata+Groc", split

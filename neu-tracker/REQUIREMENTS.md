@@ -297,22 +297,28 @@ bills functionality was merged:
 - **Home (landing):** stats + history, the monthly-purchases & spend-by-category
   charts, **credit-utilization trend** (`utilizationOf = used/limit`), the
   **finance/interest summary** (`interestSummary`), the **due-dates board**
-  (`dueStatus`: due date, days left, overdue, full/min/partial, outstanding), and
-   the **Upcoming bill (est.)** + **Min due (est.)** projection (single source
-   of truth: `Calc.estimatedDue(records, ledger)` = carried + unbilled + last
-   finance charge, **rounded UP to a whole rupee** to line up with the printed
-   TOTAL AMOUNT DUE; min due = the 5% formula on that rounded total — e.g.
-   unbilled ₹21,266.24 → est. ₹21,267, min due ₹1,070). Unbilled (new spend) = the sum of
-  **non-reconciled** non-payment ledger entries — NOT a date cutoff. The bank's
-  cut-off means a statement omits txns near its period end (an 18/09 statement
-   only prints through 15/09), so spend dated *before* `periodTo` can still land on
-   the next bill; the `reconciled` flag is the authoritative "already on a
-   statement" marker (set by the reconcile flow when a bill fully matches).
-   Unbilled is independent of statements, so a statement-less card (Axis Scapia)
-   still shows its "Unbilled (new spend)" on Home; the "Upcoming bill (est.)",
-   "Carried from last bill" and "Finance (est.)" lines (and the coins line, which
-   is Neu-only) appear only once a statement has been imported / for a neu card.
-   Adding/editing/deleting a ledger entry re-renders Home so the total stays live.
+  (`dueStatus`: due date, days left, overdue, full/min/partial, outstanding).
+  **Current bill** is the latest imported statement as its own entity: printed
+  Statement, Total bill, Minimum due, Due date, Paid, Outstanding and Status
+  (unpaid / part paid / minimum paid / settled / overdue). **Next bill (est.)**
+  is the projection (single source of truth: `Calc.estimatedDue(records,
+  ledger)` = carried + unbilled + last finance charge, **rounded UP to a whole
+  rupee** to line up with the printed TOTAL AMOUNT DUE; min due = the 5% formula
+  on that rounded total — e.g. unbilled ₹21,266.24 → est. ₹21,267, min due
+  ₹1,070). Unbilled (new spend) = the sum of **non-reconciled** non-payment
+  ledger entries — NOT a date cutoff. The bank's cut-off means a statement omits
+  txns near its period end (an 18/09 statement only prints through 15/09), so
+  spend dated *before* `periodTo` can still land on the next bill; the
+  `reconciled` flag is the authoritative "already on a statement" marker (set by
+  the reconcile flow when a bill fully matches). Unbilled is independent of
+  statements, so a statement-less card (Axis Scapia) still shows "Unbilled (new
+  spend)" on Home; "Estimated total", "Min due (est.)", "Carried forward" and
+  "Finance (est.)" (and the coins line, which is Neu-only) appear only once a
+  statement has been imported / for a neu card. Adding/editing/deleting a ledger
+  entry re-renders Home so the totals stay live. A manual Payment entry (no
+  `sourcePeriod`, not `auto`) counts as a repayment even without a bank keyword;
+  imported statement credits still require a payment keyword or `forPeriod`, so
+  refunds/waivers do not reduce dues.
 - **Import:** `readPdf` reads ALL pages of a multi-page statement (merges page
   text, offsetting each page's y by +10000 so coordinates stay unique), runs the
   parser, then `Calc.verifyStatement`.

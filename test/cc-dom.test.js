@@ -201,6 +201,15 @@ whenReady(function run() {
   eq('payment entry carries forPeriod', CUR.ledger[1].forPeriod, '18/11/2025');
   $('#homeGo').click();
   eq('due board shows payment', $('#blDue').textContent.indexOf('paid') >= 0, true);
+  function statValue(label) {
+    var row = $$('#landingStats .kv > div', document).filter(function (r) { return (r.querySelector('b') || {}).textContent === label; })[0];
+    return row ? row.querySelector('span').textContent : null;
+  }
+  ok('current bill section shown', $('#landingStats').textContent.indexOf('Current bill') >= 0, true);
+  eq('current bill total', statValue('Total bill'), '₹200.00');
+  eq('current bill paid', statValue('Paid'), '₹200.00');
+  eq('current bill outstanding is 0 after payment', statValue('Outstanding'), '₹0.00');
+  eq('current bill status settled', statValue('Status'), 'settled ✓');
   $('#ledgerGo').click();
   eq('payment listed on ledger', $('#ledgerList').textContent.indexOf('for 18/11/2025') >= 0, true);
 
@@ -252,7 +261,7 @@ whenReady(function run() {
    * statement) ledger spend, not a date cutoff (the bank's cut-off means a
    * statement may omit txns near its period end, so spend dated before
    * periodTo can still land on the next bill) */
-  eq('upcoming bill (est.) shown on home', $('#landingStats').textContent.indexOf('Upcoming bill (est.)') >= 0, true);
+  eq('next bill (est.) shown on home', $('#landingStats').textContent.indexOf('Next bill (est.)') >= 0, true);
   /* the only ledger entry so far (DMART, 10/11/2025) is reconciled to s-1 → no unbilled spend yet */
   eq('unbilled 0 when all spend is reconciled', $('#landingStats').textContent.indexOf('Unbilled (new spend)') >= 0 && $('#landingStats').textContent.indexOf('₹0.00') >= 0, true);
   /* add a post-statement purchase (20/11/2025 > 18/11/2025) → unbilled = 500 */
@@ -268,7 +277,7 @@ whenReady(function run() {
   /* min due (est.) must be the 5% formula of the rounded est. total — the two
    * lines are rendered together so recompute from the record */
   var kvRows = $$('#landingStats .kv > div', document);
-  var estRow = kvRows.filter(function (r) { return (r.querySelector('b') || {}).textContent === 'Upcoming bill (est.)'; })[0];
+  var estRow = kvRows.filter(function (r) { return (r.querySelector('b') || {}).textContent === 'Estimated total'; })[0];
   var minRow = kvRows.filter(function (r) { return (r.querySelector('b') || {}).textContent === 'Min due (est.)'; })[0];
   if (estRow && minRow) {
     var estTotal = parseFloat(String(estRow.querySelector('span').textContent).replace(/[₹,\s]/g, ''));

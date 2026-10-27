@@ -416,9 +416,15 @@ ok('reversal (non-payment category) is ignored', Calc.paymentForRecord(recP, [{ 
  * 'payment' on import) is NOT a repayment to the bank — it never reduces a
  * bill's outstanding */
 eq('reversal credit (payment category, non-repayment desc) ignored',
-  Calc.paymentForRecord(recP, [{ category: 'payment', desc: 'PETRO SURCHARGE WAIVER + C', date: '20/11/2025', amount: 10000 }]).kind, 'none');
+  Calc.paymentForRecord(recP, [{ category: 'payment', desc: 'PETRO SURCHARGE WAIVER + C', date: '20/11/2025', amount: 10000, sourcePeriod: '18/11/2025' }]).kind, 'none');
 eq('unlinked EFT is a repayment',
   Calc.paymentForRecord(recP, [{ category: 'payment', desc: 'EFT card payment', date: '20/11/2025', amount: 10000 }]).kind, 'full');
+/* a manual Payment entry is a repayment by intent even when its description
+ * has no bank keyword and it is not linked to a period (dated after close) */
+eq('manual payment (no bank keyword) is a repayment',
+  Calc.paymentForRecord(recP, [{ category: 'payment', desc: 'paid bill', date: '20/11/2025', amount: 10000 }]).kind, 'full');
+eq('imported credit (sourcePeriod set) still needs payment keywords',
+  Calc.paymentForRecord(recP, [{ category: 'payment', desc: 'SURCHARGE WAIVER + C', date: '20/11/2025', amount: 10000, sourcePeriod: '18/11/2025' }]).kind, 'none');
 var dsPast = Calc.dueStatus({ dueDate: '08/12/2025', total: 10000, minimumDue: 500 }, [], new Date(2025, 11, 10));
 ok('past due overdue', dsPast.overdue === true);
 eq('past due days left', dsPast.daysLeft, -2);
@@ -478,6 +484,14 @@ eq('utilization null when no limit', Calc.utilizationOf({ total: 25000 }), null)
   eq('est carries finance when dues carried', eCarried.finEst, 50);
   eq('est total = carried+unbilled+finance ceil', eCarried.total, Math.ceil(5000 + 300 + 50));
   eq('est min due from 5% formula', eCarried.minDue, Calc.madFor(Math.ceil(5000 + 300 + 50)));
+  /* a manual Payment entry (no keyword, no forPeriod) dated after the bill
+   * closes reduces the carried amount used by the next-bill estimate */
+  var eManual = Calc.estimatedDue([{ periodTo: '18/11/2025', total: 10000, finance: 50, dueDate: '08/12/2025' }], [
+    { category: 'base', amount: 300, reconciled: '' },
+    { category: 'payment', desc: 'paid bill', date: '20/11/2025', amount: 5000 }
+  ], new Date(2025, 11, 1));
+  eq('est carried reduced by manual payment', eManual.carried, 5000);
+  eq('est total reduced by manual payment', eManual.total, Math.ceil(5000 + 300 + 50));
 
  section('annual fee waiver');
  /* window is [Jan 19 → next Jan 18]; spent = purchases of bills whose periodTo
