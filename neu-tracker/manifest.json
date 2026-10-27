@@ -1,7 +1,7 @@
 {
-  "name": "HDFC Tata Neu Credit Card Tracker",
-  "short_name": "Neu Tracker",
-  "description": "Offline tracker: import encrypted HDFC Tata Neu statement PDFs, verify amounts & NeuCoins, keep a manual spend ledger, reconcile each cycle, track rewards and bills. 100% local.",
+  "name": "Credit Cards Tracker",
+  "short_name": "Credit Cards",
+  "description": "Offline tracker: import encrypted credit card statement PDFs, verify amounts & rewards, keep a manual spend ledger, reconcile each cycle, track bills. 100% local.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

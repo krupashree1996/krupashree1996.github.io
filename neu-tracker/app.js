@@ -18,7 +18,7 @@
 
   var STORE_KEY = 'ne.tracker.data';
   var PW_KEY = 'ne.tracker.pw';
-  var APP_VERSION = 6;
+  var APP_VERSION = 7;
 
   /* ---------------- tiny DOM helpers ---------------- */
   function $(id) { return document.getElementById(id); }
@@ -110,7 +110,10 @@
 
   /* ---------------- import / parse ---------------- */
   function readPdf(ab, pw) {
-    var task = pdfjsLib.getDocument({ data: ab, password: pw || undefined, isEvalSupported: false });
+    /* pdf.js transfers the buffer to its worker (detaching it), so every
+     * attempt needs a fresh copy — otherwise retrying after the password
+     * prompt reuses an empty buffer and silently fails. */
+    var task = pdfjsLib.getDocument({ data: ab.slice(0), password: pw || undefined, isEvalSupported: false });
     return task.promise.then(function (doc) {
       var pages = [];
       for (var p = 1; p <= doc.numPages; p++) pages.push(doc.getPage(p).then(function (page) { return page.getTextContent(); }));
@@ -195,14 +198,22 @@
           return !importOK;
         });
       };
+      function askAndRetry() {
+        askPassword(function (pw) {
+          attempt(pw).catch(function (e2) {
+            if (e2 && e2.name === 'PasswordException' && e2.code === 2) {
+              toast('Incorrect password — try again.', 'bad');
+              askAndRetry();
+              return;
+            }
+            toast((e2 && e2.message) || 'Could not open this PDF.', 'bad');
+          });
+        });
+      }
       attempt(getPw()).catch(function (e) {
         if (e && e.name === 'PasswordException') {
-          if (e.code === 2) { toast('Incorrect password.', 'bad'); return; }
-          askPassword(function (pw) {
-            attempt(pw).catch(function (e2) {
-              toast((e2 && e2.message) || 'Could not open this PDF.', 'bad');
-            });
-          });
+          if (e.code === 2) toast('Incorrect password — try again.', 'bad');
+          askAndRetry();
         } else {
           toast((e && e.message) || 'Could not read this PDF.', 'bad');
         }
@@ -633,25 +644,12 @@
    * number of ledger entries added. If the bill now fully matches, it
    * auto-reconciles (→ home); otherwise the current view is refreshed. */
   function bookStmtOnly(rec) {
-    var res = Calc.reconcile(rec, C.ledger, prevRecordOf(rec));
     /* count-based dedupe: a statement can carry N identical rows (same
-     * day + amount + merchant). Book exactly as many ledger entries as there
-     * are statement rows, and no more — so re-clicking never duplicates, and
-     * every identical row can be matched. */
-    var want = {}; // key -> number of statement-only rows
-    res.stmtOnly.forEach(function (tx) {
-      var k = tx.date + '|' + Math.round(tx.amount * 100) / 100 + '|' + tx.desc;
-      want[k] = (want[k] || 0) + 1;
-    });
-    var have = {}; // key -> entries already in the ledger
-    C.ledger.forEach(function (e) {
-      var k = e.date + '|' + Math.round((e.amount || 0) * 100) / 100 + '|' + e.desc;
-      if (want[k]) have[k] = (have[k] || 0) + 1;
-    });
+     * day + amount). Book exactly the rows reconcile still sees as missing —
+     * matched entries must not suppress a genuinely missing duplicate. */
+    var rows = Calc.stmtRowsToBook(rec, C.ledger, prevRecordOf(rec));
     var added = 0;
-    res.stmtOnly.forEach(function (tx) {
-      var k = tx.date + '|' + Math.round(tx.amount * 100) / 100 + '|' + tx.desc;
-      if ((have[k] || 0) >= want[k]) return; // this key is already fully booked
+    rows.forEach(function (tx) {
       C.ledger.push({
         id: 'e-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
         date: tx.date, desc: tx.desc,
@@ -662,7 +660,6 @@
          * window without belonging to it) */
         sourcePeriod: rec.periodTo
       });
-      have[k] = (have[k] || 0) + 1;
       added++;
     });
     persist();

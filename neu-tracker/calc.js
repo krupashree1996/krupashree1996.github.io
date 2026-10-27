@@ -336,6 +336,9 @@ const Calc = (function () {
        * belonging to it — it can neither match here nor be listed as
        * "not on statement". Legacy entries have no sourcePeriod. */
       if (e.sourcePeriod && e.sourcePeriod !== winTo) return false;
+      /* booked from THIS statement — its printed date may fall outside the
+       * billing window (late-posted charge), but it still belongs here. */
+      if (e.sourcePeriod && e.sourcePeriod === winTo) return true;
       var t = pdate(e.date);
       var lo = winFrom && isFinite(pdate(winFrom)) ? pdate(winFrom) : -Infinity;
       var hi = winTo && isFinite(pdate(winTo)) ? pdate(winTo) : Infinity;
@@ -365,11 +368,11 @@ const Calc = (function () {
       if (used[i]) return false;
       return !(prevEnd && e.date === prevEnd);
     });
+    /* byKey now holds only the txns that no ledger entry consumed; take those
+     * (not every txn whose key still has leftovers) so duplicate statement
+     * rows are counted exactly once each. */
     var stmtOnly = [];
-    (st.txns || []).forEach(function (tx) {
-      var k = keyOf(tx.date, tx.amount);
-      if (byKey[k] && byKey[k].length) stmtOnly.push(tx);
-    });
+    Object.keys(byKey).forEach(function (k) { stmtOnly = stmtOnly.concat(byKey[k]); });
 
     /* splits: one ledger entry matching two statement rows of same amount+date */
     var payInBook = 0, payInStmt = 0;
@@ -394,6 +397,36 @@ const Calc = (function () {
       bookOnlyCount: bookOnly.length,
       stmtOnlyCount: stmtOnly.length
     };
+  }
+
+  /* Statement txns still needing a ledger row. Mirrors reconcile's date+amount
+   * key and counts only entries that are actually usable in this window, so a
+   * row already booked elsewhere cannot make "Add to ledger" report nothing
+   * to do while the row keeps showing as statement-only. */
+  function stmtRowsToBook(rec, ledger, prevRecord) {
+    var res = reconcile(rec, ledger, prevRecord);
+    var keyOf = function (date, amount) { return date + '|' + round2(amount).toFixed(2); };
+    var want = {}, have = {};
+    ((rec && rec.txns) || []).forEach(function (tx) {
+      var k = keyOf(tx.date, tx.amount);
+      want[k] = (want[k] || 0) + 1;
+    });
+    res.matched.forEach(function (x) {
+      var k = keyOf(x.entry.date, x.entry.amount);
+      have[k] = (have[k] || 0) + 1;
+    });
+    res.bookOnly.forEach(function (e) {
+      var k = keyOf(e.date, e.amount);
+      have[k] = (have[k] || 0) + 1;
+    });
+    var rows = [];
+    res.stmtOnly.forEach(function (tx) {
+      var k = keyOf(tx.date, tx.amount);
+      if ((have[k] || 0) >= (want[k] || 0)) return;
+      have[k] = (have[k] || 0) + 1;
+      rows.push(tx);
+    });
+    return rows;
   }
 
   /* ---------- rewards ---------- */
@@ -908,7 +941,7 @@ const Calc = (function () {
     classifyMerchant: classifyMerchant, guessCategory: guessCategory,
     verifyStatement: verifyStatement, applyExceptions: applyExceptions,
     hasBlocking: hasBlocking, statusSummary: statusSummary,
-    reconcile: reconcile, pdate: pdate,
+    reconcile: reconcile, stmtRowsToBook: stmtRowsToBook, pdate: pdate,
     rewardsValue: rewardsValue, rewardsByCategory: rewardsByCategory,
     redemptionReconcile: redemptionReconcile, rewardsTimeline: rewardsTimeline,
     paymentForRecord: paymentForRecord, dueStatus: dueStatus, autoSettlePrior: autoSettlePrior,

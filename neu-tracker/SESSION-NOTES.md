@@ -6,7 +6,7 @@ All work is committed & pushed on `main` (GitHub Pages, no build step).
 ## Current state (verified green)
 - `node test/cc-calc.test.js` → **237 passed, 0 failed**
 - `node test/cc-dom.test.js` → **101 passed, 0 failed**
-- Versions: `SCHEMA_VERSION=7` (calc.js), `APP_VERSION=6` (app.js build badge), SW `neu-tracker-v25` (sw.js)
+- Versions: `SCHEMA_VERSION=7` (calc.js), `APP_VERSION=7` (app.js build badge), SW `neu-tracker-v26` (sw.js)
 - Latest commit: see `git log --oneline -3` (est. bill vs new bill + Tata+Groc/BigBasket + docs)
 
 ## Coin-source model (confirmed against user's real 202502/202503 xlsx calc sheets)

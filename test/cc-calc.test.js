@@ -312,6 +312,42 @@ var rc2 = Calc.reconcile({ periodTo: '18/11/2025', periodFrom: '19/10/2025', txn
 eq('different day not matched', rc2.stmtOnlyCount, 1);
 eq('amount-differs day list empty', rc2.bookOnlyCount, 1);
 
+section('reconcile — duplicate rows / out-of-window bookings');
+/* two identical statement rows + one matching ledger entry: exactly one row
+ * is still statement-only (the old code listed BOTH, then the booking dedupe
+ * could think the job was already done). */
+var dupRec = {
+  periodTo: '18/11/2025', periodFrom: '19/10/2025',
+  txns: [
+    { date: '10/11/2025', desc: 'COFFEE', amount: 200, credit: false },
+    { date: '10/11/2025', desc: 'COFFEE', amount: 200, credit: false }
+  ]
+};
+var dupLedger = [{ id: 'd1', date: '10/11/2025', desc: 'COFFEE', amount: 200, category: 'grocery', reconciled: '' }];
+var rcDup = Calc.reconcile(dupRec, dupLedger, { periodTo: '18/10/2025' });
+eq('duplicate statement rows: matched once', rcDup.matchedCount, 1);
+eq('duplicate statement rows: one still statement-only', rcDup.stmtOnlyCount, 1);
+eq('stmtRowsToBook books the missing duplicate', Calc.stmtRowsToBook(dupRec, dupLedger, { periodTo: '18/10/2025' }).length, 1);
+var dupLedger2 = dupLedger.concat([{ id: 'd2', date: '10/11/2025', desc: 'COFFEE 2', amount: 200, category: 'grocery', reconciled: '' }]);
+eq('both duplicates booked → nothing left to book', Calc.stmtRowsToBook(dupRec, dupLedger2, { periodTo: '18/10/2025' }).length, 0);
+
+/* a late-posted charge (printed date before the billing window) must become
+ * matchable once it has been booked with sourcePeriod = this statement. */
+var lateRec = {
+  periodTo: '18/11/2025', periodFrom: '19/10/2025',
+  txns: [{ date: '17/10/2025', desc: 'LATE FEE', amount: 99, credit: false }]
+};
+var lateLedger = [{ id: 'l1', date: '17/10/2025', desc: 'LATE FEE', amount: 99, category: 'nocoins', reconciled: '', sourcePeriod: '18/11/2025' }];
+var rcLate = Calc.reconcile(lateRec, lateLedger, { periodTo: '18/10/2025' });
+eq('out-of-window row booked to this statement matches', rcLate.matchedCount, 1);
+eq('out-of-window row no longer statement-only', rcLate.stmtOnlyCount, 0);
+
+/* an entry consumed by ANOTHER statement must not make the booking dedupe
+ * report "already booked" while the row is still listed as statement-only. */
+var otherLedger = [{ id: 'o1', date: '10/11/2025', desc: 'COFFEE', amount: 200, category: 'grocery', reconciled: '18/10/2025' }];
+eq('entry reconciled elsewhere is excluded from matching', Calc.reconcile(dupRec, otherLedger, { periodTo: '18/10/2025' }).matchedCount, 0);
+eq('...but is still offered by stmtRowsToBook', Calc.stmtRowsToBook(dupRec, [otherLedger[0]], { periodTo: '18/10/2025' }).length, 2);
+
 /* ------------------------------------------------------------------ */
 section('migrateBundle / schema');
 /* v6: data lives per-card in DATA.cards[]; the legacy single card becomes the
