@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 36
+  var APP_VERSION = 37
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -1368,7 +1368,7 @@
     var metaEl = el('div', 'fdMeta', sub.join(' '));
     nameCell.appendChild(metaEl);
     tr.appendChild(nameCell);
-    tr.appendChild(el('td', 'num', Calc.inr(c.invested)));
+    tr.appendChild(el('td', 'num', Calc.inr(Math.round(c.invested * 100) / 100)));
     var valCell = el('td', 'num', fv != null ? Calc.inr(fv) : '—');
     valCell.title = c.soldValue > 0 ? 'redemption value' : (c.currentValue > 0 ? 'recorded current value' : 'units × price');
     tr.appendChild(valCell);
@@ -1671,7 +1671,7 @@
       var fdTd = el('td', 'num', t.fd.interest ? Calc.inr(t.fd.interest) : '\u2014');
       if (t.fd.count) fdTd.title = t.fd.count + ' recorded payout' + (t.fd.count > 1 ? 's' : '');
       tr.appendChild(fdTd);
-      var sgbTd = el('td', 'num', t.sgb.interest ? Calc.inr(t.sgb.interest) : '\u2014');
+      var sgbTd = el('td', 'num', t.sgb.interest ? Calc.inr(Math.round(t.sgb.interest * 100) / 100) : '\u2014');
       if (t.sgb.count) sgbTd.title = t.sgb.count + ' coupon' + (t.sgb.count > 1 ? 's' : '');
       tr.appendChild(sgbTd);
       tr.appendChild(el('td', 'num strong', t.total ? Calc.inr(t.total) : '\u2014'));
