@@ -641,7 +641,7 @@ var Calc = (function () {
      var rate = c.couponRate != null ? c.couponRate : 2.5;
      var face = c.units > 0 ? c.units * 1000 : c.invested;
      var perDay = face * rate / 100 / 365;
-     var full = Math.round((face * rate / 100) / 2);
+     var full = Math.round((face * rate / 100) / 2 * 100) / 100;
      var p = String(c.purchaseDate).split('-');
      var iy = +p[0], im = +p[1], iday = +p[2];
      var out = [];

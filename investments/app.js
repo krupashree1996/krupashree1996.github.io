@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 37
+  var APP_VERSION = 38
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -1382,7 +1382,7 @@
     tr.appendChild(el('td', 'num', xirr != null ? (xirr * 100).toFixed(2) + '% p.a.' : '—'));
     var csched = Calc.commodityPayoutSchedule(c);
     if (csched.length) {
-      var csg = 0; csched.forEach(function (r) { csg += r.amount; });
+      var csg = 0; csched.forEach(function (r) { csg += Math.round(r.amount * 100) / 100; });
       var cnext = csched.filter(function (r) { return r.date >= today && r.kind !== 'redemption'; })[0];
       var clines = csched.map(function (r) {
         return Calc.fmtDate(r.date) + ' · ' + (r.kind === 'coupon' ? 'coupon' : r.kind === 'end' ? 'broken end' : 'redemption') + ' · est ' + Calc.inr(r.amount);
