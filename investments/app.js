@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 30;
+  var APP_VERSION = 31;
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -928,22 +928,32 @@
        * financial year is that year's income even if the deposit matured before
        * the year end, so excluding the archive under-reports the TDS figure. */
       var fy = Calc.fdFySummary(filterFds(DATA.fds).concat(filterFds(DATA.archived || [])));
+      var invested = { fd: 0, rbi: 0, scss: 0 }, expected = { fd: 0, rbi: 0, scss: 0 };
       var closeNow = { fd: 0, rbi: 0, scss: 0 }, closeNowCount = { fd: 0, rbi: 0, scss: 0 };
       filterFds(DATA.fds).forEach(function (fd) {
+        var t = Calc.normFdType(fd);
+        invested[t] += fd.amount || 0;
+        expected[t] += Calc.fdExpectedTotal(fd) || 0;
         var v = Calc.fdCloseNowValue(fd);
         if (v == null) return;
-        var t = Calc.normFdType(fd);
         closeNow[t] += v; closeNowCount[t]++;
       });
       var kv = el('div', 'kv inline');
-      kv.appendChild(kvin('Invested', Calc.inr(s.invested)));
-      [['fd', 'FD'], ['rbi', 'FRB'], ['scss', 'SCSS']].forEach(function (x) {
+      var TYPES = [['fd', 'FD'], ['rbi', 'FRB'], ['scss', 'SCSS']];
+      TYPES.forEach(function (x) {
+        if (!(invested[x[0]] > 0)) return;
+        kv.appendChild(kvin('Invested ' + x[1], Calc.inr(invested[x[0]])));
+      });
+      TYPES.forEach(function (x) {
         if (!(closeNow[x[0]] > 0)) return;
         var tile = kvin('Close now ' + x[1], Calc.inr(closeNow[x[0]]), 'pos');
         tile.title = closeNowCount[x[0]] + ' active ' + x[1] + ' deposit' + (closeNowCount[x[0]] > 1 ? 's' : '');
         kv.appendChild(tile);
       });
-      kv.appendChild(kvin('Maturity value', Calc.inr(s.expected)));
+      TYPES.forEach(function (x) {
+        if (!(expected[x[0]] > 0)) return;
+        kv.appendChild(kvin('Maturity value ' + x[1], Calc.inr(expected[x[0]])));
+      });
       kv.appendChild(kvin(fy.cur.label + ' interest', fy.cur.count ? Calc.inr(fy.cur.interest) : '₹0', fy.cur.count ? 'pos' : 'muted'));
       kv.appendChild(kvin(fy.cur.label + ' TDS', fy.cur.count ? Calc.inr(fy.cur.tax) : '₹0', fy.cur.count ? '' : 'muted'));
       kv.appendChild(kvin(fy.prev.label + ' interest', fy.prev.count ? Calc.inr(fy.prev.interest) : '₹0', fy.prev.count ? 'pos' : 'muted'));
