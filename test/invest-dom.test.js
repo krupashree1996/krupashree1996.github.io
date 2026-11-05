@@ -462,6 +462,17 @@ whenReady(function run() {
   var maturityLabels = kvLabels.filter(function (t) { return t.indexOf('Maturity value ') === 0; });
   eq('maturity value split: FD and SCSS tiles only', maturityLabels.join('|'), 'Maturity value FD|Maturity value SCSS');
   eq('maturity value split: no combined tile', maturityLabels.indexOf('Maturity value') < 0, true);
+  // FD "close now" is the recorded book value (principal + net credited), not
+  // principal + accrual since the last payout.
+  var WCalc = dom.window.Calc;
+  var expectedCloseFd = App.DATA.fds.filter(function (f) {
+    return WCalc.normFdType(f) === 'fd';
+  }).reduce(function (a, f) { return a + WCalc.fdEntrySummary(f).after; }, 0);
+  var closeFdTile = $$('#sec-fd .kv div').filter(function (d) {
+    var b = d.querySelector('b');
+    return b && b.textContent === 'Close now FD';
+  })[0];
+  eq('close now FD = recorded book value', closeFdTile && closeFdTile.querySelector('span').textContent, WCalc.inr(expectedCloseFd));
   // The "Maturity value" cell for the SCSS row must be the principal (₹10,00,000),
   // NOT P + simple interest (which would be ~₹14,34,xxx).
   var scssRow = $$('#sec-fd .fdRow').filter(function (r) { return r.getAttribute('data-account') === 'SCSS99990001'; })[0];
