@@ -450,6 +450,12 @@ whenReady(function run() {
   eq('scss forced to payout mode', scss.interestMode, 'payout');
   eq('scss TDS defaulted to 0', scss.tdsRate, 0);
   eq('scss row shows SCSS badge', $$('#sec-fd .fdRow').some(function (r) { return r.querySelector('.b-type') && r.querySelector('.b-type').textContent === 'SCSS'; }), true);
+  // Close now is split per instrument type, and only non-zero types get a tile.
+  var closeLabels = $$('#sec-fd .kv b').map(function (b) { return b.textContent; })
+    .filter(function (t) { return t.indexOf('Close now') === 0; });
+  eq('close now split: FD and SCSS tiles only', closeLabels.join('|'), 'Close now FD|Close now SCSS');
+  eq('close now split: no combined tile', closeLabels.indexOf('Close now') < 0, true);
+  eq('close now split: no zero FRB tile', closeLabels.indexOf('Close now FRB') < 0, true);
   // The "Maturity value" cell for the SCSS row must be the principal (₹10,00,000),
   // NOT P + simple interest (which would be ~₹14,34,xxx).
   var scssRow = $$('#sec-fd .fdRow').filter(function (r) { return r.getAttribute('data-account') === 'SCSS99990001'; })[0];

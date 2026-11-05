@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 29;
+  var APP_VERSION = 30;
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -928,14 +928,21 @@
        * financial year is that year's income even if the deposit matured before
        * the year end, so excluding the archive under-reports the TDS figure. */
       var fy = Calc.fdFySummary(filterFds(DATA.fds).concat(filterFds(DATA.archived || [])));
-      var closeNow = 0, closeNowCount = 0;
+      var closeNow = { fd: 0, rbi: 0, scss: 0 }, closeNowCount = { fd: 0, rbi: 0, scss: 0 };
       filterFds(DATA.fds).forEach(function (fd) {
         var v = Calc.fdCloseNowValue(fd);
-        if (v != null) { closeNow += v; closeNowCount++; }
+        if (v == null) return;
+        var t = Calc.normFdType(fd);
+        closeNow[t] += v; closeNowCount[t]++;
       });
       var kv = el('div', 'kv inline');
       kv.appendChild(kvin('Invested', Calc.inr(s.invested)));
-      kv.appendChild(kvin('Close now', closeNowCount ? Calc.inr(closeNow) : '—', 'pos'));
+      [['fd', 'FD'], ['rbi', 'FRB'], ['scss', 'SCSS']].forEach(function (x) {
+        if (!(closeNow[x[0]] > 0)) return;
+        var tile = kvin('Close now ' + x[1], Calc.inr(closeNow[x[0]]), 'pos');
+        tile.title = closeNowCount[x[0]] + ' active ' + x[1] + ' deposit' + (closeNowCount[x[0]] > 1 ? 's' : '');
+        kv.appendChild(tile);
+      });
       kv.appendChild(kvin('Maturity value', Calc.inr(s.expected)));
       kv.appendChild(kvin(fy.cur.label + ' interest', fy.cur.count ? Calc.inr(fy.cur.interest) : '₹0', fy.cur.count ? 'pos' : 'muted'));
       kv.appendChild(kvin(fy.cur.label + ' TDS', fy.cur.count ? Calc.inr(fy.cur.tax) : '₹0', fy.cur.count ? '' : 'muted'));
