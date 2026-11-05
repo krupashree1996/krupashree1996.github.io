@@ -350,6 +350,38 @@ var Calc = (function () {
     });
     return out;
   }
+  /* Forecast total for the CURRENT FY: actual recorded payouts already in the
+   * FY plus the remaining scheduled periods that have no matching payout yet.
+   * Each scheduled period is matched to a recorded entry within `tol` days
+   * (same rule as the merged ledger), so actuals are never double-counted.
+   * Predicted TDS uses the FD's tdsRate (default 10%; SCSS/FRB are usually 0). */
+  function fdFyForecast(list, today, tol) {
+    today = today || todayISO();
+    var cy = fyYearOf(today, today);
+    var out = { year: cy, label: fyLabel(cy), count: 0, interest: 0, tax: 0,
+      actualInterest: 0, actualTax: 0, actualCount: 0,
+      predictedInterest: 0, predictedTax: 0, predictedCount: 0 };
+    (list || []).forEach(function (fd) {
+      var rows = mergeSchedule(fdPayoutSchedule(fd), fd.entries || [], tol);
+      rows.forEach(function (r) {
+        var date = r.matched ? r.matched.date : r.date;
+        if (!date || fyOfDate(date) !== cy) return;
+        var int, tax;
+        if (r.matched) {
+          int = r.matched.int || 0;
+          tax = r.matched.tax || 0;
+          out.actualInterest += int; out.actualTax += tax; out.actualCount++;
+        } else {
+          int = r.amount || 0;
+          var tds = fd.tdsRate == null ? 10 : fd.tdsRate;
+          tax = Math.round(int * (tds / 100) * 100) / 100;
+          out.predictedInterest += int; out.predictedTax += tax; out.predictedCount++;
+        }
+        out.count++; out.interest += int; out.tax += tax;
+      });
+    });
+    return out;
+  }
   /* Income from other sources, per FY, split by source. FD/SCSS/FRB contribute
    * recorded payout interest + TDS; SGB contributes coupon income (no TDS).
    * MF dividends / capital gains will slot in here later as new sources.
@@ -712,7 +744,7 @@ var Calc = (function () {
     normInterestMode: normInterestMode, entryNet: entryNet, fdEntries: fdEntries, fdEntrySummary: fdEntrySummary,
     fdStatus: fdStatus, fdAutoRemove: fdAutoRemove, fdStatusRank: fdStatusRank,
     xirr: xirr, fdXirr: fdXirr, sortFds: sortFds, fdSummary: fdSummary,
-    fdCloseNowValue: fdCloseNowValue, fyOfDate: fyOfDate, fyYearOf: fyYearOf, fyLabel: fyLabel, fdFySummary: fdFySummary, incomeFySummary: incomeFySummary,
+    fdCloseNowValue: fdCloseNowValue, fyOfDate: fyOfDate, fyYearOf: fyYearOf, fyLabel: fyLabel, fdFySummary: fdFySummary, fdFyForecast: fdFyForecast, incomeFySummary: incomeFySummary,
     normFdType: normFdType, fdTypeLabel: fdTypeLabel, fdPayoutSchedule: fdPayoutSchedule,
     mergeSchedule: mergeSchedule, nextUnrecorded: nextUnrecorded,
     validFd: validFd, fdDateCheck: fdDateCheck, fdFileMaturity: fdFileMaturity,

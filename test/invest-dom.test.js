@@ -473,6 +473,22 @@ whenReady(function run() {
     return b && b.textContent === 'Close now FD';
   })[0];
   eq('close now FD = recorded book value', closeFdTile && closeFdTile.querySelector('span').textContent, WCalc.inr(expectedCloseFd));
+  // Current-FY predicted tiles = actual recorded so far + remaining scheduled payouts.
+  var fc = WCalc.fdFyForecast(App.DATA.fds.concat(App.DATA.archived || []));
+  eq('forecast has remaining scheduled payouts', fc.predictedCount > 0, true);
+  var curFyLabel = WCalc.fyLabel(WCalc.fyYearOf(WCalc.todayISO(), WCalc.todayISO()));
+  function kvTile(label) {
+    return $$('#sec-fd .kv div').filter(function (d) {
+      var b = d.querySelector('b');
+      return b && b.textContent === label;
+    })[0];
+  }
+  var predIntTile = kvTile(curFyLabel + ' predicted interest');
+  var predTdsTile = kvTile(curFyLabel + ' predicted TDS');
+  eq('predicted interest tile present', !!predIntTile, true);
+  eq('predicted TDS tile present', !!predTdsTile, true);
+  eq('predicted interest value', predIntTile && predIntTile.querySelector('span').textContent, WCalc.inr(fc.interest));
+  eq('predicted TDS value', predTdsTile && predTdsTile.querySelector('span').textContent, WCalc.inr(fc.tax));
   // The "Maturity value" cell for the SCSS row must be the principal (₹10,00,000),
   // NOT P + simple interest (which would be ~₹14,34,xxx).
   var scssRow = $$('#sec-fd .fdRow').filter(function (r) { return r.getAttribute('data-account') === 'SCSS99990001'; })[0];

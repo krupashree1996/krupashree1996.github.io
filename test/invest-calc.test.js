@@ -344,6 +344,39 @@ console.log('fdFySummary — recorded payout totals per Indian FY');
   eq('matured FD counted in cur FY count', both.cur.count, 2);
 })();
 
+console.log('fdFyForecast — actual so far + remaining scheduled payouts (current FY)');
+(function () {
+  var fdA = {
+    amount: 400000, rate: 8.1, issueDate: '2025-08-27', maturityDate: '2027-08-27',
+    entries: [
+      { date: '2025-09-28', int: 3060, tax: 306 },  // FY 2025-26
+      { date: '2026-03-29', int: 8305, tax: 830 },   // FY 2025-26
+      { date: '2026-06-28', int: 8232, tax: 823 }    // FY 2026-27 (matches 30 Jun)
+    ]
+  };
+  var fc = Calc.fdFyForecast([fdA], '2026-09-29');
+  eq('forecast label', fc.label, 'FY 26–27');
+  eq('forecast actual count', fc.actualCount, 1);
+  eq('forecast actual interest', fc.actualInterest, 8232);
+  eq('forecast actual tax', fc.actualTax, 823);
+  eq('forecast predicted count', fc.predictedCount, 3); // Sep, Dec, Mar
+  eq('forecast predicted interest', fc.predictedInterest, 8667 + 8843 + 9022);
+  eq('forecast predicted tax', fc.predictedTax, 866.7 + 884.3 + 902.2);
+  eq('forecast total interest', fc.interest, 8232 + 8667 + 8843 + 9022);
+  eq('forecast total tax', fc.tax, 823 + 866.7 + 884.3 + 902.2);
+  // Fully recorded FY: no predictions, totals equal the recorded summary.
+  var fully = Calc.fdFyForecast([{
+    amount: 100000, rate: 7, issueDate: '2025-10-01', maturityDate: '2026-09-30',
+    entries: [
+      { date: '2026-06-30', int: 1750, tax: 175 },
+      { date: '2026-09-30', int: 1750, tax: 175 }
+    ]
+  }], '2026-09-29');
+  eq('fully-recorded FY has no predictions', fully.predictedCount, 0);
+  eq('fully-recorded totals equal actual', fully.interest, 3500);
+  eq('fully-recorded tax equals actual', fully.tax, 350);
+})();
+
 console.log('incomeFySummary — consolidated income from other sources (FD + SGB)');
 (function () {
   var fdA = {

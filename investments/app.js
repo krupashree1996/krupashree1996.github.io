@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 32;
+  var APP_VERSION = 33;
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -963,10 +963,19 @@
       });
       kv.appendChild(kvin(fy.cur.label + ' interest', fy.cur.count ? Calc.inr(fy.cur.interest) : '₹0', fy.cur.count ? 'pos' : 'muted'));
       kv.appendChild(kvin(fy.cur.label + ' TDS', fy.cur.count ? Calc.inr(fy.cur.tax) : '₹0', fy.cur.count ? '' : 'muted'));
+      var fc = Calc.fdFyForecast(filterFds(DATA.fds).concat(filterFds(DATA.archived || [])));
+      if (fc.predictedCount) {
+        var fcInt = kvin(fy.cur.label + ' predicted interest', Calc.inr(fc.interest), 'pos');
+        fcInt.title = 'Recorded ' + Calc.inr(fc.actualInterest) + ' + predicted remaining ' + Calc.inr(fc.predictedInterest) + ' from ' + fc.predictedCount + ' scheduled payout' + (fc.predictedCount > 1 ? 's' : '');
+        kv.appendChild(fcInt);
+        var fcTds = kvin(fy.cur.label + ' predicted TDS', Calc.inr(fc.tax));
+        fcTds.title = 'Recorded ' + Calc.inr(fc.actualTax) + ' + predicted remaining ' + Calc.inr(fc.predictedTax) + ' (at each FD\u2019s TDS rate)';
+        kv.appendChild(fcTds);
+      }
       kv.appendChild(kvin(fy.prev.label + ' interest', fy.prev.count ? Calc.inr(fy.prev.interest) : '₹0', fy.prev.count ? 'pos' : 'muted'));
       kv.appendChild(kvin(fy.prev.label + ' TDS', fy.prev.count ? Calc.inr(fy.prev.tax) : '₹0', fy.prev.count ? '' : 'muted'));
       card.appendChild(kv);
-      card.appendChild(el('p', 'hint', 'FY = 1 Apr – 31 Mar, from recorded payouts only, and includes matured FDs (interest credited in that FY is that FY’s income). Close now FD = principal + credited net interest from recorded payouts (no accrual since the last credit). Close now FRB/SCSS adds simple interest accrued to today at the current rate. Both ignore the bank\u2019s break penalty of ~1% on accrued interest.'));
+      card.appendChild(el('p', 'hint', 'FY = 1 Apr – 31 Mar, from recorded payouts only, and includes matured FDs (interest credited in that FY is that FY’s income). Close now FD = principal + credited net interest from recorded payouts (no accrual since the last credit). Close now FRB/SCSS adds simple interest accrued to today at the current rate. Both ignore the bank\u2019s break penalty of ~1% on accrued interest. Predicted = recorded so far + remaining scheduled payouts for the current FY (TDS at each FD\u2019s TDS rate).'));
     }
 
     if (!filterFds(DATA.fds).length) {
