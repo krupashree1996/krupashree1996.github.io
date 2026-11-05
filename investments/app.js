@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 33;
+  var APP_VERSION = 34;
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -935,11 +935,10 @@
         invested[t] += fd.amount || 0;
         expected[t] += Calc.fdExpectedTotal(fd) || 0;
         /* FD "close now" is the recorded book value: principal + net credited
-         * interest. Accrual since the last credited payout is not added, so it
-         * matches the per-FD "worth now" in the ledger. FRB/SCSS still use the
-         * break-today value (principal + accrual) because their interest is paid
-         * out rather than credited in. */
-        var v = t === 'fd' ? Calc.fdEntrySummary(fd).after : Calc.fdCloseNowValue(fd);
+         * interest. FRB/SCSS pay interest OUT (never credited back), so their
+         * close-now value is just the principal — you get the deposit back, not
+         * any unpaid accrual. */
+        var v = t === 'fd' ? Calc.fdEntrySummary(fd).after : (fd.amount || 0);
         if (v == null) return;
         closeNow[t] += v; closeNowCount[t]++;
       });
@@ -954,7 +953,7 @@
         var tile = kvin('Close now ' + x[1], Calc.inr(closeNow[x[0]]), 'pos');
         tile.title = x[0] === 'fd'
           ? closeNowCount.fd + ' active FD' + (closeNowCount.fd > 1 ? 's' : '') + ' · principal + credited net interest from recorded payouts (no accrual since the last credit)'
-          : closeNowCount[x[0]] + ' active ' + x[1] + ' deposit' + (closeNowCount[x[0]] > 1 ? 's' : '') + ' · principal + simple interest accrued to today';
+          : closeNowCount[x[0]] + ' active ' + x[1] + ' deposit' + (closeNowCount[x[0]] > 1 ? 's' : '') + ' · principal only (interest is paid out, never accrued into the deposit)';
         kv.appendChild(tile);
       });
       TYPES.forEach(function (x) {
@@ -975,7 +974,7 @@
       kv.appendChild(kvin(fy.prev.label + ' interest', fy.prev.count ? Calc.inr(fy.prev.interest) : '₹0', fy.prev.count ? 'pos' : 'muted'));
       kv.appendChild(kvin(fy.prev.label + ' TDS', fy.prev.count ? Calc.inr(fy.prev.tax) : '₹0', fy.prev.count ? '' : 'muted'));
       card.appendChild(kv);
-      card.appendChild(el('p', 'hint', 'FY = 1 Apr – 31 Mar, from recorded payouts only, and includes matured FDs (interest credited in that FY is that FY’s income). Close now FD = principal + credited net interest from recorded payouts (no accrual since the last credit). Close now FRB/SCSS adds simple interest accrued to today at the current rate. Both ignore the bank\u2019s break penalty of ~1% on accrued interest. Predicted = recorded so far + remaining scheduled payouts for the current FY (TDS at each FD\u2019s TDS rate).'));
+      card.appendChild(el('p', 'hint', 'FY = 1 Apr – 31 Mar, from recorded payouts only, and includes matured FDs (interest credited in that FY is that FY’s income). Close now FD = principal + credited net interest from recorded payouts (no accrual since the last credit). Close now FRB/SCSS = principal only, since their interest is paid out and never accrued into the deposit. Maturity value FRB/SCSS = principal only, too. Predicted = recorded so far + remaining scheduled payouts for the current FY (TDS at each FD\u2019s TDS rate).'));
     }
 
     if (!filterFds(DATA.fds).length) {
@@ -1028,7 +1027,7 @@
        }
        tr.appendChild(netCell);
        tr.appendChild(taxCell);
-       tr.appendChild(el('td', 'num', a.maturityValue > 0 ? Calc.inr(a.maturityValue) : '—'));
+       tr.appendChild(el('td', 'num', Calc.fdExpectedTotal(a) != null ? Calc.inr(Calc.fdExpectedTotal(a)) : '—'));
       var x = el('td', 'num', a.xirr != null ? (a.xirr * 100).toFixed(2) + '% p.a.' : '—');
       if (sum.count) x.title = 'XIRR (net of TDS) from initial amount, final value and ' + sum.count + ' recorded payout' + (sum.count > 1 ? 's' : '');
       tr.appendChild(x);

@@ -489,6 +489,12 @@ whenReady(function run() {
   eq('predicted TDS tile present', !!predTdsTile, true);
   eq('predicted interest value', predIntTile && predIntTile.querySelector('span').textContent, WCalc.inr(fc.interest));
   eq('predicted TDS value', predTdsTile && predTdsTile.querySelector('span').textContent, WCalc.inr(fc.tax));
+  // FRB/SCSS interest is paid out, so close now = principal only (no accrual).
+  var expectedCloseScss = App.DATA.fds.filter(function (f) {
+    return WCalc.normFdType(f) === 'scss';
+  }).reduce(function (a, f) { return a + (f.amount || 0); }, 0);
+  var closeScssTile = kvTile('Close now SCSS');
+  eq('close now SCSS = principal only', closeScssTile && closeScssTile.querySelector('span').textContent, WCalc.inr(expectedCloseScss));
   // The "Maturity value" cell for the SCSS row must be the principal (₹10,00,000),
   // NOT P + simple interest (which would be ~₹14,34,xxx).
   var scssRow = $$('#sec-fd .fdRow').filter(function (r) { return r.getAttribute('data-account') === 'SCSS99990001'; })[0];
