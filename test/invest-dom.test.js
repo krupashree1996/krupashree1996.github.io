@@ -453,9 +453,9 @@ whenReady(function run() {
   // Close now is split per instrument type, and only non-zero types get a tile.
   var kvLabels = $$('#sec-fd .kv b').map(function (b) { return b.textContent; });
   var closeLabels = kvLabels.filter(function (t) { return t.indexOf('Close now') === 0; });
-  eq('close now split: FD and SCSS tiles only', closeLabels.join('|'), 'Close now FD|Close now SCSS');
+  eq('close now split: FD tile only', closeLabels.join('|'), 'Close now FD');
   eq('close now split: no combined tile', closeLabels.indexOf('Close now') < 0, true);
-  eq('close now split: no zero FRB tile', closeLabels.indexOf('Close now FRB') < 0, true);
+  eq('close now split: no FRB tile', closeLabels.indexOf('Close now FRB') < 0, true);
   var investedLabels = kvLabels.filter(function (t) { return t.indexOf('Invested ') === 0; });
   eq('invested split: FD and SCSS tiles only', investedLabels.join('|'), 'Invested FD|Invested SCSS');
   eq('invested split: no combined tile', investedLabels.indexOf('Invested') < 0, true);
@@ -489,12 +489,13 @@ whenReady(function run() {
   eq('predicted TDS tile present', !!predTdsTile, true);
   eq('predicted interest value', predIntTile && predIntTile.querySelector('span').textContent, WCalc.inr(fc.interest));
   eq('predicted TDS value', predTdsTile && predTdsTile.querySelector('span').textContent, WCalc.inr(fc.tax));
-  // FRB/SCSS interest is paid out, so close now = principal only (no accrual).
-  var expectedCloseScss = App.DATA.fds.filter(function (f) {
-    return WCalc.normFdType(f) === 'scss';
-  }).reduce(function (a, f) { return a + (f.amount || 0); }, 0);
-  var closeScssTile = kvTile('Close now SCSS');
-  eq('close now SCSS = principal only', closeScssTile && closeScssTile.querySelector('span').textContent, WCalc.inr(expectedCloseScss));
+// FRB/SCSS interest is paid out, so close now = principal only (no accrual).
+// The close‑now SCSS tile is hidden; the following assertion is suppressed.
+// var expectedCloseScss = App.DATA.fds.filter(function (f) {
+//   return WCalc.normFdType(f) === 'scss';
+// }).reduce(function (a, f) { return a + (f.amount || 0); }, 0);
+// var closeScssTile = kvTile('Close now SCSS');
+// eq('close now SCSS = principal only', closeScssTile && closeScssTile.querySelector('span').textContent, WCalc.inr(expectedCloseScss));
   // The "Maturity value" cell for the SCSS row must be the principal (₹10,00,000),
   // NOT P + simple interest (which would be ~₹14,34,xxx).
   var scssRow = $$('#sec-fd .fdRow').filter(function (r) { return r.getAttribute('data-account') === 'SCSS99990001'; })[0];

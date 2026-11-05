@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 35;
+  var APP_VERSION = 36
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -949,11 +949,9 @@
         kv.appendChild(kvin('Invested ' + x[1], Calc.inr(invested[x[0]])));
       });
       TYPES.forEach(function (x) {
-        if (!(closeNow[x[0]] > 0)) return;
+        if (!(closeNow[x[0]] > 0) || x[0] !== 'fd') return;
         var tile = kvin('Close now ' + x[1], Calc.inr(closeNow[x[0]]), 'pos');
-        tile.title = x[0] === 'fd'
-          ? closeNowCount.fd + ' active FD' + (closeNowCount.fd > 1 ? 's' : '') + ' · principal + credited net interest from recorded payouts (no accrual since the last credit)'
-          : closeNowCount[x[0]] + ' active ' + x[1] + ' deposit' + (closeNowCount[x[0]] > 1 ? 's' : '') + ' · principal only (interest is paid out, never accrued into the deposit)';
+        tile.title = closeNowCount.fd + ' active FD' + (closeNowCount.fd > 1 ? 's' : '') + ' · principal + credited net interest from recorded payouts (no accrual since the last credit)';
         kv.appendChild(tile);
       });
       TYPES.forEach(function (x) {
