@@ -460,7 +460,7 @@ whenReady(function run() {
   eq('invested split: FD and SCSS tiles only', investedLabels.join('|'), 'Invested FD|Invested SCSS');
   eq('invested split: no combined tile', investedLabels.indexOf('Invested') < 0, true);
   var maturityLabels = kvLabels.filter(function (t) { return t.indexOf('Maturity value ') === 0; });
-  eq('maturity value split: FD and SCSS tiles only', maturityLabels.join('|'), 'Maturity value FD|Maturity value SCSS');
+  eq('maturity value split: FD tile only', maturityLabels.join('|'), 'Maturity value FD');
   eq('maturity value split: no combined tile', maturityLabels.indexOf('Maturity value') < 0, true);
   // FD "close now" is the recorded book value (principal + net credited), not
   // principal + accrual since the last payout.

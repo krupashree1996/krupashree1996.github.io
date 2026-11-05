@@ -9,7 +9,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 34;
+  var APP_VERSION = 35;
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -958,6 +958,7 @@
       });
       TYPES.forEach(function (x) {
         if (!(expected[x[0]] > 0)) return;
+        if (x[0] !== 'fd') return;
         kv.appendChild(kvin('Maturity value ' + x[1], Calc.inr(expected[x[0]])));
       });
       kv.appendChild(kvin(fy.cur.label + ' interest', fy.cur.count ? Calc.inr(fy.cur.interest) : '₹0', fy.cur.count ? 'pos' : 'muted'));
