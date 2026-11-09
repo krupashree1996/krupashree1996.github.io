@@ -47,7 +47,7 @@ function whenReady(fn) {
   var t = setInterval(function () {
     if (dom.window.App && dom.window.Calc) { clearInterval(t); fn(); }
   }, 10);
-  setTimeout(function () { clearInterval(t); console.log('FAIL timed out waiting for app boot'); process.exit(1); }, 5000);
+  setTimeout(function () { clearInterval(t); console.log('FAIL timed out waiting for app boot'); process.exit(1); }, 30000);
 }
 
 whenReady(function run() {

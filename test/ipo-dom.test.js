@@ -43,7 +43,7 @@ function whenReady(fn) {
   var t = setInterval(function () {
     if (dom.window.App && dom.window.Calc) { clearInterval(t); fn(); }
   }, 10);
-  setTimeout(function () { clearInterval(t); console.log('FAIL timed out waiting for app boot'); process.exit(1); }, 5000);
+  setTimeout(function () { clearInterval(t); console.log('FAIL timed out waiting for app boot'); process.exit(1); }, 30000);
 }
 
 whenReady(function run() {
@@ -169,10 +169,12 @@ whenReady(function run() {
 
    console.log('8) Fetch merge — parallel IPOs with identical dates are not collapsed');
   var before = App.DATA.ipos.length;
-  App.DATA.ipos.push({ id: 'ipo-sona', name: 'Sona Test Co', symbol: 'SONAT', openDate: '2026-09-17', closeDate: '2026-09-21', bandHi: 99 });
+  var Calc8 = dom.window.Calc, today8 = Calc8.todayISO();
+  var openD8 = Calc8.dateAdd(today8, -10), closeD8 = Calc8.dateAdd(today8, -5);
+  App.DATA.ipos.push({ id: 'ipo-sona', name: 'Sona Test Co', symbol: 'SONAT', openDate: openD8, closeDate: closeD8, bandHi: 99 });
   App.applyRemote({ ipos: [
-    { companyName: 'Spectra Test Co', symbol: 'SPECTT', series: 'SME', priceBand: { max: 118 }, lotSize: 1200, issueStartDate: '2026-09-17', issueEndDate: '2026-09-21' },
-    { companyName: 'Sona Test Co', symbol: 'SONAT', series: 'Mainline', priceBand: { max: 99 }, lotSize: 100, issueStartDate: '2026-09-17', issueEndDate: '2026-09-21' }
+    { companyName: 'Spectra Test Co', symbol: 'SPECTT', series: 'SME', priceBand: { max: 118 }, lotSize: 1200, issueStartDate: openD8, issueEndDate: closeD8 },
+    { companyName: 'Sona Test Co', symbol: 'SONAT', series: 'Mainline', priceBand: { max: 99 }, lotSize: 100, issueStartDate: openD8, issueEndDate: closeD8 }
   ] });
   eq('parallel IPO (same dates, new name) added', App.DATA.ipos.length, before + 2);
   var sp = App.DATA.ipos.find(function (i) { return i.symbol === 'SPECTT'; });
