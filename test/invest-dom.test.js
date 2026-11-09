@@ -951,6 +951,8 @@ whenReady(function run() {
   eq('duplicate manual txn dropped on import', openRec.transactions.some(function (t) { return t.manual && t.date === '2024-01-01' && t.amount === 800; }), false);
   var subSel = document.getElementById('mfSubType');
   eq('subtype filter exists', !!subSel, true);
+  eq('closed-only subtype excluded from filter', Array.from(subSel.options).some(function (o) { return o.value === 'Liquid'; }), false);
+  eq('closed-only type excluded from filter', Array.from(document.getElementById('mfType').options).some(function (o) { return o.value === 'DEBT'; }), false);
   subSel.value = 'Mid Cap';
   subSel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   eq('subtype filter narrows rows', $$('#sec-mf .mfRow').length, 1);

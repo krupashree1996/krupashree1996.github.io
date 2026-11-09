@@ -11,7 +11,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 43
+  var APP_VERSION = 44
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -1506,11 +1506,12 @@
       return;
     }
 
+    var openAll = all.filter(function (r) { return Calc.mfStatus(r) === 'Open'; });
     var types = [];
-    all.forEach(function (r) { if (r.invType && types.indexOf(r.invType) < 0) types.push(r.invType); });
+    openAll.forEach(function (r) { if (r.invType && types.indexOf(r.invType) < 0) types.push(r.invType); });
     types.sort();
     var subTypes = [];
-    all.forEach(function (r) {
+    openAll.forEach(function (r) {
       if (S.mfType && r.invType !== S.mfType) return;
       if (r.invSubType && subTypes.indexOf(r.invSubType) < 0) subTypes.push(r.invSubType);
     });
@@ -1609,19 +1610,21 @@
     }
 
     var ctrl = el('div', 'mfFilters');
-    var tsel = selectControl('mfType', [{ v: '', l: 'All types (' + all.length + ')' }].concat(types.map(function (t) {
-      return { v: t, l: t + ' (' + all.filter(function (r) { return r.invType === t; }).length + ')' };
+    var tsel = selectControl('mfType', [{ v: '', l: 'All types (' + openAll.length + ' open)' }].concat(types.map(function (t) {
+      return { v: t, l: t + ' (' + openAll.filter(function (r) { return r.invType === t; }).length + ')' };
     })), S.mfType);
     tsel.onchange = function () { S.mfType = this.value; S.mfSubType = ''; renderMf(); };
     var tw = el('label', 'chk');
+    tw.title = 'Type filter covers open holdings only';
     tw.appendChild(document.createTextNode('Type'));
     tw.appendChild(tsel);
     ctrl.appendChild(tw);
-    var stsel = selectControl('mfSubType', [{ v: '', l: 'All subtypes (' + all.filter(function (r) { return !S.mfType || r.invType === S.mfType; }).length + ')' }].concat(subTypes.map(function (t) {
-      return { v: t, l: t + ' (' + all.filter(function (r) { return r.invSubType === t && (!S.mfType || r.invType === S.mfType); }).length + ')' };
+    var stsel = selectControl('mfSubType', [{ v: '', l: 'All subtypes (' + openAll.filter(function (r) { return !S.mfType || r.invType === S.mfType; }).length + ' open)' }].concat(subTypes.map(function (t) {
+      return { v: t, l: t + ' (' + openAll.filter(function (r) { return r.invSubType === t && (!S.mfType || r.invType === S.mfType); }).length + ')' };
     })), S.mfSubType);
     stsel.onchange = function () { S.mfSubType = this.value; renderMf(); };
     var stw = el('label', 'chk');
+    stw.title = 'Subtype filter covers open holdings only';
     stw.appendChild(document.createTextNode('Subtype'));
     stw.appendChild(stsel);
     ctrl.appendChild(stw);
