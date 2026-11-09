@@ -800,7 +800,7 @@ var Calc = (function () {
     return out;
   }
   function mfSummary(list) {
-    var open = [], closed = 0, byType = {}, byAmc = {};
+    var open = [], closed = 0, byType = {}, bySubType = {}, byAmc = {};
     (list || []).forEach(function (rec) {
       if (mfStatus(rec) === 'Open') open.push(rec); else closed++;
     });
@@ -811,6 +811,9 @@ var Calc = (function () {
       var ty = rec.invType || 'Other';
       if (!byType[ty]) byType[ty] = { count: 0, cost: 0, value: 0 };
       byType[ty].count++; byType[ty].cost += c; byType[ty].value += v;
+      var sub = rec.invSubType || 'Unspecified';
+      if (!bySubType[sub]) bySubType[sub] = { count: 0, cost: 0, value: 0, type: ty };
+      bySubType[sub].count++; bySubType[sub].cost += c; bySubType[sub].value += v;
       var amc = rec.amc || 'Unknown';
       if (!byAmc[amc]) byAmc[amc] = { count: 0, cost: 0, value: 0 };
       byAmc[amc].count++; byAmc[amc].cost += c; byAmc[amc].value += v;
@@ -821,13 +824,16 @@ var Calc = (function () {
       cost: cost, value: value, gain: gain,
       returnPct: cost > 0 ? gain / cost * 100 : null,
       xirr: mfPortfolioXirr(open),
-      byType: byType, byAmc: byAmc
+      byType: byType, bySubType: bySubType, byAmc: byAmc
     };
-    Object.keys(byType).forEach(function (k) {
-      var g = byType[k];
-      g.gain = g.value - g.cost;
-      g.returnPct = g.cost > 0 ? g.gain / g.cost * 100 : null;
-    });
+    function finalize(map) {
+      Object.keys(map).forEach(function (k) {
+        var g = map[k];
+        g.gain = g.value - g.cost;
+        g.returnPct = g.cost > 0 ? g.gain / g.cost * 100 : null;
+      });
+    }
+    finalize(byType); finalize(bySubType); finalize(byAmc);
     return sum;
   }
   function mfSort(list) {

@@ -184,6 +184,20 @@ console.log('calc.js — MF enrich + summary + sort');
   eq('sort closed last', sorted[1].scheme, 'Fund B');
 })();
 
+console.log('calc.js — MF equity subtype split');
+(function () {
+  function mk(name, sub, cost, val) {
+    return { folio: 'F', scheme: name, invType: 'EQUITY', invSubType: sub, amc: 'Axis', cost: cost, marketValue: val, close: 1, navDate: '2026-01-01', transactions: [] };
+  }
+  var s2 = Calc.mfSummary([mk('A', 'Large Cap', 100, 120), mk('B', 'Mid Cap', 200, 180), mk('C', 'Large Cap', 50, 60)]);
+  eq('subtype large cap count', s2.bySubType['Large Cap'].count, 2);
+  eq('subtype large cap value', s2.bySubType['Large Cap'].value, 180);
+  eq('subtype large cap return pct', s2.bySubType['Large Cap'].returnPct, 20);
+  eq('subtype mid cap count', s2.bySubType['Mid Cap'].count, 1);
+  eq('subtype type tagged EQUITY', s2.bySubType['Mid Cap'].type, 'EQUITY');
+  eq('byAmc gain finalized', s2.byAmc.Axis.gain, 10);
+})();
+
 console.log('mf.js — parsePdf keeps caller data reusable');
 (function () {
   var src = new Uint8Array([1, 2, 3, 4]);

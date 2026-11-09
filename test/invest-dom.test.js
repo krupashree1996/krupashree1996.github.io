@@ -931,6 +931,24 @@ whenReady(function run() {
   // Re-importing the same CAS updates instead of duplicating.
   App.commitCas({ statement_period: { from: '1992-01-02', to: '2026-11-09' }, parse_warnings: [] }, casRecs, 'TEST_CAS.pdf');
   eq('re-import does not duplicate', App.DATA.mfs.length, 2);
+  var pristineCas = JSON.parse(JSON.stringify(casRecs));
+  var openRec = App.DATA.mfs.find(function (r) { return r.scheme.indexOf('Axis Midcap') >= 0; });
+  App.switchTab('mf');
+  $$('#sec-mf .mfRow')[0].click();
+  eq('manual form shown', !!document.getElementById('mtDate'), true);
+  document.getElementById('mtDate').value = '01/02/2026';
+  document.getElementById('mtAmount').value = '4321';
+  $$('#modalBox button').filter(function (b) { return b.textContent === 'Add transaction'; })[0].click();
+  eq('manual txn added', openRec.transactions.some(function (t) { return t.manual && t.amount === 4321; }), true);
+  var countWithManual = openRec.transactions.length;
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
+  App.commitCas({ statement_period: { from: '1992-01-02', to: '2026-11-09' }, parse_warnings: [] }, JSON.parse(JSON.stringify(pristineCas)), 'TEST_CAS.pdf');
+  eq('manual txn kept on re-import', openRec.transactions.length, countWithManual);
+  eq('manual txn still flagged', openRec.transactions.some(function (t) { return t.manual && t.amount === 4321; }), true);
+  eq('re-import still does not duplicate folios', App.DATA.mfs.length, 2);
+  openRec.transactions.push({ date: '2024-01-01', description: 'Purchase', amount: 800, units: 10, nav: 80, balance: 10, type: 'PURCHASE', dividend_rate: null, manual: true });
+  App.commitCas({ statement_period: { from: '1992-01-02', to: '2026-11-09' }, parse_warnings: [] }, JSON.parse(JSON.stringify(pristineCas)), 'TEST_CAS.pdf');
+  eq('duplicate manual txn dropped on import', openRec.transactions.some(function (t) { return t.manual && t.date === '2024-01-01' && t.amount === 800; }), false);
 
   console.log('15) bundle load archives matured FDs on import');
   // loadBundle replaces all data, so this runs last.
