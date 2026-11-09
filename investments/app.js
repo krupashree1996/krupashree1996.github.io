@@ -7,11 +7,11 @@
   if (!Array.isArray(DATA.commodities)) DATA.commodities = [];
   if (!Array.isArray(DATA.mfs)) DATA.mfs = [];
   if (!DATA.mfMeta || typeof DATA.mfMeta !== 'object') DATA.mfMeta = {};
-  var S = { tab: 'fd', curPan: '', mfShowClosed: false, mfType: '', mfSubType: '', mfSort: 'value' };
+  var S = { tab: 'fd', curPan: '', mfShowClosed: false, mfType: '', mfSubType: '', mfAmc: '', mfSort: 'value' };
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 47
+  var APP_VERSION = 49
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -1314,6 +1314,11 @@
     if (n == null || isNaN(n)) return '\u2014';
     return (+n).toFixed(d == null ? 2 : d);
   }
+  function mfXirrClass(x) {
+    if (x == null) return 'muted';
+    if (x < 0) return 'neg';
+    return x < 0.085 ? 'warn' : 'pos';
+  }
   function mfKey(rec) {
     return (rec.folio || '') + '|' + (rec.isin || rec.rtaCode || rec.scheme || '');
   }
@@ -1336,7 +1341,7 @@
     kv.appendChild(kvin('Value', Calc.inr(e.marketValue)));
     kv.appendChild(kvin('Gain', Calc.inr(e.gain), e.gain >= 0 ? 'pos' : 'neg'));
     kv.appendChild(kvin('Return', e.returnPct == null ? '\u2014' : e.returnPct.toFixed(2) + '%', e.returnPct == null ? 'muted' : (e.returnPct >= 0 ? 'pos' : 'neg')));
-    kv.appendChild(kvin('XIRR', e.xirr == null ? '\u2014' : (e.xirr * 100).toFixed(2) + '%', e.xirr == null ? 'muted' : (e.xirr >= 0 ? 'pos' : 'neg')));
+    kv.appendChild(kvin('XIRR', e.xirr == null ? '\u2014' : (e.xirr * 100).toFixed(2) + '%', mfXirrClass(e.xirr)));
     kv.appendChild(kvin('Period', e.period.years == null ? '\u2014' : e.period.years.toFixed(2) + 'y', e.period.from ? Calc.fmtDate(e.period.from) + ' \u2192 ' + Calc.fmtDate(e.period.to) : ''));
     box.appendChild(kv);
     if (e.nav != null) {
@@ -1457,7 +1462,7 @@
     if (e.returnPct != null) rc.classList.add(e.returnPct >= 0 ? 'pos' : 'neg');
     cells.appendChild(rc);
     var xc = fdCell('XIRR', e.xirr == null ? '\u2014' : (e.xirr * 100).toFixed(2) + '%', 'annualised, from every cashflow');
-    if (e.xirr != null) xc.classList.add(e.xirr >= 0 ? 'pos' : 'neg');
+    if (e.xirr != null) xc.classList.add(mfXirrClass(e.xirr));
     cells.appendChild(xc);
     cells.appendChild(fdCell('Period', e.period.years == null ? '\u2014' : e.period.years.toFixed(1) + 'y',
       e.period.from ? Calc.fmtDate(e.period.from) + ' \u2192 ' + Calc.fmtDate(e.period.to) : ''));
@@ -1510,15 +1515,24 @@
     var types = [];
     openAll.forEach(function (r) { if (r.invType && types.indexOf(r.invType) < 0) types.push(r.invType); });
     types.sort();
+    var amcs = [];
+    openAll.forEach(function (r) {
+      if (S.mfType && r.invType !== S.mfType) return;
+      if (r.amc && amcs.indexOf(r.amc) < 0) amcs.push(r.amc);
+    });
+    amcs.sort();
+    if (S.mfAmc && amcs.indexOf(S.mfAmc) < 0) S.mfAmc = '';
     var subTypes = [];
     openAll.forEach(function (r) {
       if (S.mfType && r.invType !== S.mfType) return;
+      if (S.mfAmc && r.amc !== S.mfAmc) return;
       if (r.invSubType && subTypes.indexOf(r.invSubType) < 0) subTypes.push(r.invSubType);
     });
     subTypes.sort();
     if (S.mfSubType && subTypes.indexOf(S.mfSubType) < 0) S.mfSubType = '';
     var sumList = all.filter(function (r) {
       if (S.mfType && r.invType !== S.mfType) return false;
+      if (S.mfAmc && r.amc !== S.mfAmc) return false;
       if (S.mfSubType && r.invSubType !== S.mfSubType) return false;
       return true;
     });
@@ -1529,7 +1543,7 @@
     kv.appendChild(kvin('Current value', Calc.inr(s.value)));
     kv.appendChild(kvin('Gain', Calc.inr(s.gain), s.gain >= 0 ? 'pos' : 'neg'));
     kv.appendChild(kvin('Return', s.returnPct == null ? '\u2014' : s.returnPct.toFixed(2) + '%', s.returnPct == null ? 'muted' : (s.returnPct >= 0 ? 'pos' : 'neg')));
-    kv.appendChild(kvin('XIRR', s.xirr == null ? '\u2014' : (s.xirr * 100).toFixed(2) + '%', s.xirr == null ? 'muted' : (s.xirr >= 0 ? 'pos' : 'neg')));
+    kv.appendChild(kvin('XIRR', s.xirr == null ? '\u2014' : (s.xirr * 100).toFixed(2) + '%', mfXirrClass(s.xirr)));
     kv.appendChild(kvin('Schemes', s.openCount + ' open \u00B7 ' + s.closedCount + ' closed'));
     card.appendChild(kv);
 
@@ -1646,8 +1660,8 @@
     tw.appendChild(document.createTextNode('Type'));
     tw.appendChild(tsel);
     ctrl.appendChild(tw);
-    var stsel = selectControl('mfSubType', [{ v: '', l: 'All subtypes (' + openAll.filter(function (r) { return !S.mfType || r.invType === S.mfType; }).length + ' open)' }].concat(subTypes.map(function (t) {
-      return { v: t, l: t + ' (' + openAll.filter(function (r) { return r.invSubType === t && (!S.mfType || r.invType === S.mfType); }).length + ')' };
+    var stsel = selectControl('mfSubType', [{ v: '', l: 'All subtypes (' + openAll.filter(function (r) { return (!S.mfType || r.invType === S.mfType) && (!S.mfAmc || r.amc === S.mfAmc); }).length + ' open)' }].concat(subTypes.map(function (t) {
+      return { v: t, l: t + ' (' + openAll.filter(function (r) { return r.invSubType === t && (!S.mfType || r.invType === S.mfType) && (!S.mfAmc || r.amc === S.mfAmc); }).length + ')' };
     })), S.mfSubType);
     stsel.onchange = function () { S.mfSubType = this.value; renderMf(); };
     var stw = el('label', 'chk');
@@ -1655,6 +1669,15 @@
     stw.appendChild(document.createTextNode('Subtype'));
     stw.appendChild(stsel);
     ctrl.appendChild(stw);
+    var asel = selectControl('mfAmc', [{ v: '', l: 'All AMCs (' + openAll.filter(function (r) { return !S.mfType || r.invType === S.mfType; }).length + ' open)' }].concat(amcs.map(function (t) {
+      return { v: t, l: t + ' (' + openAll.filter(function (r) { return r.amc === t && (!S.mfType || r.invType === S.mfType); }).length + ')' };
+    })), S.mfAmc);
+    asel.onchange = function () { S.mfAmc = this.value; renderMf(); };
+    var aw = el('label', 'chk');
+    aw.title = 'AMC filter covers open holdings only';
+    aw.appendChild(document.createTextNode('AMC'));
+    aw.appendChild(asel);
+    ctrl.appendChild(aw);
     var cl = el('label', 'chk');
     var cb = document.createElement('input');
     cb.type = 'checkbox';
@@ -1674,6 +1697,7 @@
     var shown = all.filter(function (r) {
       if (!S.mfShowClosed && Calc.mfStatus(r) !== 'Open') return false;
       if (S.mfType && r.invType !== S.mfType) return false;
+      if (S.mfAmc && r.amc !== S.mfAmc) return false;
       if (S.mfSubType && r.invSubType !== S.mfSubType) return false;
       return true;
     });

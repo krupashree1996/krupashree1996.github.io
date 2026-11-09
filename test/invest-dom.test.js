@@ -917,6 +917,7 @@ whenReady(function run() {
   eq('MF records stored', App.DATA.mfs.length, 2);
   eq('closed folio hidden by default', $$('#sec-mf .mfRow').length, 1);
   eq('open scheme row rendered', $$('#sec-mf .mfRow')[0].textContent.indexOf('Axis Midcap Fund - Growth') >= 0, true);
+  eq('low XIRR row cell is orange (warn)', $$('#sec-mf .mfRow .fdCell')[4].classList.contains('warn'), true);
   eq('summary values use open holdings', $('#sec-mf .kv').textContent.indexOf('\u20B91,200') >= 0, true);
   eq('PAN holder linked', App.DATA.mfs[0].panId, 'pan1');
   var closedBox = $$('#sec-mf .mfFilters input[type=checkbox]')[0];
@@ -957,6 +958,12 @@ whenReady(function run() {
   subSel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   eq('subtype filter narrows rows', $$('#sec-mf .mfRow').length, 1);
   eq('subtype filter row is the Mid Cap fund', $$('#sec-mf .mfRow')[0].textContent.indexOf('Axis Midcap') >= 0, true);
+  var amcSel = document.getElementById('mfAmc');
+  eq('amc filter exists', !!amcSel, true);
+  eq('closed-only amc excluded from filter', Array.from(amcSel.options).some(function (o) { return o.value === 'HDFC Mutual Fund'; }), false);
+  amcSel.value = 'Axis Mutual Fund';
+  amcSel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  eq('amc filter narrows rows', $$('#sec-mf .mfRow').length, 1);
 
   console.log('15) bundle load archives matured FDs on import');
   // loadBundle replaces all data, so this runs last.
