@@ -1,6 +1,6 @@
-var CACHE = 'investments-v48';
+var CACHE = 'investments-v49';
 var PRECACHE = [
-  'index.html', 'style.css', 'calc.js', 'fd.js', 'app.js',
+  'index.html', 'style.css', 'calc.js', 'fd.js', 'mf.js', 'app.js',
   'data/bundle.js', 'manifest.json',
   'vendor/pdf.min.js', 'vendor/pdf.worker.min.js',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'

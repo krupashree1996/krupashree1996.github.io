@@ -26,6 +26,7 @@ var html = fs.readFileSync(path.join(ROOT, 'investments', 'index.html'), 'utf8')
   .replace(/<script src="vendor\/pdf\.min\.js"><\/script>/, '')
   .replace(/<script src="calc\.js"><\/script>/, '')
   .replace(/<script src="fd\.js"><\/script>/, '')
+  .replace(/<script src="mf\.js"><\/script>/, '')
   .replace(/<script src="data\/bundle\.js"><\/script>/, '')
   .replace(/<script src="app\.js"><\/script>/, '')
   .replace(/navigator\.serviceWorker\.register\('sw\.js'\)\.catch\(function \(\) \{\}\);/, '');
@@ -34,10 +35,12 @@ var dom = new JSDOM(html, { runScripts: 'dangerously', url: 'http://localhost/in
 var document = dom.window.document;
 var calcSrc = fs.readFileSync(path.join(ROOT, 'investments', 'calc.js'), 'utf8');
 var fdSrc = fs.readFileSync(path.join(ROOT, 'investments', 'fd.js'), 'utf8');
+var mfSrc = fs.readFileSync(path.join(ROOT, 'investments', 'mf.js'), 'utf8');
 var bundleSrc = fs.readFileSync(path.join(ROOT, 'investments', 'data', 'bundle.js'), 'utf8');
 var appSrc = fs.readFileSync(path.join(ROOT, 'investments', 'app.js'), 'utf8');
 dom.window.eval(calcSrc);
 dom.window.eval(fdSrc);
+dom.window.eval(mfSrc);
 dom.window.eval(bundleSrc);
 dom.window.eval(appSrc);
 
@@ -879,6 +882,55 @@ whenReady(function run() {
   // TDS is FD-only: SGB coupons never add to it.
   eq('TDS excludes SGB', exp.cur.tds === exp.cur.fd.tax, true);
   App.switchTab('fd');
+
+  console.log('14d) mutual funds tab — CAS merge, closed hidden, drawer');
+  App.switchTab('fd');
+  var casRecs = dom.window.MfParse.toRecords({
+    statement_period: { from: '1992-01-02', to: '2026-11-09' }, parse_warnings: [],
+    folios: [{
+      folio: 'MFOPEN / 1', amc: 'Axis Mutual Fund', PAN: 'ABCDE1234F', KYC: 'OK', name: 'TEST NAME',
+      schemes: [{
+        scheme: 'Axis Midcap Fund - Growth', isin: 'INF846K01ABC1', rta_code: '128TSDGG', rta: 'CAMS',
+        advisor: '', open: 10, close: 12.5, close_calculated: 12.5, nominees: [],
+        valuation: { nav: 96, date: '2026-11-09', value: 1200, cost: 1000 },
+        transactions: [
+          { date: '2024-01-01', description: 'Purchase', amount: 800, units: 10, nav: 80, balance: 10, type: 'PURCHASE', dividend_rate: null },
+          { date: '2024-06-01', description: 'Purchase - SIP', amount: 200, units: 2.5, nav: 80, balance: 12.5, type: 'PURCHASE_SIP', dividend_rate: null }
+        ]
+      }]
+    }, {
+      folio: 'MFCLOSED / 2', amc: 'HDFC Mutual Fund', PAN: 'ABCDE1234F', KYC: 'OK', name: 'TEST NAME',
+      schemes: [{
+        scheme: 'HDFC Liquid Fund - Growth', isin: 'INF179K01XYZ9', rta_code: '128TGLIQ', rta: 'CAMS',
+        advisor: '', open: 0, close: 0, close_calculated: 0, nominees: [],
+        valuation: { nav: 50, date: '2026-11-09', value: 0, cost: 0 },
+        transactions: [
+          { date: '2020-01-01', description: 'Purchase', amount: 1000, units: 20, nav: 50, balance: 20, type: 'PURCHASE', dividend_rate: null },
+          { date: '2021-01-01', description: 'Redemption', amount: -1100, units: -20, nav: 55, balance: 0, type: 'REDEMPTION', dividend_rate: null }
+        ]
+      }]
+    }]
+  });
+  App.commitCas({ statement_period: { from: '1992-01-02', to: '2026-11-09' }, parse_warnings: [] }, casRecs, 'TEST_CAS.pdf');
+  App.switchTab('mf');
+  eq('MF tab shown', $('#sec-mf').hidden, false);
+  eq('MF records stored', App.DATA.mfs.length, 2);
+  eq('closed folio hidden by default', $$('#sec-mf .mfRow').length, 1);
+  eq('open scheme row rendered', $$('#sec-mf .mfRow')[0].textContent.indexOf('Axis Midcap Fund - Growth') >= 0, true);
+  eq('summary values use open holdings', $('#sec-mf .kv').textContent.indexOf('\u20B91,200') >= 0, true);
+  eq('PAN holder linked', App.DATA.mfs[0].panId, 'pan1');
+  var closedBox = $$('#sec-mf .mfFilters input[type=checkbox]')[0];
+  closedBox.checked = true;
+  closedBox.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  eq('closed folio can be shown', $$('#sec-mf .mfRow').length, 2);
+  $$('#sec-mf .mfRow')[0].click();
+  eq('drawer opened', document.getElementById('modal').classList.contains('open'), true);
+  eq('drawer lists transactions', $$('#modalBox table tbody tr').length, 2);
+  eq('drawer shows XIRR tile', $('#modalBox .kv').textContent.indexOf('XIRR') >= 0, true);
+  $$('#modalBox .actions button').forEach(function (b) { if (b.textContent === 'Close') b.click(); });
+  // Re-importing the same CAS updates instead of duplicating.
+  App.commitCas({ statement_period: { from: '1992-01-02', to: '2026-11-09' }, parse_warnings: [] }, casRecs, 'TEST_CAS.pdf');
+  eq('re-import does not duplicate', App.DATA.mfs.length, 2);
 
   console.log('15) bundle load archives matured FDs on import');
   // loadBundle replaces all data, so this runs last.

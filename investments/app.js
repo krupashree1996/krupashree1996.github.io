@@ -2,14 +2,16 @@
  * Vanilla JS, no build step. Data persists to localStorage + optional bundle
  * export. PNB confirmation PDFs are parsed in-browser with the vendored pdf.js. */
 (function () {
-  var DATA = window.DATA || (window.DATA = { profile: { name: '' }, pans: [], meta: {}, fds: [], commodities: [], notes: '', archived: [] });
+  var DATA = window.DATA || (window.DATA = { profile: { name: '' }, pans: [], meta: {}, fds: [], commodities: [], mfs: [], mfMeta: {}, notes: '', archived: [] });
   if (!Array.isArray(DATA.archived)) DATA.archived = [];
   if (!Array.isArray(DATA.commodities)) DATA.commodities = [];
-  var S = { tab: 'fd', curPan: '' };
+  if (!Array.isArray(DATA.mfs)) DATA.mfs = [];
+  if (!DATA.mfMeta || typeof DATA.mfMeta !== 'object') DATA.mfMeta = {};
+  var S = { tab: 'fd', curPan: '', mfShowClosed: false, mfType: '' };
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 38
+  var APP_VERSION = 39
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -161,6 +163,8 @@
           }
           if (Array.isArray(d.pans)) DATA.pans = d.pans;
           DATA.commodities = Array.isArray(d.commodities) ? d.commodities : [];
+          DATA.mfs = Array.isArray(d.mfs) ? d.mfs : [];
+          DATA.mfMeta = d.mfMeta && typeof d.mfMeta === 'object' ? d.mfMeta : {};
           DATA.profile = d.profile || DATA.profile;
           DATA.meta = d.meta || {};
           DATA.notes = d.notes || '';
@@ -182,7 +186,7 @@
   function flush() {
     if (newerSession || corruptSession) return;
     try {
-      localStorage.setItem(LS, JSON.stringify({ version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, fds: DATA.fds, commodities: DATA.commodities, notes: DATA.notes, archived: DATA.archived }));
+      localStorage.setItem(LS, JSON.stringify({ version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, fds: DATA.fds, commodities: DATA.commodities, mfs: DATA.mfs, mfMeta: DATA.mfMeta, notes: DATA.notes, archived: DATA.archived }));
       flushWarned = false;
     } catch (e) {
       if (!flushWarned) { flushWarned = true; toast('Storage full or sealed — changes will not be saved. Save a bundle to keep them.', 'bad'); }
@@ -233,8 +237,16 @@
     }
     DATA.fds.forEach(fix);
     (DATA.archived || []).forEach(fix);
+    (DATA.mfs || []).forEach(function (rec) {
+      var id = panIdForPanText(rec.pan);
+      if (id) rec.panId = id;
+    });
   }
   function filterFds(list) {
+    if (!S.curPan) return list;
+    return list.filter(function (f) { return f.panId === S.curPan; });
+  }
+  function filterMfs(list) {
     if (!S.curPan) return list;
     return list.filter(function (f) { return f.panId === S.curPan; });
   }
@@ -1297,6 +1309,312 @@
     modal(f.box, true);
   }
 
+  /* ---- Mutual funds (CAS import) ---- */
+  function mfNum(n, d) {
+    if (n == null || isNaN(n)) return '\u2014';
+    return (+n).toFixed(d == null ? 2 : d);
+  }
+  function mfKey(rec) {
+    return (rec.folio || '') + '|' + (rec.isin || rec.rtaCode || rec.scheme || '');
+  }
+  function mfAsOf(list) {
+    var d = null;
+    (list || []).forEach(function (r) { if (r.navDate && (!d || r.navDate > d)) d = r.navDate; });
+    return d;
+  }
+  function mfDetail(rec) {
+    var e = Calc.mfEnrich(rec);
+    var box = el('div', 'card');
+    box.appendChild(el('h2', '', rec.scheme));
+    box.appendChild(el('p', 'muted', [rec.amc, 'Folio ' + rec.folio, rec.pan, rec.holder].filter(Boolean).join(' \u00B7 ')));
+    var kv = el('div', 'kv inline');
+    kv.appendChild(kvin('Purchased', Calc.inr(e.invested)));
+    kv.appendChild(kvin('Cost basis', Calc.inr(e.cost)));
+    kv.appendChild(kvin('Value', Calc.inr(e.marketValue)));
+    kv.appendChild(kvin('Gain', Calc.inr(e.gain), e.gain >= 0 ? 'pos' : 'neg'));
+    kv.appendChild(kvin('Return', e.returnPct == null ? '\u2014' : e.returnPct.toFixed(2) + '%', e.returnPct == null ? 'muted' : (e.returnPct >= 0 ? 'pos' : 'neg')));
+    kv.appendChild(kvin('XIRR', e.xirr == null ? '\u2014' : (e.xirr * 100).toFixed(2) + '%', e.xirr == null ? 'muted' : (e.xirr >= 0 ? 'pos' : 'neg')));
+    kv.appendChild(kvin('Period', e.period.years == null ? '\u2014' : e.period.years.toFixed(2) + 'y', e.period.from ? Calc.fmtDate(e.period.from) + ' \u2192 ' + Calc.fmtDate(e.period.to) : ''));
+    box.appendChild(kv);
+    if (e.nav != null) {
+      box.appendChild(el('p', 'hint', 'NAV ' + mfNum(e.nav, 4) + ' on ' + (e.navDate ? Calc.fmtDate(e.navDate) : '\u2014') +
+        (rec.isin ? ' \u00B7 ISIN ' + rec.isin : '') + (rec.rta ? ' \u00B7 ' + rec.rta : '')));
+    }
+    if (rec.advisor) box.appendChild(el('p', 'hint', 'Advisor: ' + rec.advisor));
+    if (rec.notes) box.appendChild(el('p', 'hint', rec.notes));
+
+    var txns = (rec.transactions || []).slice().reverse();
+    box.appendChild(el('h3', '', 'Transactions (' + txns.length + ')'));
+    if (!txns.length) {
+      box.appendChild(el('p', 'muted', 'No transactions in this CAS period.'));
+    } else {
+      var wrap = el('div', 'archWrap');
+      var tb = el('table', 'archTable');
+      var thead = el('thead'), hr = el('tr');
+      ['Date', 'Description', 'Type', 'Amount', 'Units', 'NAV', 'Balance'].forEach(function (h, i) {
+        hr.appendChild(el('th', i >= 3 ? 'num' : '', h));
+      });
+      thead.appendChild(hr); tb.appendChild(thead);
+      var tbody = el('tbody');
+      txns.forEach(function (t) {
+        var tr = el('tr');
+        tr.appendChild(el('td', '', Calc.fmtDate(t.date)));
+        var d = el('td', '', t.description || ''); d.title = t.description || ''; tr.appendChild(d);
+        tr.appendChild(el('td', '', t.type || ''));
+        tr.appendChild(el('td', 'num', Calc.inr(t.amount)));
+        tr.appendChild(el('td', 'num', t.units == null ? '\u2014' : mfNum(t.units, 3)));
+        tr.appendChild(el('td', 'num', t.nav == null ? '\u2014' : mfNum(t.nav, 4)));
+        tr.appendChild(el('td', 'num', t.balance == null ? '\u2014' : mfNum(t.balance, 3)));
+        tbody.appendChild(tr);
+      });
+      tb.appendChild(tbody); wrap.appendChild(tb); box.appendChild(wrap);
+    }
+    var acts = el('div', 'actions');
+    var close = el('button', 'ghost', 'Close');
+    close.onclick = closeModal;
+    acts.appendChild(close); box.appendChild(acts);
+    modal(box, true);
+  }
+  function mfRow(rec) {
+    var e = Calc.mfEnrich(rec);
+    var row = el('div', 'mrow fdRow mfRow');
+    var main = el('div');
+    var nm = el('div', 'fdAcc', rec.scheme || 'Scheme');
+    nm.title = rec.scheme || '';
+    main.appendChild(nm);
+    main.appendChild(el('div', 'fdMeta', [rec.amc, 'Folio ' + rec.folio].filter(Boolean).join(' \u00B7 ')));
+
+    var cells = el('div', 'rowCells');
+    cells.style.justifyContent = 'flex-end';
+    cells.appendChild(fdCell('Purchased', Calc.inr(e.invested), 'sum of purchases, SIPs and switch-ins'));
+    cells.appendChild(fdCell('Value', Calc.inr(e.marketValue), e.nav != null ? 'NAV ' + mfNum(e.nav, 4) + ' on ' + (e.navDate ? Calc.fmtDate(e.navDate) : '\u2014') : ''));
+    var gc = fdCell('Gain', Calc.inr(e.gain), 'value \u2212 remaining cost');
+    gc.classList.add(e.gain >= 0 ? 'pos' : 'neg');
+    cells.appendChild(gc);
+    var rc = fdCell('Return', e.returnPct == null ? '\u2014' : e.returnPct.toFixed(2) + '%', 'gain \u00F7 remaining cost');
+    if (e.returnPct != null) rc.classList.add(e.returnPct >= 0 ? 'pos' : 'neg');
+    cells.appendChild(rc);
+    var xc = fdCell('XIRR', e.xirr == null ? '\u2014' : (e.xirr * 100).toFixed(2) + '%', 'annualised, from every cashflow');
+    if (e.xirr != null) xc.classList.add(e.xirr >= 0 ? 'pos' : 'neg');
+    cells.appendChild(xc);
+    cells.appendChild(fdCell('Period', e.period.years == null ? '\u2014' : e.period.years.toFixed(1) + 'y',
+      e.period.from ? Calc.fmtDate(e.period.from) + ' \u2192 ' + Calc.fmtDate(e.period.to) : ''));
+    main.appendChild(cells);
+
+    var badges = el('div', 'rowCols');
+    if (rec.invType) badges.appendChild(el('span', 'badge b-type', rec.invType));
+    if (rec.invSubType) badges.appendChild(el('span', 'badge b-unknown', rec.invSubType));
+    if (rec.distribution === 'IDCW') badges.appendChild(el('span', 'badge b-partial', 'IDCW'));
+    if (e.sip) badges.appendChild(el('span', 'badge b-active', 'SIP'));
+    badges.appendChild(Calc.mfStatus(rec) === 'Open' ? el('span', 'badge b-active', 'Open') : el('span', 'badge b-matured', 'Closed'));
+    if (rec.warnings && rec.warnings.length) badges.appendChild(el('span', 'badge b-partial', rec.warnings.length + ' warning' + (rec.warnings.length > 1 ? 's' : '')));
+
+    var acts = el('div', 'row-actions');
+    var b = el('button', 'mini', 'transactions');
+    b.onclick = function (ev) { ev.stopPropagation(); mfDetail(rec); };
+    acts.appendChild(b);
+
+    row.appendChild(main); row.appendChild(badges); row.appendChild(acts);
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.onclick = function () { mfDetail(rec); };
+    row.onkeydown = function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); mfDetail(rec); } };
+    return row;
+  }
+  function renderMf() {
+    var sec = document.getElementById('sec-mf');
+    sec.innerHTML = '';
+    var card = el('div', 'card');
+    var head = el('div', 'cardHead');
+    head.appendChild(el('h2', '', 'Mutual funds'));
+    head.appendChild(el('span', 'chip', 'view: ' + viewTitle()));
+    head.appendChild(el('div', 'spacer'));
+    var imp = el('button', 'primary', 'Import CAS PDF');
+    imp.id = 'btnCas';
+    imp.title = 'Import a CAMS / KFintech Consolidated Account Statement PDF';
+    imp.onclick = function () { document.getElementById('casFile').click(); };
+    head.appendChild(imp);
+    card.appendChild(head);
+
+    var all = filterMfs(DATA.mfs);
+    if (!all.length) {
+      card.appendChild(el('p', 'muted', 'No mutual fund folios yet. Import a CAS PDF (CAMS or KFintech) to load every folio, including closed ones.'));
+      card.appendChild(el('p', 'hint', 'The PDF is parsed in this browser. Its password is used only to decrypt it and is never saved.'));
+      sec.appendChild(card);
+      return;
+    }
+
+    var types = [];
+    all.forEach(function (r) { if (r.invType && types.indexOf(r.invType) < 0) types.push(r.invType); });
+    types.sort();
+    var sumList = S.mfType ? all.filter(function (r) { return r.invType === S.mfType; }) : all;
+    var s = Calc.mfSummary(sumList);
+
+    var kv = el('div', 'kv inline');
+    kv.appendChild(kvin('Cost basis', Calc.inr(s.cost)));
+    kv.appendChild(kvin('Current value', Calc.inr(s.value)));
+    kv.appendChild(kvin('Gain', Calc.inr(s.gain), s.gain >= 0 ? 'pos' : 'neg'));
+    kv.appendChild(kvin('Return', s.returnPct == null ? '\u2014' : s.returnPct.toFixed(2) + '%', s.returnPct == null ? 'muted' : (s.returnPct >= 0 ? 'pos' : 'neg')));
+    kv.appendChild(kvin('XIRR', s.xirr == null ? '\u2014' : (s.xirr * 100).toFixed(2) + '%', s.xirr == null ? 'muted' : (s.xirr >= 0 ? 'pos' : 'neg')));
+    kv.appendChild(kvin('Schemes', s.openCount + ' open \u00B7 ' + s.closedCount + ' closed'));
+    card.appendChild(kv);
+
+    var meta = [];
+    var asOf = DATA.mfMeta.asOf || mfAsOf(all);
+    if (asOf) meta.push('valued ' + Calc.fmtDate(asOf));
+    meta.push(all.length + ' scheme' + (all.length === 1 ? '' : 's'));
+    if (DATA.mfMeta.fileName) meta.push('from ' + DATA.mfMeta.fileName);
+    card.appendChild(el('p', 'hint', 'CAS: ' + meta.join(' \u00B7 ') +
+      '. Gain and return use the CAS remaining cost for open holdings; XIRR uses every purchase/redemption plus the current value.'));
+
+    var ctrl = el('div', 'mfFilters');
+    var tsel = selectControl('mfType', [{ v: '', l: 'All types (' + all.length + ')' }].concat(types.map(function (t) {
+      return { v: t, l: t + ' (' + all.filter(function (r) { return r.invType === t; }).length + ')' };
+    })), S.mfType);
+    tsel.onchange = function () { S.mfType = this.value; renderMf(); };
+    var tw = el('label', 'chk');
+    tw.appendChild(document.createTextNode('Type'));
+    tw.appendChild(tsel);
+    ctrl.appendChild(tw);
+    var cl = el('label', 'chk');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!S.mfShowClosed;
+    cb.onchange = function () { S.mfShowClosed = this.checked; renderMf(); };
+    cl.appendChild(cb);
+    cl.appendChild(document.createTextNode('Show closed folios (' + s.closedCount + ')'));
+    ctrl.appendChild(cl);
+    card.appendChild(ctrl);
+
+    var shown = all.filter(function (r) {
+      if (!S.mfShowClosed && Calc.mfStatus(r) !== 'Open') return false;
+      if (S.mfType && r.invType !== S.mfType) return false;
+      return true;
+    });
+    if (!shown.length) card.appendChild(el('p', 'muted', 'No schemes match this filter.'));
+    Calc.mfSort(shown).forEach(function (r) { card.appendChild(mfRow(r)); });
+
+    var tkeys = Object.keys(s.byType).sort(function (a, b) { return s.byType[b].value - s.byType[a].value; });
+    if (tkeys.length > 1) {
+      card.appendChild(el('h3', '', 'By type'));
+      var wrap = el('div', 'archWrap');
+      var tb = el('table', '');
+      var hr = el('tr');
+      ['Type', 'Schemes', 'Cost', 'Value', 'Gain', 'Return'].forEach(function (h, i) {
+        hr.appendChild(el('th', i >= 1 ? 'num' : '', h));
+      });
+      tb.appendChild(hr);
+      tkeys.forEach(function (k) {
+        var g = s.byType[k];
+        var tr = el('tr');
+        tr.appendChild(el('td', '', k));
+        tr.appendChild(el('td', 'num', String(g.count)));
+        tr.appendChild(el('td', 'num', Calc.inr(g.cost)));
+        tr.appendChild(el('td', 'num', Calc.inr(g.value)));
+        tr.appendChild(el('td', 'num', Calc.inr(g.gain)));
+        tr.appendChild(el('td', 'num', g.returnPct == null ? '\u2014' : g.returnPct.toFixed(2) + '%'));
+        tb.appendChild(tr);
+      });
+      wrap.appendChild(tb); card.appendChild(wrap);
+    }
+    sec.appendChild(card);
+  }
+
+  function commitCas(cas, recs, fname) {
+    var byKey = {};
+    function index(rec) {
+      byKey[mfKey(rec)] = rec;
+      byKey[(rec.folio || '') + '|' + (rec.scheme || '')] = rec;
+    }
+    DATA.mfs.forEach(index);
+    var added = 0, updated = 0;
+    recs.forEach(function (rec) {
+      var old = byKey[mfKey(rec)] || byKey[(rec.folio || '') + '|' + (rec.scheme || '')];
+      var panId = panIdForPanText(rec.pan);
+      if (old) {
+        var notes = old.notes, oldPan = old.panId;
+        for (var p in rec) if (Object.prototype.hasOwnProperty.call(rec, p)) old[p] = rec[p];
+        old.notes = notes != null ? notes : old.notes;
+        if (panId) old.panId = panId;
+        else if (oldPan) old.panId = oldPan;
+        index(old);
+        updated++;
+      } else {
+        if (panId) rec.panId = panId;
+        DATA.mfs.push(rec);
+        index(rec);
+        added++;
+      }
+    });
+    DATA.mfMeta = {
+      asOf: (cas.statement_period && cas.statement_period.to) || null,
+      from: (cas.statement_period && cas.statement_period.from) || null,
+      importedAt: Calc.todayISO(),
+      fileName: fname || '',
+      warnings: cas.parse_warnings || []
+    };
+    persist();
+    renderAll();
+    toast('CAS imported: ' + recs.length + ' scheme' + (recs.length === 1 ? '' : 's') + ' (' + added + ' new' +
+      (updated ? ', ' + updated + ' updated' : '') + ').', 'ok');
+    var wn = DATA.mfMeta.warnings.length;
+    if (wn) toast(wn + ' parser warning' + (wn === 1 ? '' : 's') + ' \u2014 check the folios marked in the list.', 'warn');
+  }
+  function casPasswordModal(data, fname) {
+    var f = formShell('Import CAS PDF');
+    f.box.id = 'casModal';
+    f.form.appendChild(el('p', 'hint wide', 'This CAS PDF is password-protected. The password is used only to decrypt \u2018' + fname +
+      '\u2019 in this browser and is never saved.'));
+    var pw = document.createElement('input');
+    pw.type = 'password';
+    pw.id = 'casPw';
+    pw.autocomplete = 'off';
+    f.form.appendChild(field('Password', pw, true));
+    var status = el('p', 'hint wide');
+    f.form.appendChild(status);
+    var btn = el('button', 'primary', 'Import CAS');
+    var go = function () {
+      var password = pw.value;
+      if (!password) { f.err.textContent = 'Enter the PDF password.'; pw.focus(); return; }
+      btn.disabled = true;
+      btn.textContent = 'Reading\u2026';
+      f.err.textContent = '';
+      status.textContent = 'Decrypting and parsing the statement\u2026';
+      window.MfParse.parsePdf(data, window.pdfjsLib, password).then(function (cas) {
+        var recs = window.MfParse.toRecords(cas);
+        if (!recs.length) throw new Error('no folios found \u2014 is this a CAS PDF?');
+        closeModal();
+        commitCas(cas, recs, fname);
+      }).catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = 'Import CAS';
+        status.textContent = '';
+        if (e && e.name === 'PasswordException') f.err.textContent = 'Wrong password \u2014 try again.';
+        else f.err.textContent = 'Could not read the CAS: ' + (e && e.message ? e.message : 'error');
+        pw.select();
+        pw.focus();
+      });
+    };
+    btn.onclick = go;
+    f.form.onsubmit = function (e) { e.preventDefault(); go(); };
+    var cancel = el('button', 'ghost', 'Cancel');
+    cancel.onclick = closeModal;
+    f.actions.appendChild(btn);
+    f.actions.appendChild(cancel);
+    modal(f.box, true);
+    pw.focus();
+  }
+  function importCas(file) {
+    if (!file) return;
+    if (!window.pdfjsLib || !window.MfParse) { toast('PDF engine not available.', 'bad'); return; }
+    var rd = new FileReader();
+    rd.onload = function () {
+      casPasswordModal(new Uint8Array(rd.result), file.name);
+    };
+    rd.onerror = function () { toast('Could not read the file.', 'bad'); };
+    rd.readAsArrayBuffer(file);
+  }
+
   /* ---- Commodities tab (gold / SGB) ---- */
   function filterCommodities() {
     if (!S.curPan) return DATA.commodities;
@@ -1797,7 +2115,7 @@
 
   /* ---- bundle export / import ---- */
   function saveBundle() {
-    var out = { version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, fds: DATA.fds, commodities: DATA.commodities || [], notes: DATA.notes, archived: DATA.archived || [] };
+    var out = { version: SCHEMA_VERSION, pans: DATA.pans, profile: DATA.profile, meta: DATA.meta, fds: DATA.fds, commodities: DATA.commodities || [], mfs: DATA.mfs || [], mfMeta: DATA.mfMeta || {}, notes: DATA.notes, archived: DATA.archived || [] };
     var blob = new Blob(['window.DATA = ' + JSON.stringify(out, null, 1) + ';\n'], { type: 'text/javascript' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -1829,6 +2147,8 @@
         DATA.archived = Array.isArray(d.archived) ? d.archived : [];
         if (Array.isArray(d.pans)) DATA.pans = d.pans;
         DATA.commodities = Array.isArray(d.commodities) ? d.commodities : [];
+        DATA.mfs = Array.isArray(d.mfs) ? d.mfs : [];
+        DATA.mfMeta = d.mfMeta && typeof d.mfMeta === 'object' ? d.mfMeta : {};
         DATA.profile = d.profile || DATA.profile;
         DATA.meta = d.meta || {};
         DATA.notes = d.notes || '';
@@ -1876,6 +2196,7 @@
       else b.classList.remove('now');
     });
     document.getElementById('sec-fd').hidden = t !== 'fd';
+    document.getElementById('sec-mf').hidden = t !== 'mf';
     document.getElementById('sec-commodities').hidden = t !== 'commodities';
     document.getElementById('sec-income').hidden = t !== 'income';
     document.getElementById('sec-notes').hidden = t !== 'notes';
@@ -1885,6 +2206,7 @@
     setProfileChip();
     renderChips();
     renderFd();
+    renderMf();
     renderCommodities();
     renderIncome();
     renderNotes();
@@ -1901,6 +2223,10 @@
     document.getElementById('btnPdf').onclick = function () { document.getElementById('pdfFile').click(); };
     document.getElementById('pdfFile').onchange = function () {
       if (this.files && this.files[0]) importPdf(this.files[0]);
+      this.value = '';
+    };
+    document.getElementById('casFile').onchange = function () {
+      if (this.files && this.files[0]) importCas(this.files[0]);
       this.value = '';
     };
     document.getElementById('profilechip').onclick = profileModal;
@@ -1925,5 +2251,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview, autoImport: autoImport, resyncHolders: resyncHolders, commodityForm: commodityForm, renderCommodities: renderCommodities, loadBundle: loadBundle, profileModal: profileModal };
+  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview, autoImport: autoImport, resyncHolders: resyncHolders, commodityForm: commodityForm, renderCommodities: renderCommodities, loadBundle: loadBundle, profileModal: profileModal, importCas: importCas, commitCas: commitCas, renderMf: renderMf, mfDetail: mfDetail };
 })();

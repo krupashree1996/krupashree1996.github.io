@@ -728,6 +728,115 @@ var Calc = (function () {
     if (fd.issueDate && fd.maturityDate && fd.maturityDate < fd.issueDate) e.push('Maturity date is before issue date.');
     return e;
   }
+  /* ---------- mutual funds (CAS folios) ---------- */
+  function mfStatus(rec) {
+    if (!rec) return 'Closed';
+    if (rec.close != null && Math.abs(+rec.close) > 1e-6) return 'Open';
+    if (rec.marketValue > 0) return 'Open';
+    return 'Closed';
+  }
+  function mfFirstDate(rec) {
+    var first = null;
+    (rec && rec.transactions || []).forEach(function (t) {
+      if (t && t.date && (!first || t.date < first)) first = t.date;
+    });
+    return first;
+  }
+  function mfEndDate(rec) {
+    if (mfStatus(rec) === 'Open' && rec.navDate) return rec.navDate;
+    var last = null;
+    (rec && rec.transactions || []).forEach(function (t) {
+      if (t && t.date && (!last || t.date > last)) last = t.date;
+    });
+    return last || (rec && rec.navDate) || null;
+  }
+  function mfPeriod(rec) {
+    var from = mfFirstDate(rec), to = mfEndDate(rec);
+    if (!from || !to) return { from: from, to: to, days: null, years: null };
+    var days = Math.round((parseISO(to) - parseISO(from)) / 86400000);
+    return { from: from, to: to, days: days, years: days / 365.25 };
+  }
+  function mfFlows(rec) {
+    var flows = [];
+    (rec && rec.transactions || []).forEach(function (t) {
+      if (!t || t.amount == null || !isFinite(t.amount) || !t.date) return;
+      if (t.type === 'MISC' || t.type === 'SEGREGATION') return;
+      if (t.type === 'DIVIDEND_REINVEST') return;
+      if (t.type === 'DIVIDEND_PAYOUT') {
+        if (Math.abs(t.amount) > 0) flows.push({ date: t.date, amt: Math.abs(t.amount) });
+        return;
+      }
+      flows.push({ date: t.date, amt: -t.amount });
+    });
+    if (mfStatus(rec) === 'Open' && rec.marketValue > 0 && rec.navDate) {
+      flows.push({ date: rec.navDate, amt: +rec.marketValue });
+    }
+    return flows;
+  }
+  function mfXirr(rec) {
+    var flows = mfFlows(rec);
+    return flows.length >= 2 ? xirr(flows) : null;
+  }
+  function mfPortfolioXirr(list) {
+    var flows = [];
+    (list || []).forEach(function (r) { flows = flows.concat(mfFlows(r)); });
+    return flows.length >= 2 ? xirr(flows) : null;
+  }
+  function mfEnrich(rec) {
+    var out = {};
+    for (var k in rec) if (Object.prototype.hasOwnProperty.call(rec, k)) out[k] = rec[k];
+    out.status = mfStatus(rec);
+    out.period = mfPeriod(rec);
+    out.xirr = mfXirr(rec);
+    out.cost = rec.cost == null ? null : +rec.cost;
+    out.marketValue = rec.marketValue == null ? null : +rec.marketValue;
+    out.gain = (out.marketValue || 0) - (out.cost || 0);
+    out.returnPct = out.cost > 0 ? out.gain / out.cost * 100 : null;
+    out.invested = (rec.transactions || []).reduce(function (s, t) {
+      if (t.type === 'PURCHASE' || t.type === 'PURCHASE_SIP' || t.type === 'SWITCH_IN') return s + (+t.amount || 0);
+      return s;
+    }, 0);
+    out.sip = (rec.transactions || []).some(function (t) { return t.type === 'PURCHASE_SIP'; });
+    return out;
+  }
+  function mfSummary(list) {
+    var open = [], closed = 0, byType = {}, byAmc = {};
+    (list || []).forEach(function (rec) {
+      if (mfStatus(rec) === 'Open') open.push(rec); else closed++;
+    });
+    var cost = 0, value = 0;
+    open.forEach(function (rec) {
+      var c = +rec.cost || 0, v = +rec.marketValue || 0;
+      cost += c; value += v;
+      var ty = rec.invType || 'Other';
+      if (!byType[ty]) byType[ty] = { count: 0, cost: 0, value: 0 };
+      byType[ty].count++; byType[ty].cost += c; byType[ty].value += v;
+      var amc = rec.amc || 'Unknown';
+      if (!byAmc[amc]) byAmc[amc] = { count: 0, cost: 0, value: 0 };
+      byAmc[amc].count++; byAmc[amc].cost += c; byAmc[amc].value += v;
+    });
+    var gain = value - cost;
+    var sum = {
+      count: (list || []).length, openCount: open.length, closedCount: closed,
+      cost: cost, value: value, gain: gain,
+      returnPct: cost > 0 ? gain / cost * 100 : null,
+      xirr: mfPortfolioXirr(open),
+      byType: byType, byAmc: byAmc
+    };
+    Object.keys(byType).forEach(function (k) {
+      var g = byType[k];
+      g.gain = g.value - g.cost;
+      g.returnPct = g.cost > 0 ? g.gain / g.cost * 100 : null;
+    });
+    return sum;
+  }
+  function mfSort(list) {
+    return (list || []).slice().sort(function (a, b) {
+      var sa = mfStatus(a) === 'Open' ? 0 : 1, sb = mfStatus(b) === 'Open' ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return (+b.marketValue || 0) - (+a.marketValue || 0);
+    });
+  }
   function normPan(p) { return String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
   function holderLabel(h) {
     if (!h) return '\u2014';
@@ -751,6 +860,9 @@ var Calc = (function () {
     commodityMarketValue: commodityMarketValue, commodityPayoutSchedule: commodityPayoutSchedule, commodityCouponSummary: commodityCouponSummary,
     commodityFinalValue: commodityFinalValue, commodityReturnPct: commodityReturnPct,
     commodityXirr: commodityXirr, validCommodity: validCommodity,
+    mfStatus: mfStatus, mfFirstDate: mfFirstDate, mfEndDate: mfEndDate, mfPeriod: mfPeriod,
+    mfFlows: mfFlows, mfXirr: mfXirr, mfPortfolioXirr: mfPortfolioXirr,
+    mfEnrich: mfEnrich, mfSummary: mfSummary, mfSort: mfSort,
     validPan: validPan, normPan: normPan, holderLabel: holderLabel,
     parseDDMMYYYY: parseDDMMYYYY, isoToDDMMYYYY: isoToDDMMYYYY
   };
