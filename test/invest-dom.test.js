@@ -949,6 +949,12 @@ whenReady(function run() {
   openRec.transactions.push({ date: '2024-01-01', description: 'Purchase', amount: 800, units: 10, nav: 80, balance: 10, type: 'PURCHASE', dividend_rate: null, manual: true });
   App.commitCas({ statement_period: { from: '1992-01-02', to: '2026-11-09' }, parse_warnings: [] }, JSON.parse(JSON.stringify(pristineCas)), 'TEST_CAS.pdf');
   eq('duplicate manual txn dropped on import', openRec.transactions.some(function (t) { return t.manual && t.date === '2024-01-01' && t.amount === 800; }), false);
+  var subSel = document.getElementById('mfSubType');
+  eq('subtype filter exists', !!subSel, true);
+  subSel.value = 'Mid Cap';
+  subSel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  eq('subtype filter narrows rows', $$('#sec-mf .mfRow').length, 1);
+  eq('subtype filter row is the Mid Cap fund', $$('#sec-mf .mfRow')[0].textContent.indexOf('Axis Midcap') >= 0, true);
 
   console.log('15) bundle load archives matured FDs on import');
   // loadBundle replaces all data, so this runs last.

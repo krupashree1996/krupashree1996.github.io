@@ -7,11 +7,11 @@
   if (!Array.isArray(DATA.commodities)) DATA.commodities = [];
   if (!Array.isArray(DATA.mfs)) DATA.mfs = [];
   if (!DATA.mfMeta || typeof DATA.mfMeta !== 'object') DATA.mfMeta = {};
-  var S = { tab: 'fd', curPan: '', mfShowClosed: false, mfType: '', mfSort: 'value' };
+  var S = { tab: 'fd', curPan: '', mfShowClosed: false, mfType: '', mfSubType: '', mfSort: 'value' };
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 42
+  var APP_VERSION = 43
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -1509,7 +1509,18 @@
     var types = [];
     all.forEach(function (r) { if (r.invType && types.indexOf(r.invType) < 0) types.push(r.invType); });
     types.sort();
-    var sumList = S.mfType ? all.filter(function (r) { return r.invType === S.mfType; }) : all;
+    var subTypes = [];
+    all.forEach(function (r) {
+      if (S.mfType && r.invType !== S.mfType) return;
+      if (r.invSubType && subTypes.indexOf(r.invSubType) < 0) subTypes.push(r.invSubType);
+    });
+    subTypes.sort();
+    if (S.mfSubType && subTypes.indexOf(S.mfSubType) < 0) S.mfSubType = '';
+    var sumList = all.filter(function (r) {
+      if (S.mfType && r.invType !== S.mfType) return false;
+      if (S.mfSubType && r.invSubType !== S.mfSubType) return false;
+      return true;
+    });
     var s = Calc.mfSummary(sumList);
 
     var kv = el('div', 'kv inline');
@@ -1601,11 +1612,19 @@
     var tsel = selectControl('mfType', [{ v: '', l: 'All types (' + all.length + ')' }].concat(types.map(function (t) {
       return { v: t, l: t + ' (' + all.filter(function (r) { return r.invType === t; }).length + ')' };
     })), S.mfType);
-    tsel.onchange = function () { S.mfType = this.value; renderMf(); };
+    tsel.onchange = function () { S.mfType = this.value; S.mfSubType = ''; renderMf(); };
     var tw = el('label', 'chk');
     tw.appendChild(document.createTextNode('Type'));
     tw.appendChild(tsel);
     ctrl.appendChild(tw);
+    var stsel = selectControl('mfSubType', [{ v: '', l: 'All subtypes (' + all.filter(function (r) { return !S.mfType || r.invType === S.mfType; }).length + ')' }].concat(subTypes.map(function (t) {
+      return { v: t, l: t + ' (' + all.filter(function (r) { return r.invSubType === t && (!S.mfType || r.invType === S.mfType); }).length + ')' };
+    })), S.mfSubType);
+    stsel.onchange = function () { S.mfSubType = this.value; renderMf(); };
+    var stw = el('label', 'chk');
+    stw.appendChild(document.createTextNode('Subtype'));
+    stw.appendChild(stsel);
+    ctrl.appendChild(stw);
     var cl = el('label', 'chk');
     var cb = document.createElement('input');
     cb.type = 'checkbox';
@@ -1625,6 +1644,7 @@
     var shown = all.filter(function (r) {
       if (!S.mfShowClosed && Calc.mfStatus(r) !== 'Open') return false;
       if (S.mfType && r.invType !== S.mfType) return false;
+      if (S.mfSubType && r.invSubType !== S.mfSubType) return false;
       return true;
     });
     if (!shown.length) card.appendChild(el('p', 'muted', 'No schemes match this filter.'));
