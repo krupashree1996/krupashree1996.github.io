@@ -57,7 +57,7 @@ h4{margin:0 0 8px;font-size:13px}
 .kv.inline>div{display:flex;flex-direction:column}
 .kv.inline b{text-align:left;color:var(--muted);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:.4px}
 .kv.inline span{font-size:18px;font-weight:700;margin-top:2px}
-.kv.inline span.pos{color:var(--ok)} .kv.inline span.neg{color:var(--bad)} .kv.inline span.warn{color:var(--warn)}
+.kv.inline span.pos{color:var(--ok)} .kv.inline span.neg{color:var(--bad)} .kv.inline span.warn{color:var(--warn)} .kv.inline span.info{color:var(--info)}
 
 .fdRow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px 14px;align-items:center;
   padding:14px 0;border-bottom:1px solid var(--line)}
@@ -73,6 +73,7 @@ h4{margin:0 0 8px;font-size:13px}
 .fdCell.pos b{color:var(--ok)}
 .fdCell.neg b{color:var(--bad)}
 .fdCell.warn b{color:var(--warn)}
+.fdCell.info b{color:var(--info)}
 .mfFilters{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
 .mfFilters label.chk{gap:6px}
 .mfFilters select{font:12px system-ui;color:var(--ink);background:#eef2f6;border:1px solid var(--line);

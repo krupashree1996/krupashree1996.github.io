@@ -918,6 +918,10 @@ whenReady(function run() {
   eq('closed folio hidden by default', $$('#sec-mf .mfRow').length, 1);
   eq('open scheme row rendered', $$('#sec-mf .mfRow')[0].textContent.indexOf('Axis Midcap Fund - Growth') >= 0, true);
   eq('low XIRR row cell is orange (warn)', $$('#sec-mf .mfRow .fdCell')[4].classList.contains('warn'), true);
+  eq('XIRR <1y holding is blue (info)', App.mfXirrClass(0.05, 0.5), 'info');
+  eq('XIRR >=1y low is orange', App.mfXirrClass(0.05, 2), 'warn');
+  eq('XIRR >=8.5% is green', App.mfXirrClass(0.12, 2), 'pos');
+  eq('XIRR negative is red', App.mfXirrClass(-0.02, 2), 'neg');
   eq('summary values use open holdings', $('#sec-mf .kv').textContent.indexOf('\u20B91,200') >= 0, true);
   eq('PAN holder linked', App.DATA.mfs[0].panId, 'pan1');
   var closedBox = $$('#sec-mf .mfFilters input[type=checkbox]')[0];

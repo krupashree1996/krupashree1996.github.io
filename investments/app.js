@@ -11,7 +11,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 49
+  var APP_VERSION = 50
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -1314,8 +1314,9 @@
     if (n == null || isNaN(n)) return '\u2014';
     return (+n).toFixed(d == null ? 2 : d);
   }
-  function mfXirrClass(x) {
+  function mfXirrClass(x, years) {
     if (x == null) return 'muted';
+    if (years != null && years < 1) return 'info';
     if (x < 0) return 'neg';
     return x < 0.085 ? 'warn' : 'pos';
   }
@@ -1341,7 +1342,7 @@
     kv.appendChild(kvin('Value', Calc.inr(e.marketValue)));
     kv.appendChild(kvin('Gain', Calc.inr(e.gain), e.gain >= 0 ? 'pos' : 'neg'));
     kv.appendChild(kvin('Return', e.returnPct == null ? '\u2014' : e.returnPct.toFixed(2) + '%', e.returnPct == null ? 'muted' : (e.returnPct >= 0 ? 'pos' : 'neg')));
-    kv.appendChild(kvin('XIRR', e.xirr == null ? '\u2014' : (e.xirr * 100).toFixed(2) + '%', mfXirrClass(e.xirr)));
+    kv.appendChild(kvin('XIRR', e.xirr == null ? '\u2014' : (e.xirr * 100).toFixed(2) + '%', mfXirrClass(e.xirr, e.period && e.period.years)));
     kv.appendChild(kvin('Period', e.period.years == null ? '\u2014' : e.period.years.toFixed(2) + 'y', e.period.from ? Calc.fmtDate(e.period.from) + ' \u2192 ' + Calc.fmtDate(e.period.to) : ''));
     box.appendChild(kv);
     if (e.nav != null) {
@@ -1462,7 +1463,7 @@
     if (e.returnPct != null) rc.classList.add(e.returnPct >= 0 ? 'pos' : 'neg');
     cells.appendChild(rc);
     var xc = fdCell('XIRR', e.xirr == null ? '\u2014' : (e.xirr * 100).toFixed(2) + '%', 'annualised, from every cashflow');
-    if (e.xirr != null) xc.classList.add(mfXirrClass(e.xirr));
+    if (e.xirr != null) xc.classList.add(mfXirrClass(e.xirr, e.period && e.period.years));
     cells.appendChild(xc);
     cells.appendChild(fdCell('Period', e.period.years == null ? '\u2014' : e.period.years.toFixed(1) + 'y',
       e.period.from ? Calc.fmtDate(e.period.from) + ' \u2192 ' + Calc.fmtDate(e.period.to) : ''));
@@ -2457,5 +2458,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview, autoImport: autoImport, resyncHolders: resyncHolders, commodityForm: commodityForm, renderCommodities: renderCommodities, loadBundle: loadBundle, profileModal: profileModal, importCas: importCas, commitCas: commitCas, renderMf: renderMf, mfDetail: mfDetail };
+  window.App = { DATA: DATA, switchTab: switchTab, renderAll: renderAll, buildFdForm: buildFdForm, buildInterestForm: buildInterestForm, archiveMatured: archiveMatured, importPdf: importPdf, importPreview: importPreview, autoImport: autoImport, resyncHolders: resyncHolders, commodityForm: commodityForm, renderCommodities: renderCommodities, loadBundle: loadBundle, profileModal: profileModal, importCas: importCas, commitCas: commitCas, renderMf: renderMf, mfDetail: mfDetail, mfXirrClass: mfXirrClass };
 })();
