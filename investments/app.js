@@ -11,7 +11,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 46
+  var APP_VERSION = 47
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -1564,6 +1564,30 @@
         tb.appendChild(tr);
       });
       wrap.appendChild(tb); card.appendChild(wrap);
+    }
+    var akeys = Object.keys(s.byAmc || {}).sort(function (a, b) { return s.byAmc[b].value - s.byAmc[a].value; });
+    if (akeys.length > 1) {
+      card.appendChild(el('h3', '', 'By AMC'));
+      var awrap = el('div', 'archWrap');
+      var atb = el('table', '');
+      var ahr = el('tr');
+      ['AMC', 'Schemes', 'Cost', 'Value', 'Gain', 'Return', 'XIRR'].forEach(function (h, i) {
+        ahr.appendChild(el('th', i >= 1 ? 'num' : '', h));
+      });
+      atb.appendChild(ahr);
+      akeys.forEach(function (k) {
+        var g = s.byAmc[k];
+        var tr = el('tr');
+        tr.appendChild(el('td', '', k));
+        tr.appendChild(el('td', 'num', String(g.count)));
+        tr.appendChild(el('td', 'num', Calc.inr(g.cost)));
+        tr.appendChild(el('td', 'num', Calc.inr(g.value)));
+        tr.appendChild(el('td', 'num', Calc.inr(g.gain)));
+        tr.appendChild(el('td', 'num', g.returnPct == null ? '\u2014' : g.returnPct.toFixed(2) + '%'));
+        tr.appendChild(el('td', 'num', g.xirr == null ? '\u2014' : (g.xirr * 100).toFixed(2) + '%'));
+        atb.appendChild(tr);
+      });
+      awrap.appendChild(atb); card.appendChild(awrap);
     }
     function breakdownTable(title, keys, map, firstLabel, total) {
       if (keys.length < 2) return;
