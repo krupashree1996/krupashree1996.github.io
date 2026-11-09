@@ -801,6 +801,7 @@ var Calc = (function () {
   }
   function mfSummary(list) {
     var open = [], closed = 0, byType = {}, bySubType = {}, byAmc = {};
+    var byTypeRecs = {}, bySubRecs = {}, byAmcRecs = {};
     (list || []).forEach(function (rec) {
       if (mfStatus(rec) === 'Open') open.push(rec); else closed++;
     });
@@ -809,14 +810,14 @@ var Calc = (function () {
       var c = +rec.cost || 0, v = +rec.marketValue || 0;
       cost += c; value += v;
       var ty = rec.invType || 'Other';
-      if (!byType[ty]) byType[ty] = { count: 0, cost: 0, value: 0 };
-      byType[ty].count++; byType[ty].cost += c; byType[ty].value += v;
+      if (!byType[ty]) { byType[ty] = { count: 0, cost: 0, value: 0 }; byTypeRecs[ty] = []; }
+      byType[ty].count++; byType[ty].cost += c; byType[ty].value += v; byTypeRecs[ty].push(rec);
       var sub = rec.invSubType || 'Unspecified';
-      if (!bySubType[sub]) bySubType[sub] = { count: 0, cost: 0, value: 0, type: ty };
-      bySubType[sub].count++; bySubType[sub].cost += c; bySubType[sub].value += v;
+      if (!bySubType[sub]) { bySubType[sub] = { count: 0, cost: 0, value: 0, type: ty }; bySubRecs[sub] = []; }
+      bySubType[sub].count++; bySubType[sub].cost += c; bySubType[sub].value += v; bySubRecs[sub].push(rec);
       var amc = rec.amc || 'Unknown';
-      if (!byAmc[amc]) byAmc[amc] = { count: 0, cost: 0, value: 0 };
-      byAmc[amc].count++; byAmc[amc].cost += c; byAmc[amc].value += v;
+      if (!byAmc[amc]) { byAmc[amc] = { count: 0, cost: 0, value: 0 }; byAmcRecs[amc] = []; }
+      byAmc[amc].count++; byAmc[amc].cost += c; byAmc[amc].value += v; byAmcRecs[amc].push(rec);
     });
     var gain = value - cost;
     var sum = {
@@ -826,21 +827,34 @@ var Calc = (function () {
       xirr: mfPortfolioXirr(open),
       byType: byType, bySubType: bySubType, byAmc: byAmc
     };
-    function finalize(map) {
+    function finalize(map, recs) {
       Object.keys(map).forEach(function (k) {
         var g = map[k];
         g.gain = g.value - g.cost;
         g.returnPct = g.cost > 0 ? g.gain / g.cost * 100 : null;
+        g.xirr = recs ? mfPortfolioXirr(recs[k] || []) : null;
       });
     }
-    finalize(byType); finalize(bySubType); finalize(byAmc);
+    finalize(byType, byTypeRecs); finalize(bySubType, bySubRecs); finalize(byAmc, byAmcRecs);
     return sum;
+  }
+  function mfFolioNum(f) {
+    var m = String(f || '').match(/\d+/);
+    return m ? parseInt(m[0], 10) : 0;
+  }
+  function mfFolioCmp(a, b) {
+    var d = mfFolioNum(a) - mfFolioNum(b);
+    return d || String(a || '').localeCompare(String(b || ''));
   }
   function mfSort(list) {
     return (list || []).slice().sort(function (a, b) {
       var sa = mfStatus(a) === 'Open' ? 0 : 1, sb = mfStatus(b) === 'Open' ? 0 : 1;
       if (sa !== sb) return sa - sb;
-      return (+b.marketValue || 0) - (+a.marketValue || 0);
+      var d = (+b.marketValue || 0) - (+a.marketValue || 0);
+      if (d) return d;
+      d = String(a.scheme || '').localeCompare(String(b.scheme || ''));
+      if (d) return d;
+      return mfFolioCmp(a.folio, b.folio);
     });
   }
   function normPan(p) { return String(p || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
@@ -868,7 +882,7 @@ var Calc = (function () {
     commodityXirr: commodityXirr, validCommodity: validCommodity,
     mfStatus: mfStatus, mfFirstDate: mfFirstDate, mfEndDate: mfEndDate, mfPeriod: mfPeriod,
     mfFlows: mfFlows, mfXirr: mfXirr, mfPortfolioXirr: mfPortfolioXirr,
-    mfEnrich: mfEnrich, mfSummary: mfSummary, mfSort: mfSort,
+    mfEnrich: mfEnrich, mfSummary: mfSummary, mfSort: mfSort, mfFolioCmp: mfFolioCmp, mfFolioNum: mfFolioNum,
     validPan: validPan, normPan: normPan, holderLabel: holderLabel,
     parseDDMMYYYY: parseDDMMYYYY, isoToDDMMYYYY: isoToDDMMYYYY
   };

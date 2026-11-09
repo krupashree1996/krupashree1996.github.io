@@ -182,12 +182,19 @@ console.log('calc.js — MF enrich + summary + sort');
   var sorted = Calc.mfSort([b, a]);
   eq('sort open first', sorted[0].scheme, 'Fund A');
   eq('sort closed last', sorted[1].scheme, 'Fund B');
+
+  var f1 = { scheme: 'Axis Value Fund - Direct Growth', folio: '12345678 / 2', marketValue: 500, close: 1 };
+  var f2 = { scheme: 'Axis Value Fund - Direct Growth', folio: '12345678 / 1', marketValue: 500, close: 1 };
+  var f3 = { scheme: 'Axis Value Fund - Direct Growth', folio: '99999999 / 1', marketValue: 600, close: 1 };
+  var fs = Calc.mfSort([f1, f3, f2]);
+  eq('higher value first, then equal value + name sorts by folio number', fs.map(function (r) { return r.folio; }).join(','), '99999999 / 1,12345678 / 1,12345678 / 2');
+  eq('folio compare is numeric not lexicographic', Calc.mfFolioCmp('9 / 1', '10 / 1') < 0, true);
 })();
 
 console.log('calc.js — MF equity subtype split');
 (function () {
   function mk(name, sub, cost, val) {
-    return { folio: 'F', scheme: name, invType: 'EQUITY', invSubType: sub, amc: 'Axis', cost: cost, marketValue: val, close: 1, navDate: '2026-01-01', transactions: [] };
+    return { folio: 'F', scheme: name, invType: 'EQUITY', invSubType: sub, amc: 'Axis', cost: cost, marketValue: val, close: 1, navDate: '2026-01-01', transactions: [{ date: '2024-01-01', type: 'PURCHASE', amount: cost }] };
   }
   var s2 = Calc.mfSummary([mk('A', 'Large Cap', 100, 120), mk('B', 'Mid Cap', 200, 180), mk('C', 'Large Cap', 50, 60)]);
   eq('subtype large cap count', s2.bySubType['Large Cap'].count, 2);
@@ -196,6 +203,7 @@ console.log('calc.js — MF equity subtype split');
   eq('subtype mid cap count', s2.bySubType['Mid Cap'].count, 1);
   eq('subtype type tagged EQUITY', s2.bySubType['Mid Cap'].type, 'EQUITY');
   eq('byAmc gain finalized', s2.byAmc.Axis.gain, 10);
+  close('byType xirr present for group', s2.byType.EQUITY.xirr, Calc.mfPortfolioXirr([mk('A', 'Large Cap', 100, 120), mk('B', 'Mid Cap', 200, 180), mk('C', 'Large Cap', 50, 60)]), 0.0000001);
 })();
 
 console.log('mf.js — parsePdf keeps caller data reusable');

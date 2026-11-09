@@ -11,7 +11,7 @@
   var LS = 'investments.session';
   var LS_PAN = 'investments.curPan';
   var SCHEMA_VERSION = 1;
-  var APP_VERSION = 44
+  var APP_VERSION = 46
 
   /* SGB series, FY 2019-20 through 2023-24 (the last issued before the scheme
    * ended in Feb 2024). Label = "SGB <FY-end year>-<tranche>"; d = the tranche's
@@ -1547,7 +1547,7 @@
       var wrap = el('div', 'archWrap');
       var tb = el('table', '');
       var hr = el('tr');
-      ['Type', 'Schemes', 'Cost', 'Value', 'Gain', 'Return'].forEach(function (h, i) {
+      ['Type', 'Schemes', 'Cost', 'Value', 'Gain', 'Return', 'XIRR'].forEach(function (h, i) {
         hr.appendChild(el('th', i >= 1 ? 'num' : '', h));
       });
       tb.appendChild(hr);
@@ -1560,6 +1560,7 @@
         tr.appendChild(el('td', 'num', Calc.inr(g.value)));
         tr.appendChild(el('td', 'num', Calc.inr(g.gain)));
         tr.appendChild(el('td', 'num', g.returnPct == null ? '\u2014' : g.returnPct.toFixed(2) + '%'));
+        tr.appendChild(el('td', 'num', g.xirr == null ? '\u2014' : (g.xirr * 100).toFixed(2) + '%'));
         tb.appendChild(tr);
       });
       wrap.appendChild(tb); card.appendChild(wrap);
@@ -1570,7 +1571,7 @@
       var wrap = el('div', 'archWrap');
       var tb = el('table', '');
       var hr = el('tr');
-      [firstLabel, 'Schemes', 'Cost', 'Value', '% of equity', 'Gain', 'Return'].forEach(function (h, i) {
+      [firstLabel, 'Schemes', 'Cost', 'Value', '% of equity', 'Gain', 'Return', 'XIRR'].forEach(function (h, i) {
         hr.appendChild(el('th', i >= 1 ? 'num' : '', h));
       });
       tb.appendChild(hr);
@@ -1584,6 +1585,7 @@
         tr.appendChild(el('td', 'num', total > 0 ? (g.value / total * 100).toFixed(1) + '%' : '\u2014'));
         tr.appendChild(el('td', 'num', Calc.inr(g.gain)));
         tr.appendChild(el('td', 'num', g.returnPct == null ? '\u2014' : g.returnPct.toFixed(2) + '%'));
+        tr.appendChild(el('td', 'num', g.xirr == null ? '\u2014' : (g.xirr * 100).toFixed(2) + '%'));
         tb.appendChild(tr);
       });
       wrap.appendChild(tb); card.appendChild(wrap);
@@ -1593,17 +1595,18 @@
       var subKeys = Object.keys(s.bySubType || {}).filter(function (k) { return s.bySubType[k].type === 'EQUITY'; })
         .sort(function (a, b) { return s.bySubType[b].value - s.bySubType[a].value; });
       breakdownTable('Equity by subtype', subKeys, s.bySubType, 'Subtype', eqGroup.value);
-      var eqAmc = {};
+      var eqAmc = {}, eqAmcRecs = {};
       sumList.forEach(function (r) {
         if (r.invType !== 'EQUITY' || Calc.mfStatus(r) !== 'Open') return;
         var k = r.amc || 'Unknown';
-        if (!eqAmc[k]) eqAmc[k] = { count: 0, cost: 0, value: 0 };
-        eqAmc[k].count++; eqAmc[k].cost += +r.cost || 0; eqAmc[k].value += +r.marketValue || 0;
+        if (!eqAmc[k]) { eqAmc[k] = { count: 0, cost: 0, value: 0 }; eqAmcRecs[k] = []; }
+        eqAmc[k].count++; eqAmc[k].cost += +r.cost || 0; eqAmc[k].value += +r.marketValue || 0; eqAmcRecs[k].push(r);
       });
       Object.keys(eqAmc).forEach(function (k) {
         var g = eqAmc[k];
         g.gain = g.value - g.cost;
         g.returnPct = g.cost > 0 ? g.gain / g.cost * 100 : null;
+        g.xirr = Calc.mfPortfolioXirr(eqAmcRecs[k] || []);
       });
       var amcKeys = Object.keys(eqAmc).sort(function (a, b) { return eqAmc[b].value - eqAmc[a].value; });
       breakdownTable('Equity by AMC', amcKeys, eqAmc, 'AMC', eqGroup.value);
@@ -1656,7 +1659,9 @@
       rows.sort(function (a, b) {
         var sa = Calc.mfStatus(a) === 'Open' ? 0 : 1, sb = Calc.mfStatus(b) === 'Open' ? 0 : 1;
         if (sa !== sb) return sa - sb;
-        return String(a.scheme || '').localeCompare(String(b.scheme || ''));
+        var d = String(a.scheme || '').localeCompare(String(b.scheme || ''));
+        if (d) return d;
+        return Calc.mfFolioCmp(a.folio, b.folio);
       });
     }
     rows.forEach(function (r) { card.appendChild(mfRow(r)); });
